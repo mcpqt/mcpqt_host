@@ -12,11 +12,13 @@ MCPException::MCPException(types::ErrorCode code, const std::string &message)
 
 const types::ErrorData &MCPException::error() const { return error_; }
 
+types::ErrorData &MCPException::error_data() { return error_; }
+
 TransportException::TransportException(const std::string &message,
                                        const nlohmann::json &data)
     : MCPException(types::ErrorCode::TransportError, message) {
   if (!data.is_null()) {
-    error_().data = data;
+    error_data().data = data;
   }
 }
 
@@ -25,7 +27,7 @@ TransportException::TransportException(types::ErrorCode code,
                                        const nlohmann::json &data)
     : MCPException(code, message) {
   if (!data.is_null()) {
-    error_().data = data;
+    error_data().data = data;
   }
 }
 
@@ -33,7 +35,7 @@ ProtocolException::ProtocolException(const std::string &message,
                                      const nlohmann::json &data)
     : MCPException(types::ErrorCode::ProtocolError, message) {
   if (!data.is_null()) {
-    error_().data = data;
+    error_data().data = data;
   }
 }
 
@@ -42,7 +44,7 @@ ProtocolException::ProtocolException(types::ErrorCode code,
                                      const nlohmann::json &data)
     : MCPException(code, message) {
   if (!data.is_null()) {
-    error_().data = data;
+    error_data().data = data;
   }
 }
 
@@ -50,7 +52,7 @@ TimeoutException::TimeoutException(const std::string &message,
                                    const nlohmann::json &data)
     : MCPException(types::ErrorCode::TimeoutError, message) {
   if (!data.is_null()) {
-    error_().data = data;
+    error_data().data = data;
   }
 }
 

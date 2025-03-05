@@ -37,6 +37,14 @@ public:
    */
   const types::ErrorData &error() const;
 
+protected:
+  /**
+   * @brief Get mutable reference to error data for derived classes
+   *
+   * @return types::ErrorData& The error data
+   */
+  types::ErrorData &error_data();
+
 private:
   types::ErrorData error_; ///< The error data
 };
