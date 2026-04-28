@@ -9,3 +9,4 @@
 
 #include "mcp/error.hpp"
 #include "mcp/log.hpp"
+#include "mcp/protocol.hpp"
