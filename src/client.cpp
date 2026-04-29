@@ -266,7 +266,7 @@ void Client::set_task_status_handler(TaskStatusHandler handler) {
                 h(projection);
             });
     } else {
-        session->set_notification_handler(method, nullptr);
+        session->clear_notification_handler(method);
     }
 }
 
@@ -565,7 +565,7 @@ void Client::set_elicitation_complete_handler(
                 h(std::move(parsed.elicitation_id));
             });
     } else {
-        session->set_notification_handler(method, nullptr);
+        session->clear_notification_handler(method);
     }
 }
 
