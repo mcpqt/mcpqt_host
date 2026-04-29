@@ -16,6 +16,8 @@
 #include "mcp/log.hpp"
 #include "mcp/protocol.hpp"
 
+#include <cstdlib>
+
 #include <gtest/gtest.h>
 
 #include <nlohmann/json.hpp>
@@ -30,6 +32,15 @@ namespace {
 
 using nlohmann::json;
 using namespace std::chrono_literals;
+
+struct EnableTraceLogging {
+    EnableTraceLogging() {
+        if (std::getenv("MCP_TRACE")) {
+            mcp::set_log_level(mcp::LogLevel::trace);
+        }
+    }
+};
+EnableTraceLogging g_enable_trace;
 
 TEST(HttpEndToEnd, InitializeAndToolCall) {
     mcp::HttpServerHost host{
