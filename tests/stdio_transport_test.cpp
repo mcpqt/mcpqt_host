@@ -125,8 +125,11 @@ struct Sink {
 // -------------------------------------------------------------------------
 
 TEST(StdioTransport, DeliversWholeFrame) {
-    PipeHarness h;
+    // Sink before PipeHarness so the harness destructor (which closes
+    // the transport, firing on_close on the read thread) sees a still-
+    // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
+    PipeHarness h;
     h.transport->on_message([&](std::string s) { sink.on_message(std::move(s)); });
     h.transport->on_close ([&]                  { sink.on_close(); });
     h.transport->start();
@@ -138,8 +141,11 @@ TEST(StdioTransport, DeliversWholeFrame) {
 }
 
 TEST(StdioTransport, SplitsMultipleFramesByNewline) {
-    PipeHarness h;
+    // Sink before PipeHarness so the harness destructor (which closes
+    // the transport, firing on_close on the read thread) sees a still-
+    // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
+    PipeHarness h;
     h.transport->on_message([&](std::string s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
@@ -152,8 +158,11 @@ TEST(StdioTransport, SplitsMultipleFramesByNewline) {
 }
 
 TEST(StdioTransport, BuffersAcrossReads) {
-    PipeHarness h;
+    // Sink before PipeHarness so the harness destructor (which closes
+    // the transport, firing on_close on the read thread) sees a still-
+    // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
+    PipeHarness h;
     h.transport->on_message([&](std::string s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
@@ -166,8 +175,11 @@ TEST(StdioTransport, BuffersAcrossReads) {
 }
 
 TEST(StdioTransport, IgnoresEmptyLines) {
-    PipeHarness h;
+    // Sink before PipeHarness so the harness destructor (which closes
+    // the transport, firing on_close on the read thread) sees a still-
+    // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
+    PipeHarness h;
     h.transport->on_message([&](std::string s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
@@ -253,8 +265,11 @@ TEST(StdioTransport, SendBeforeStartFails) {
 }
 
 TEST(StdioTransport, EofTriggersClose) {
-    PipeHarness h;
+    // Sink before PipeHarness so the harness destructor (which closes
+    // the transport, firing on_close on the read thread) sees a still-
+    // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
+    PipeHarness h;
     h.transport->on_close([&] { sink.on_close(); });
     h.transport->start();
 
@@ -263,8 +278,11 @@ TEST(StdioTransport, EofTriggersClose) {
 }
 
 TEST(StdioTransport, ExplicitCloseUnblocksReadLoop) {
-    PipeHarness h;
+    // Sink before PipeHarness so the harness destructor (which closes
+    // the transport, firing on_close on the read thread) sees a still-
+    // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
+    PipeHarness h;
     h.transport->on_close([&] { sink.on_close(); });
     h.transport->start();
 
