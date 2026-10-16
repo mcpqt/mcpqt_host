@@ -8,8 +8,6 @@
 #include "mcp/session.hpp"
 #include "mcp/transport.hpp"
 
-#include <nlohmann/json.hpp>
-
 #include <future>
 #include <memory>
 #include <mutex>
@@ -92,8 +90,8 @@ std::future<InitializeResult> Client::initialize() {
         if (roots_handler_)    caps.roots    = RootsCapability{};
         if (elicitation_handler_) {
             ElicitationCapability ec;
-            ec.form = nlohmann::json::object();
-            ec.url  = nlohmann::json::object();
+            ec.form = QJsonObject{};
+            ec.url  = QJsonObject{};
             caps.elicitation = std::move(ec);
         }
         // ...then merge any explicit override on top. Each engaged
@@ -119,10 +117,10 @@ std::future<InitializeResult> Client::initialize() {
     };
 
     return std::async(std::launch::async,
-        [this, session, payload = nlohmann::json(params)]() -> InitializeResult {
+        [this, session, payload = to_json(params)]() -> InitializeResult {
             auto raw = session->send_request(std::string{method_initialize},
                                               payload).get();
-            auto res = raw.get<InitializeResult>();
+            auto res = from_json<InitializeResult>(raw);
             {
                 std::lock_guard<std::mutex> lk(server_mu_);
                 server_ = res;
@@ -150,30 +148,30 @@ Client::list_tools(std::optional<std::string> cursor) {
     }
     ListToolsRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListToolsResult>(
-        std::string{method_tools_list}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<ListToolsResult>(); });
+        std::string{method_tools_list}, to_json(params),
+        [](Json j) { return from_json<ListToolsResult>(j); });
 }
 
 std::future<CallToolResult>
-Client::call_tool(std::string name, nlohmann::json arguments) {
+Client::call_tool(std::string name, Json arguments) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
     }
     CallToolRequestParams params{
         .name      = std::move(name),
-        .arguments = arguments.is_null() ? std::nullopt
-                                         : std::optional<nlohmann::json>(std::move(arguments)),
+        .arguments = arguments.isNull() ? std::nullopt
+                                         : std::optional<Json>(std::move(arguments)),
         .task      = std::nullopt,
     };
     return session->send_request_for<CallToolResult>(
-        std::string{method_tools_call}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<CallToolResult>(); });
+        std::string{method_tools_call}, to_json(params),
+        [](Json j) { return from_json<CallToolResult>(j); });
 }
 
 std::future<CreateTaskResult>
 Client::call_tool_as_task(std::string                 name,
-                          nlohmann::json              arguments,
+                          Json              arguments,
                           std::optional<std::int64_t> ttl_ms) {
     auto session = acquire_session();
     if (!session) {
@@ -181,13 +179,13 @@ Client::call_tool_as_task(std::string                 name,
     }
     CallToolRequestParams params{
         .name      = std::move(name),
-        .arguments = arguments.is_null() ? std::nullopt
-                                         : std::optional<nlohmann::json>(std::move(arguments)),
+        .arguments = arguments.isNull() ? std::nullopt
+                                         : std::optional<Json>(std::move(arguments)),
         .task      = TaskAugmentation{.ttl = ttl_ms},
     };
     return session->send_request_for<CreateTaskResult>(
-        std::string{method_tools_call}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<CreateTaskResult>(); });
+        std::string{method_tools_call}, to_json(params),
+        [](Json j) { return from_json<CreateTaskResult>(j); });
 }
 
 std::future<Task> Client::task_get(std::string task_id) {
@@ -197,11 +195,11 @@ std::future<Task> Client::task_get(std::string task_id) {
     }
     return session->send_request_for<Task>(
         std::string{method_tasks_get},
-        nlohmann::json(GetTaskRequestParams{.task_id = std::move(task_id)}),
-        [](nlohmann::json j) { return j.get<Task>(); });
+        to_json(GetTaskRequestParams{.task_id = std::move(task_id)}),
+        [](Json j) { return from_json<Task>(j); });
 }
 
-std::future<nlohmann::json> Client::task_result(std::string task_id) {
+std::future<Json> Client::task_result(std::string task_id) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
@@ -209,7 +207,7 @@ std::future<nlohmann::json> Client::task_result(std::string task_id) {
     // Already a future<json>; no conversion needed, so return the
     // Session future directly (no per-call worker thread).
     return session->send_request(std::string{method_tasks_result},
-        nlohmann::json(GetTaskResultRequestParams{.task_id = std::move(task_id)}));
+        to_json(GetTaskResultRequestParams{.task_id = std::move(task_id)}));
 }
 
 std::future<ListTasksResult>
@@ -220,8 +218,8 @@ Client::task_list(std::optional<std::string> cursor) {
     }
     ListTasksRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListTasksResult>(
-        std::string{method_tasks_list}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<ListTasksResult>(); });
+        std::string{method_tasks_list}, to_json(params),
+        [](Json j) { return from_json<ListTasksResult>(j); });
 }
 
 std::future<Task> Client::task_cancel(std::string task_id) {
@@ -231,8 +229,8 @@ std::future<Task> Client::task_cancel(std::string task_id) {
     }
     return session->send_request_for<Task>(
         std::string{method_tasks_cancel},
-        nlohmann::json(CancelTaskRequestParams{.task_id = std::move(task_id)}),
-        [](nlohmann::json j) { return j.get<Task>(); });
+        to_json(CancelTaskRequestParams{.task_id = std::move(task_id)}),
+        [](Json j) { return from_json<Task>(j); });
 }
 
 void Client::set_task_status_handler(TaskStatusHandler handler) {
@@ -245,13 +243,13 @@ void Client::set_task_status_handler(TaskStatusHandler handler) {
     const std::string method{method_notifications_tasks_status};
     if (handler) {
         session->set_notification_handler(method,
-            [h = std::move(handler)](const nlohmann::json& params) {
-                if (params.is_null()) return;
+            [h = std::move(handler)](const Json& params) {
+                if (params.isNull()) return;
                 Task projection;
                 try {
                     // notifications/tasks/status carries the Task
                     // projection inline (no wrapper object).
-                    projection = params.get<Task>();
+                    projection = from_json<Task>(params);
                 } catch (...) {
                     return;
                 }
@@ -272,8 +270,8 @@ Client::list_resources(std::optional<std::string> cursor) {
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     ListResourcesRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListResourcesResult>(
-        std::string{method_resources_list}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<ListResourcesResult>(); });
+        std::string{method_resources_list}, to_json(params),
+        [](Json j) { return from_json<ListResourcesResult>(j); });
 }
 
 std::future<ListResourceTemplatesResult>
@@ -282,8 +280,8 @@ Client::list_resource_templates(std::optional<std::string> cursor) {
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     ListResourceTemplatesRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListResourceTemplatesResult>(
-        std::string{method_resources_templates_list}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<ListResourceTemplatesResult>(); });
+        std::string{method_resources_templates_list}, to_json(params),
+        [](Json j) { return from_json<ListResourceTemplatesResult>(j); });
 }
 
 std::future<ReadResourceResult>
@@ -292,8 +290,8 @@ Client::read_resource(std::string uri) {
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     ReadResourceRequestParams params{.uri = std::move(uri)};
     return session->send_request_for<ReadResourceResult>(
-        std::string{method_resources_read}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<ReadResourceResult>(); });
+        std::string{method_resources_read}, to_json(params),
+        [](Json j) { return from_json<ReadResourceResult>(j); });
 }
 
 std::future<void>
@@ -302,7 +300,7 @@ Client::subscribe(std::string uri) {
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     SubscribeRequestParams params{.uri = std::move(uri)};
     return session->send_request_void(std::string{method_resources_subscribe},
-                                      nlohmann::json(params));
+                                      to_json(params));
 }
 
 std::future<void>
@@ -311,7 +309,7 @@ Client::unsubscribe(std::string uri) {
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     UnsubscribeRequestParams params{.uri = std::move(uri)};
     return session->send_request_void(std::string{method_resources_unsubscribe},
-                                      nlohmann::json(params));
+                                      to_json(params));
 }
 
 void Client::set_resource_updated_handler(ResourceUpdatedHandler handler) {
@@ -320,9 +318,9 @@ void Client::set_resource_updated_handler(ResourceUpdatedHandler handler) {
     const std::string method{method_notifications_resources_updated};
     if (handler) {
         session->set_notification_handler(method,
-            [h = std::move(handler)](const nlohmann::json& params) {
-                if (params.is_null()) return;
-                h(params.get<ResourceUpdatedNotificationParams>());
+            [h = std::move(handler)](const Json& params) {
+                if (params.isNull()) return;
+                h(from_json<ResourceUpdatedNotificationParams>(params));
             });
     } else {
         session->clear_notification_handler(method);
@@ -335,7 +333,7 @@ void Client::set_resources_list_changed_handler(ListChangedHandler handler) {
     const std::string method{method_notifications_resources_list_changed};
     if (handler) {
         session->set_notification_handler(method,
-            [h = std::move(handler)](const nlohmann::json&) { h(); });
+            [h = std::move(handler)](const Json&) { h(); });
     } else {
         session->clear_notification_handler(method);
     }
@@ -351,8 +349,8 @@ Client::list_prompts(std::optional<std::string> cursor) {
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     ListPromptsRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListPromptsResult>(
-        std::string{method_prompts_list}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<ListPromptsResult>(); });
+        std::string{method_prompts_list}, to_json(params),
+        [](Json j) { return from_json<ListPromptsResult>(j); });
 }
 
 std::future<GetPromptResult>
@@ -365,8 +363,8 @@ Client::get_prompt(std::string name,
         .arguments = std::move(arguments),
     };
     return session->send_request_for<GetPromptResult>(
-        std::string{method_prompts_get}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<GetPromptResult>(); });
+        std::string{method_prompts_get}, to_json(params),
+        [](Json j) { return from_json<GetPromptResult>(j); });
 }
 
 void Client::set_prompts_list_changed_handler(ListChangedHandler handler) {
@@ -375,7 +373,7 @@ void Client::set_prompts_list_changed_handler(ListChangedHandler handler) {
     const std::string method{method_notifications_prompts_list_changed};
     if (handler) {
         session->set_notification_handler(method,
-            [h = std::move(handler)](const nlohmann::json&) { h(); });
+            [h = std::move(handler)](const Json&) { h(); });
     } else {
         session->clear_notification_handler(method);
     }
@@ -397,13 +395,13 @@ std::error_code Client::cancel_request(RequestId request_id,
     };
     return session->send_notification(
         std::string{method_notifications_cancelled},
-        nlohmann::json(params));
+        to_json(params));
 }
 
 std::future<void> Client::ping() {
     auto session = acquire_session();
     if (!session) throw Error{error_code::internal_error, "client not connected"};
-    return session->send_request_void(std::string{method_ping}, nullptr);
+    return session->send_request_void(std::string{method_ping}, {});
 }
 
 std::future<void> Client::set_log_level(LoggingLevel level) {
@@ -411,7 +409,7 @@ std::future<void> Client::set_log_level(LoggingLevel level) {
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     SetLevelRequestParams params{.level = level};
     return session->send_request_void(std::string{method_logging_set_level},
-                                      nlohmann::json(params));
+                                      to_json(params));
 }
 
 void Client::set_log_message_handler(LogMessageHandler handler) {
@@ -420,9 +418,9 @@ void Client::set_log_message_handler(LogMessageHandler handler) {
     const std::string method{method_notifications_message};
     if (handler) {
         session->set_notification_handler(method,
-            [h = std::move(handler)](const nlohmann::json& params) {
-                if (params.is_null()) return;
-                h(params.get<LoggingMessageNotificationParams>());
+            [h = std::move(handler)](const Json& params) {
+                if (params.isNull()) return;
+                h(from_json<LoggingMessageNotificationParams>(params));
             });
     } else {
         session->clear_notification_handler(method);
@@ -435,9 +433,9 @@ void Client::set_progress_handler(ProgressHandler handler) {
     const std::string method{method_notifications_progress};
     if (handler) {
         session->set_notification_handler(method,
-            [h = std::move(handler)](const nlohmann::json& params) {
-                if (params.is_null()) return;
-                h(params.get<ProgressNotificationParams>());
+            [h = std::move(handler)](const Json& params) {
+                if (params.isNull()) return;
+                h(from_json<ProgressNotificationParams>(params));
             });
     } else {
         session->clear_notification_handler(method);
@@ -458,19 +456,19 @@ void Client::set_sampling_handler(SamplingHandler handler) {
     const std::string method{method_sampling_create_message};
     if (handler) {
         session->set_request_handler(method,
-            [h = std::move(handler)](const nlohmann::json& params) -> nlohmann::json {
-                if (params.is_null()) {
+            [h = std::move(handler)](const Json& params) -> Json {
+                if (params.isNull()) {
                     throw Error{error_code::invalid_params,
                                 "sampling/createMessage requires params"};
                 }
                 CreateMessageRequestParams parsed;
                 try {
-                    parsed = params.get<CreateMessageRequestParams>();
+                    parsed = from_json<CreateMessageRequestParams>(params);
                 } catch (const std::exception& e) {
                     throw Error{error_code::invalid_params,
                                 std::string{"invalid sampling params: "} + e.what()};
                 }
-                return h(parsed);
+                return to_json(h(parsed));
             });
     } else {
         session->clear_request_handler(method);
@@ -487,15 +485,15 @@ void Client::set_elicitation_handler(ElicitationHandler handler) {
     const std::string method{method_elicitation_create};
     if (handler) {
         session->set_request_handler(method,
-            [h = std::move(handler)](const nlohmann::json& params)
-                    -> nlohmann::json {
-                if (params.is_null()) {
+            [h = std::move(handler)](const Json& params)
+                    -> Json {
+                if (params.isNull()) {
                     throw Error{error_code::invalid_params,
                                 "elicitation/create requires params"};
                 }
                 ElicitRequestParams parsed;
                 try {
-                    parsed = params.get<ElicitRequestParams>();
+                    parsed = from_json<ElicitRequestParams>(params);
                 } catch (const Error&) {
                     throw;
                 } catch (const std::exception& e) {
@@ -503,7 +501,7 @@ void Client::set_elicitation_handler(ElicitationHandler handler) {
                                 std::string{"invalid elicitation params: "}
                                     + e.what()};
                 }
-                return h(parsed);
+                return to_json(h(parsed));
             });
     } else {
         session->clear_request_handler(method);
@@ -521,11 +519,11 @@ void Client::set_elicitation_complete_handler(
     const std::string method{method_notifications_elicitation_complete};
     if (handler) {
         session->set_notification_handler(method,
-            [h = std::move(handler)](const nlohmann::json& params) {
-                if (!params.is_object()) return;
+            [h = std::move(handler)](const Json& params) {
+                if (!params.isObject()) return;
                 ElicitationCompleteNotificationParams parsed;
                 try {
-                    parsed = params.get<ElicitationCompleteNotificationParams>();
+                    parsed = from_json<ElicitationCompleteNotificationParams>(params);
                 } catch (const std::exception& e) {
                     MCP_LOG_WARN(std::string{"malformed elicitation/complete: "}
                                  + e.what());
@@ -551,8 +549,8 @@ void Client::set_roots_list_handler(RootsListHandler handler) {
     const std::string method{method_roots_list};
     if (handler) {
         session->set_request_handler(method,
-            [h = std::move(handler)](const nlohmann::json&) -> nlohmann::json {
-                return h();
+            [h = std::move(handler)](const Json&) -> Json {
+                return to_json(h());
             });
     } else {
         session->clear_request_handler(method);
@@ -571,8 +569,8 @@ Client::complete(CompletionReference reference,
         .context_arguments = std::move(context_arguments),
     };
     return session->send_request_for<CompleteResult>(
-        std::string{method_completion_complete}, nlohmann::json(params),
-        [](nlohmann::json j) { return j.get<CompleteResult>(); });
+        std::string{method_completion_complete}, to_json(params),
+        [](Json j) { return from_json<CompleteResult>(j); });
 }
 
 void Client::set_client_capabilities(ClientCapabilities caps) {
@@ -595,7 +593,7 @@ Client::notify_elicitation_complete(std::string elicitation_id) {
     if (!session) return std::make_error_code(std::errc::not_connected);
     return session->send_notification(
         std::string{method_notifications_elicitation_complete},
-        nlohmann::json(ElicitationCompleteNotificationParams{
+        to_json(ElicitationCompleteNotificationParams{
             .elicitation_id = std::move(elicitation_id),
         }));
 }

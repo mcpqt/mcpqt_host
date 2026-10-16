@@ -7,20 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (Qt 6 migration)
+
+- **Qt 6 is now the only third-party dependency.** `nlohmann_json`,
+  `cpp-httplib`, and GoogleTest were removed. JSON is handled with Qt's
+  `QJsonValue` under the `mcp::Json` alias (with the same `to_json`/
+  `from_json`/`require`/`take_optional`/`put_optional` helpers as before); the
+  Streamable-HTTP server is built on `QHttpServer` (`Qt6::HttpServer`) and the
+  HTTP client transport on `QNetworkAccessManager` (`Qt6::Network`); the test
+  suite was ported from GoogleTest to `QtTest` (`Qt6::Test`). Qt 6.4 or newer
+  is required.
+  - **Breaking (build only):** CMake now does `find_package(Qt6 6.4 REQUIRED
+    COMPONENTS Core Network)`; `MCP_ENABLE_HTTP` additionally needs
+    `Qt6::HttpServer`, and `MCP_BUILD_TESTS` needs `Qt6::Test`. The
+    `MCP_USE_SYSTEM_DEPS` and `MCP_HTTP_NO_TLS` options are gone.
+  - **Breaking (source):** tool/resource/prompt schemas and handler arguments
+    are `mcp::Json` (i.e. `QJsonValue`) rather than `nlohmann::json`; e.g.
+    `server.tool("add", QJsonObject{...}, [](const mcp::Json& a){ ... })` and
+    `client.call_tool("add", QJsonObject{{"a", 1}, {"b", 2}})`.
+- The HTTP client transport now performs the spec-mandated `DELETE` on graceful
+  `close()` to release the server-side session, and the server closes its SSE
+  GET socket when a session's transport shuts down so clients are not left
+  waiting on an abandoned stream.
+
 ### Changed (post-0.1.0)
 
 - **HTTP transport split into its own `mcp::http` target.** The core `mcp`
-  library now depends only on `nlohmann_json`; the Streamable-HTTP transport
-  (`HttpServerHost` / `HttpClientTransport`) and its `cpp-httplib → OpenSSL`
-  dependency moved to a separate `mcp-http` / `mcp::http` target, still gated by
-  the `MCP_ENABLE_HTTP` option (default ON). A stdio-only server linked against
-  `mcp::mcp` now loads no OpenSSL/brotli/Security at all — smaller dependency
-  surface, no OpenSSL CVE exposure, and ~halved cold start.
+  library carries no HTTP dependency; the Streamable-HTTP transport
+  (`HttpServerHost` / `HttpClientTransport`) lives in a separate `mcp-http` /
+  `mcp::http` target, still gated by the `MCP_ENABLE_HTTP` option (default ON).
+  A stdio-only server linked against `mcp::mcp` pulls in neither the HTTP server
+  nor the HTTPS stack.
   - **Breaking (build only):** consumers of the HTTP transport must link
     `mcp::http` instead of `mcp::mcp`. Stdio-only consumers are unaffected.
-- cpp-httplib's optional `brotli`/`zlib` auto-detection is now pinned **off**
-  (OpenSSL stays on), so HTTP builds are deterministic and no longer break when a
-  system `brotli` library is present without its headers.
+  - (Originally this was a `nlohmann_json` core plus a `cpp-httplib → OpenSSL`
+    HTTP target; both were superseded by the Qt 6 migration above.)
 
 ### Performance (post-0.1.0)
 

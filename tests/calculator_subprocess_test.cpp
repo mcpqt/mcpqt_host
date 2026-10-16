@@ -12,9 +12,15 @@
 #include "mcp/protocol.hpp"
 #include "mcp/stdio_transport.hpp"
 
+#if __has_include("test_binary_paths.hpp")
 #include "test_binary_paths.hpp"
+#endif
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
+
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <fcntl.h>
 #include <signal.h>
@@ -31,7 +37,7 @@ extern char** environ;
 
 namespace {
 
-using nlohmann::json;
+using mcp::Json;
 using namespace std::chrono_literals;
 
 struct Subprocess {
@@ -100,14 +106,20 @@ std::unique_ptr<Subprocess> spawn_calculator() {
 #endif
 }
 
-// -------------------------------------------------------------------------
+}  // namespace
 
-TEST(CalculatorSubprocess, EndToEnd) {
+class CalculatorSubprocess : public QObject {
+    Q_OBJECT
+private slots:
+    void EndToEnd();
+};
+
+void CalculatorSubprocess::EndToEnd() {
 #if !defined(MCP_TEST_CALCULATOR_SERVER)
-    GTEST_SKIP() << "calculator_server not built; skipping subprocess test";
+    QSKIP("calculator_server not built; skipping subprocess test");
 #else
     auto sp = spawn_calculator();
-    ASSERT_TRUE(sp) << "spawn failed";
+    QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
     opts.read_fd  = sp->read_fd;
@@ -121,24 +133,34 @@ TEST(CalculatorSubprocess, EndToEnd) {
     client.connect(std::move(transport));
 
     auto info = client.initialize().get();
-    EXPECT_EQ(info.protocol_version, mcp::kLatestProtocolVersion);
-    EXPECT_EQ(info.server_info.name, "mcp-cpp-calculator");
-    ASSERT_TRUE(info.capabilities.tools.has_value());
+    QCOMPARE(info.protocol_version, mcp::kLatestProtocolVersion);
+    QCOMPARE(info.server_info.name, std::string{"mcp-cpp-calculator"});
+    QVERIFY(info.capabilities.tools.has_value());
 
     auto tools = client.list_tools().get();
-    EXPECT_GE(tools.tools.size(), 4u);
+    QVERIFY(tools.tools.size() >= 4u);
 
-    auto add_out = client.call_tool("add", json{{"a", 6.0}, {"b", 7.0}}).get();
-    ASSERT_FALSE(add_out.is_error.value_or(false));
-    ASSERT_EQ(add_out.content.size(), 1u);
-    EXPECT_NE(std::get<mcp::TextContent>(add_out.content[0]).text.find("13"),
-              std::string::npos);
+    auto add_out = client.call_tool("add", QJsonObject{{"a", 6.0}, {"b", 7.0}}).get();
+    QVERIFY(!add_out.is_error.value_or(false));
+    QCOMPARE(add_out.content.size(), std::size_t{1});
+    QVERIFY(std::get<mcp::TextContent>(add_out.content[0]).text.find("13")
+            != std::string::npos);
 
-    auto div_out = client.call_tool("divide", json{{"a", 1.0}, {"b", 0.0}}).get();
-    EXPECT_TRUE(div_out.is_error.value_or(false));
+    auto div_out = client.call_tool("divide", QJsonObject{{"a", 1.0}, {"b", 0.0}}).get();
+    QVERIFY(div_out.is_error.value_or(false));
 
     client.disconnect();
 #endif
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        CalculatorSubprocess suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "calculator_subprocess_test.moc"

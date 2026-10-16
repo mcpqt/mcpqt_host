@@ -2,51 +2,85 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "mcp/error.hpp"
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
+
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <stdexcept>
 #include <string>
 
-namespace {
+class ErrorObject : public QObject {
+    Q_OBJECT
+private slots:
+    void DefaultConstructibleAndDataAbsent();
+    void HasDataReflectsNullness();
+};
 
-TEST(ErrorObject, DefaultConstructibleAndDataAbsent) {
+class ErrorException : public QObject {
+    Q_OBJECT
+private slots:
+    void CarriesCodeMessageAndData();
+    void IsStdRuntimeError();
+    void ConstructFromObjectPreservesFields();
+};
+
+void ErrorObject::DefaultConstructibleAndDataAbsent() {
     mcp::ErrorObject e{};
-    EXPECT_EQ(e.code, 0);
-    EXPECT_TRUE(e.message.empty());
-    EXPECT_FALSE(e.has_data());
+    QCOMPARE(e.code, 0);
+    QVERIFY(e.message.empty());
+    QVERIFY(!e.has_data());
 }
 
-TEST(ErrorObject, HasDataReflectsNullness) {
+void ErrorObject::HasDataReflectsNullness() {
     mcp::ErrorObject e{};
-    e.data = nlohmann::json{{"k", 1}};
-    EXPECT_TRUE(e.has_data());
+    e.data = QJsonObject{{"k", 1}};
+    QVERIFY(e.has_data());
 }
 
-TEST(ErrorException, CarriesCodeMessageAndData) {
-    nlohmann::json extra = {{"why", "because"}};
+void ErrorException::CarriesCodeMessageAndData() {
+    const QJsonObject extra{{"why", "because"}};
     mcp::Error err{mcp::error_code::invalid_params, "bad arg", extra};
-    EXPECT_EQ(err.code(), mcp::error_code::invalid_params);
-    EXPECT_EQ(err.message(), "bad arg");
-    EXPECT_EQ(err.data(), extra);
-    EXPECT_STREQ(err.what(), "bad arg");
+    QCOMPARE(err.code(), mcp::error_code::invalid_params);
+    QCOMPARE(err.message(), std::string{"bad arg"});
+    QCOMPARE(err.data(), mcp::Json{extra});
+    QCOMPARE(QString::fromUtf8(err.what()), QStringLiteral("bad arg"));
 }
 
-TEST(ErrorException, IsStdRuntimeError) {
+void ErrorException::IsStdRuntimeError() {
     mcp::Error err{mcp::error_code::internal_error, "boom"};
+    bool caught_as_runtime_error = false;
     try {
         throw err;
     } catch (const std::runtime_error& e) {
-        EXPECT_STREQ(e.what(), "boom");
+        caught_as_runtime_error = true;
+        QCOMPARE(QString::fromUtf8(e.what()), QStringLiteral("boom"));
     } catch (...) {
-        FAIL() << "Error did not derive from std::runtime_error";
+        QFAIL("Error did not derive from std::runtime_error");
     }
+    QVERIFY(caught_as_runtime_error);
 }
 
-TEST(ErrorException, ConstructFromObjectPreservesFields) {
+void ErrorException::ConstructFromObjectPreservesFields() {
     mcp::ErrorObject obj{mcp::error_code::method_not_found, "no such", {}};
     mcp::Error err{obj};
-    EXPECT_EQ(err.code(), obj.code);
-    EXPECT_EQ(err.message(), obj.message);
+    QCOMPARE(err.code(), obj.code);
+    QCOMPARE(err.message(), obj.message);
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        ErrorObject suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    {
+        ErrorException suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "error_test.moc"

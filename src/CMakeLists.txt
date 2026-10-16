@@ -12,9 +12,9 @@ if(NOT WIN32)
     target_sources(mcp PRIVATE stdio_transport.cpp)
 endif()
 
-# Optional HTTP transport, split into its own target so the TLS/compression
-# deps (httplib -> OpenSSL/brotli/zlib) are linked only into binaries that
-# actually use HTTP. Consumers link `mcp::http` (which brings in `mcp`).
+# Optional HTTP transport, split into its own target so that binaries that
+# only speak stdio (and therefore never touch QtNetwork/QtHttpServer) link
+# nothing beyond Qt6::Core. Consumers link `mcp::http` (which brings in `mcp`).
 if(MCP_ENABLE_HTTP)
     add_library(mcp-http
         http_client_transport.cpp
@@ -26,7 +26,7 @@ if(MCP_ENABLE_HTTP)
     # would otherwise namespace the raw target name `mcp-http`.
     set_target_properties(mcp-http PROPERTIES EXPORT_NAME http)
 
-    target_link_libraries(mcp-http PUBLIC mcp PRIVATE httplib::httplib)
+    target_link_libraries(mcp-http PUBLIC mcp Qt6::Network Qt6::HttpServer)
     # PUBLIC so the `#if !defined(MCP_ENABLE_HTTP)` guards in the HTTP headers
     # are satisfied for anyone linking mcp::http.
     target_compile_definitions(mcp-http PUBLIC MCP_ENABLE_HTTP=1)

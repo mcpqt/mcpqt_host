@@ -27,16 +27,16 @@ subprocess.
 
 1. **`tools/call` round-trip** — full request/response through the stack.
 2. **`ping` round-trip** — the protocol floor (empty payload).
-3. **JSON-RPC codec** — `serialize_message().dump()` and
-   `json::parse() → parse_message()` in isolation (transport-independent).
+3. **JSON-RPC codec** — `mcp::dump(mcp::serialize_message(...))` and
+   `mcp::parse_json() → parse_message()` in isolation (transport-independent).
 
 ## Build & run (standalone, against the prebuilt static lib)
 
 ```sh
-c++ -std=c++20 -O2 -DNDEBUG \
-  -I include -I tests -I build-rel/_deps/nlohmann_json-src/include \
+c++ -std=c++20 -O2 -DNDEBUG -fPIC \
+  -I include -I tests $(pkg-config --cflags Qt6Core Qt6Network) \
   bench/mcp_bench.cpp tests/in_memory_transport.cpp \
-  build-rel/libmcp.a -o /tmp/mcp_bench
+  build-rel/libmcp.a $(pkg-config --libs Qt6Core Qt6Network) -o /tmp/mcp_bench
 /tmp/mcp_bench 100000      # iterations (default 100000)
 ```
 
@@ -89,21 +89,16 @@ CPython, ~30× smaller than Node, and starts ~7× faster** than even a bare
 interpreter. A real Python MCP server importing `mcp`/`anyio`/`pydantic` lands
 materially higher on both axes.
 
-> **Dependency hygiene (fixed): the HTTP transport is its own target.** The core
-> `mcp` library now depends only on `nlohmann_json`; the Streamable-HTTP
-> transport lives in a separate `mcp::http` target that carries the
-> `httplib → OpenSSL/brotli` deps. A stdio-only server linked against `mcp::mcp`
-> therefore loads **no** OpenSSL/brotli/Security at all (verify with `otool -L`).
+> **Dependency hygiene: the HTTP transport is its own target.** The core `mcp`
+> library depends only on `Qt6::Core`; the Streamable-HTTP transport lives in a
+> separate `mcp::http` target that pulls in `Qt6::Network` + `Qt6::HttpServer`.
+> A stdio-only server linked against `mcp::mcp` therefore loads neither the HTTP
+> server stack nor a TLS stack it doesn't use (verify with `otool -L` / `ldd`).
 >
-> Honest accounting of the startup win: in isolation, force-linking
-> OpenSSL+brotli+Security adds ~3 ms to a minimal server's load (3.0 ms → 6.1 ms
-> on this machine), so dropping them roughly halves cold start. (An earlier
-> "~116 ms" figure was a *measurement artifact* — the `calculator_server`
-> example's signal-handling supervisor `sleep_for(100 ms)`s, so an EOF-triggered
-> exit waits on that poll; it is shutdown latency, not startup.) The larger,
-> durable win is the deployment story: stdio servers need no OpenSSL on the
-> target and carry none of its CVE surface, and the build no longer depends on
-> system brotli headers being present.
+> The durable win is the deployment story: stdio servers carry only QtCore as a
+> dynamic dependency, keep a small RSS/startup footprint, and the build needs no
+> separately-cloned JSON/HTTP libraries — Qt 6 is the SDK's only third-party
+> dependency.
 
 ## Sources for the comparison narrative
 

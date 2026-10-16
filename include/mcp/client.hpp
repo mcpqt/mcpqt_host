@@ -20,7 +20,7 @@
 #include "mcp/session.hpp"
 #include "mcp/transport.hpp"
 
-#include <nlohmann/json.hpp>
+#include "mcp/json.hpp"
 
 #include <atomic>
 #include <future>
@@ -60,7 +60,7 @@ public:
 
     /// `tools/call` with the given name and JSON-shaped arguments.
     [[nodiscard]] std::future<CallToolResult>
-    call_tool(std::string name, nlohmann::json arguments = nullptr);
+    call_tool(std::string name, Json arguments = {});
 
     /// `tools/call` with a `task` augmentation. The server returns a
     /// `CreateTaskResult` envelope right away; the actual
@@ -70,7 +70,7 @@ public:
     /// server's default.
     [[nodiscard]] std::future<CreateTaskResult>
     call_tool_as_task(std::string                 name,
-                      nlohmann::json              arguments = nullptr,
+                      Json              arguments = {},
                       std::optional<std::int64_t> ttl_ms    = std::nullopt);
 
     /// `tasks/get` — fetch the current envelope for a task.
@@ -79,8 +79,8 @@ public:
     /// `tasks/result` — block on the server until the task is
     /// terminal, then return the underlying request's result as raw
     /// JSON. Decode it as the appropriate result type (e.g.
-    /// `CallToolResult`) by calling `.get<T>()`.
-    [[nodiscard]] std::future<nlohmann::json>
+    /// `CallToolResult`) by calling `mcp::from_json<T>(...)`.
+    [[nodiscard]] std::future<Json>
     task_result(std::string task_id);
 
     /// `tasks/list` — paginated enumeration of all tasks the server

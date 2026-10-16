@@ -12,7 +12,7 @@
 //   }};
 //   server.tool("add",
 //       /*input_schema=*/{{"type", "object"}, ...},
-//       [](const nlohmann::json& args) -> mcp::CallToolResult {
+//       [](const Json& args) -> mcp::CallToolResult {
 //           return { .content = { mcp::TextContent{.text = "..."} } };
 //       });
 //   server.run(std::make_unique<mcp::StdioTransport>());
@@ -23,7 +23,7 @@
 #include "mcp/session.hpp"
 #include "mcp/transport.hpp"
 
-#include <nlohmann/json.hpp>
+#include "mcp/json.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -49,7 +49,7 @@ public:
     /// in-protocol failures (LLM-visible). MCP errors are reserved for
     /// "I couldn't even find this tool" / out-of-band conditions.
     using ToolHandler =
-        std::function<CallToolResult(const nlohmann::json& arguments)>;
+        std::function<CallToolResult(const Json& arguments)>;
 
     /// Bag of optional per-tool metadata applied at registration. The
     /// 2025-11-25 spec lets every tool advertise icons, structured
@@ -58,7 +58,7 @@ public:
     struct ToolMetadata {
         std::optional<std::vector<Icon>> icons;
         std::optional<ToolExecution>     execution;
-        std::optional<nlohmann::json>    meta;
+        std::optional<Json>    meta;
     };
 
     /// Resource read handler. Receives the requested URI and returns
@@ -94,18 +94,18 @@ public:
     /// Register a tool with the given name. Replaces any prior handler.
     /// `input_schema` MUST be a JSON Schema object with "type": "object".
     Server& tool(std::string                    name,
-                 nlohmann::json                 input_schema,
+                 Json                 input_schema,
                  ToolHandler                    handler,
                  std::optional<std::string>     title       = std::nullopt,
                  std::optional<std::string>     description = std::nullopt,
                  std::optional<ToolAnnotations> annotations = std::nullopt,
-                 std::optional<nlohmann::json>  output_schema = std::nullopt);
+                 std::optional<Json>  output_schema = std::nullopt);
 
     /// Tool registration with the 2025-11-25 metadata bag. Use the
     /// long-form constructor when you need to declare icons, _meta,
     /// or an execution policy that gates task augmentation.
     Server& tool(std::string  name,
-                 nlohmann::json input_schema,
+                 Json input_schema,
                  ToolHandler  handler,
                  ToolMetadata meta);
 
@@ -143,7 +143,7 @@ public:
     /// minimum. `data` is free-form JSON (typically a string or
     /// object). Returns `true` if the notification was sent.
     [[nodiscard]] bool log(LoggingLevel level,
-                           nlohmann::json data,
+                           Json data,
                            std::optional<std::string> logger = std::nullopt);
 
     /// Emit a `notifications/progress` for the given progress token.
@@ -256,23 +256,23 @@ public:
 private:
     void on_initialize(const InitializeRequestParams& params,
                        JsonRpcResponse&               resp);
-    nlohmann::json handle_initialize(const nlohmann::json& params);
-    nlohmann::json handle_list_tools(const nlohmann::json& params);
-    nlohmann::json handle_call_tool(const nlohmann::json& params);
-    nlohmann::json handle_list_resources(const nlohmann::json& params);
-    nlohmann::json handle_list_resource_templates(const nlohmann::json& params);
-    nlohmann::json handle_read_resource(const nlohmann::json& params);
-    nlohmann::json handle_list_prompts(const nlohmann::json& params);
-    nlohmann::json handle_get_prompt(const nlohmann::json& params);
-    nlohmann::json handle_ping(const nlohmann::json& params);
-    nlohmann::json handle_set_level(const nlohmann::json& params);
-    void           handle_cancelled(const nlohmann::json& params);
-    nlohmann::json handle_complete(const nlohmann::json& params);
+    Json handle_initialize(const Json& params);
+    Json handle_list_tools(const Json& params);
+    Json handle_call_tool(const Json& params);
+    Json handle_list_resources(const Json& params);
+    Json handle_list_resource_templates(const Json& params);
+    Json handle_read_resource(const Json& params);
+    Json handle_list_prompts(const Json& params);
+    Json handle_get_prompt(const Json& params);
+    Json handle_ping(const Json& params);
+    Json handle_set_level(const Json& params);
+    void           handle_cancelled(const Json& params);
+    Json handle_complete(const Json& params);
 
-    nlohmann::json handle_get_task(const nlohmann::json& params);
-    nlohmann::json handle_get_task_result(const nlohmann::json& params);
-    nlohmann::json handle_list_tasks(const nlohmann::json& params);
-    nlohmann::json handle_cancel_task(const nlohmann::json& params);
+    Json handle_get_task(const Json& params);
+    Json handle_get_task_result(const Json& params);
+    Json handle_list_tasks(const Json& params);
+    Json handle_cancel_task(const Json& params);
 
     struct ToolEntry {
         Tool        descriptor;

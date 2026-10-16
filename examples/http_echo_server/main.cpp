@@ -21,6 +21,8 @@
 #include "mcp/log.hpp"
 #include "mcp/mcp.hpp"
 
+#include <QCoreApplication>
+
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -40,6 +42,7 @@ extern "C" void on_signal(int) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
     mcp::set_log_level(mcp::LogLevel::debug);
 
     std::string host = argc > 1 ? argv[1] : "127.0.0.1";
@@ -70,19 +73,23 @@ int main(int argc, char** argv) {
         [](mcp::Server& s) {
             s.tool(
                 "echo",
-                nlohmann::json{
+                QJsonObject{
                     {"type", "object"},
                     {"properties",
-                     {{"text",
-                       {{"type", "string"},
-                        {"description", "text to echo back"}}}}},
-                    {"required", nlohmann::json::array({"text"})},
+                     QJsonObject{
+                         {"text",
+                          QJsonObject{
+                              {"type", "string"},
+                              {"description", "text to echo back"}}}}},
+                    {"required", QJsonArray{"text"}},
                 },
-                [](const nlohmann::json& args) -> mcp::CallToolResult {
+                [](const mcp::Json& args) -> mcp::CallToolResult {
+                    std::string text;
+                    const QJsonValue t = args.toObject().value("text");
+                    if (t.isString()) text = t.toString().toStdString();
                     return {
                         .content = {mcp::TextContent{
-                            .text = "echo: " +
-                                    args.value("text", std::string{})}},
+                            .text = "echo: " + text}},
                     };
                 });
         },

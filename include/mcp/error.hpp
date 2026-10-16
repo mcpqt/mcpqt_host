@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <nlohmann/json.hpp>
+#include <QJsonValue>
 
 #include <exception>
 #include <stdexcept>
@@ -37,11 +37,11 @@ inline constexpr int url_elicitation_required = -32042;
 /// also raised as `Error` (an exception) when a method call receives an error
 /// response and the caller asks for the result via a future.
 struct ErrorObject {
-    int code{};
+    int         code{};
     std::string message;
-    nlohmann::json data;  // optional; null when absent on the wire
+    QJsonValue  data;  // optional; null when absent on the wire
 
-    [[nodiscard]] bool has_data() const noexcept { return !data.is_null(); }
+    [[nodiscard]] bool has_data() const noexcept { return !data.isNull(); }
 };
 
 /// Exception type for MCP errors. Carries the wire `ErrorObject`.
@@ -54,14 +54,14 @@ public:
     explicit Error(ErrorObject err)
         : std::runtime_error(err.message), error_(std::move(err)) {}
 
-    Error(int code, std::string msg, nlohmann::json data = {})
+    Error(int code, std::string msg, QJsonValue data = QJsonValue(QJsonValue::Null))
         : std::runtime_error(msg),
           error_{code, std::move(msg), std::move(data)} {}
 
     [[nodiscard]] const ErrorObject& object() const noexcept { return error_; }
     [[nodiscard]] int                code()   const noexcept { return error_.code; }
     [[nodiscard]] const std::string& message() const noexcept { return error_.message; }
-    [[nodiscard]] const nlohmann::json& data() const noexcept { return error_.data; }
+    [[nodiscard]] const QJsonValue&  data()   const noexcept { return error_.data; }
 
 private:
     ErrorObject error_;

@@ -10,9 +10,11 @@
 #include "mcp/protocol.hpp"
 #include "mcp/server.hpp"
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
 
-#include <nlohmann/json.hpp>
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <chrono>
 #include <future>
@@ -20,10 +22,11 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
-using nlohmann::json;
+using mcp::Json;
 using namespace std::chrono_literals;
 
 struct UtilServerThread {
@@ -46,66 +49,112 @@ struct UtilServerThread {
     }
 };
 
+}  // namespace
+
+class Cancelled : public QObject {
+    Q_OBJECT
+private slots:
+    void RoundTrip();
+};
+
+class Progress : public QObject {
+    Q_OBJECT
+private slots:
+    void RoundTrip();
+};
+
+class Logging : public QObject {
+    Q_OBJECT
+private slots:
+    void LevelStrings();
+    void MessageNotificationRoundTrip();
+};
+
+class Ping : public QObject {
+    Q_OBJECT
+private slots:
+    void ClientPingResolves();
+};
+
+class LoggingIntegration : public QObject {
+    Q_OBJECT
+private slots:
+    void ServerLogReachesClient();
+    void SetLevelFiltersServerEmissions();
+};
+
+class ProgressIntegration : public QObject {
+    Q_OBJECT
+private slots:
+    void ServerProgressReachesClient();
+};
+
+class CancellationIntegration : public QObject {
+    Q_OBJECT
+private slots:
+    void ClientCanSendCancelledNotification();
+};
+
 // -------------------------------------------------------------------------
 // Round-trip tests
 // -------------------------------------------------------------------------
 
-TEST(Cancelled, RoundTrip) {
+void Cancelled::RoundTrip() {
     mcp::CancelledNotificationParams p{
         .request_id = mcp::RequestId{42},
         .reason     = "user requested",
     };
-    json j = p;
-    EXPECT_EQ(j["requestId"], 42);
-    EXPECT_EQ(j["reason"], "user requested");
-    auto back = j.get<mcp::CancelledNotificationParams>();
-    ASSERT_TRUE(back.request_id.has_value());
-    EXPECT_EQ(back.request_id->as_integer(), 42);
+    Json j = mcp::to_json(p);
+    QCOMPARE(j["requestId"], mcp::test::jv(42));
+    QCOMPARE(j["reason"], mcp::test::jv("user requested"));
+    auto back = mcp::from_json<mcp::CancelledNotificationParams>(j);
+    QVERIFY(back.request_id.has_value());
+    QCOMPARE(back.request_id->as_integer(), std::int64_t{42});
 }
 
-TEST(Progress, RoundTrip) {
+void Progress::RoundTrip() {
     mcp::ProgressNotificationParams p{
         .progress_token = mcp::ProgressToken{"tok"},
         .progress       = 0.5,
         .total          = 1.0,
         .message        = "halfway",
     };
-    json j = p;
-    EXPECT_EQ(j["progressToken"], "tok");
-    EXPECT_EQ(j["progress"], 0.5);
-    auto back = j.get<mcp::ProgressNotificationParams>();
-    EXPECT_EQ(back.progress, 0.5);
-    EXPECT_EQ(back.total,    1.0);
+    Json j = mcp::to_json(p);
+    QCOMPARE(j["progressToken"], mcp::test::jv("tok"));
+    QCOMPARE(j["progress"], mcp::test::jv(0.5));
+    auto back = mcp::from_json<mcp::ProgressNotificationParams>(j);
+    QCOMPARE(back.progress, 0.5);
+    QCOMPARE(back.total,    1.0);
 }
 
-TEST(Logging, LevelStrings) {
-    EXPECT_EQ(mcp::to_string(mcp::LoggingLevel::debug),     "debug");
-    EXPECT_EQ(mcp::to_string(mcp::LoggingLevel::emergency), "emergency");
-    json j = mcp::LoggingLevel::warning;
-    EXPECT_EQ(j, "warning");
-    auto back = j.get<mcp::LoggingLevel>();
-    EXPECT_EQ(back, mcp::LoggingLevel::warning);
+void Logging::LevelStrings() {
+    QCOMPARE(mcp::to_string(mcp::LoggingLevel::debug),     "debug");
+    QCOMPARE(mcp::to_string(mcp::LoggingLevel::emergency), "emergency");
+    Json j = mcp::to_json(mcp::LoggingLevel::warning);
+    QCOMPARE(j, mcp::test::jv("warning"));
+    auto back = mcp::from_json<mcp::LoggingLevel>(j);
+    QCOMPARE(back, mcp::LoggingLevel::warning);
 }
 
-TEST(Logging, MessageNotificationRoundTrip) {
+void Logging::MessageNotificationRoundTrip() {
     mcp::LoggingMessageNotificationParams p{
         .level  = mcp::LoggingLevel::info,
         .logger = "scheduler",
-        .data   = json{{"event", "tick"}},
+        .data   = QJsonObject{{"event", "tick"}},
     };
-    json j = p;
-    EXPECT_EQ(j["level"],  "info");
-    EXPECT_EQ(j["logger"], "scheduler");
-    EXPECT_EQ(j["data"]["event"], "tick");
-    auto back = j.get<mcp::LoggingMessageNotificationParams>();
-    EXPECT_EQ(back.level, mcp::LoggingLevel::info);
+    Json j = mcp::to_json(p);
+    QCOMPARE(j["level"],  mcp::test::jv("info"));
+    QCOMPARE(j["logger"], mcp::test::jv("scheduler"));
+    QCOMPARE(j["data"]["event"], mcp::test::jv("tick"));
+    auto back = mcp::from_json<mcp::LoggingMessageNotificationParams>(j);
+    QCOMPARE(back.level, mcp::LoggingLevel::info);
 }
 
 // -------------------------------------------------------------------------
 // Ping
 // -------------------------------------------------------------------------
 
-TEST(Ping, ClientPingResolves) {
+void Ping::ClientPingResolves() {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server&) {});
 
@@ -113,7 +162,12 @@ TEST(Ping, ClientPingResolves) {
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    EXPECT_NO_THROW(client.ping().get());
+    try {
+        client.ping().get();
+        QVERIFY(true);
+    } catch (...) {
+        QFAIL("unexpected exception");
+    }
 
     client.disconnect();
 }
@@ -122,14 +176,14 @@ TEST(Ping, ClientPingResolves) {
 // Logging
 // -------------------------------------------------------------------------
 
-TEST(LoggingIntegration, ServerLogReachesClient) {
+void LoggingIntegration::ServerLogReachesClient() {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.enable_logging(mcp::LoggingLevel::debug);
         s.tool("emit_log",
-               json{{"type", "object"}},
-               [&s](const json&) {
-                   (void)s.log(mcp::LoggingLevel::warning, json{{"msg", "hi"}}, "logger-1");
+               QJsonObject{{"type", "object"}},
+               [&s](const Json&) {
+                   (void)s.log(mcp::LoggingLevel::warning, QJsonObject{{"msg", "hi"}}, "logger-1");
                    return mcp::CallToolResult{
                        .content = { mcp::TextContent{.text = "ok"} },
                    };
@@ -146,26 +200,26 @@ TEST(LoggingIntegration, ServerLogReachesClient) {
             try { got.set_value(params); } catch (...) {}
         });
     auto info = client.initialize().get();
-    ASSERT_TRUE(info.capabilities.logging.has_value());
+    QVERIFY(info.capabilities.logging.has_value());
 
     auto res = client.call_tool("emit_log").get();
-    ASSERT_FALSE(res.is_error.value_or(false));
+    QVERIFY(!(res.is_error.value_or(false)));
 
     auto received = fut.get();
-    EXPECT_EQ(received.level, mcp::LoggingLevel::warning);
-    EXPECT_EQ(received.logger, "logger-1");
-    EXPECT_EQ(received.data["msg"], "hi");
+    QCOMPARE(received.level, mcp::LoggingLevel::warning);
+    QCOMPARE(received.logger, std::string{"logger-1"});
+    QCOMPARE(received.data["msg"], mcp::test::jv("hi"));
 
     client.disconnect();
 }
 
-TEST(LoggingIntegration, SetLevelFiltersServerEmissions) {
+void LoggingIntegration::SetLevelFiltersServerEmissions() {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.enable_logging(mcp::LoggingLevel::debug);
         s.tool("emit_debug",
-               json{{"type", "object"}},
-               [&s](const json&) {
+               QJsonObject{{"type", "object"}},
+               [&s](const Json&) {
                    (void)s.log(mcp::LoggingLevel::debug, "should-be-filtered");
                    return mcp::CallToolResult{
                        .content = { mcp::TextContent{.text = "ok"} },
@@ -191,7 +245,7 @@ TEST(LoggingIntegration, SetLevelFiltersServerEmissions) {
 
     {
         std::lock_guard<std::mutex> lk(mu);
-        EXPECT_EQ(received_count, 0);
+        QCOMPARE(received_count, 0);
     }
 
     client.disconnect();
@@ -201,12 +255,12 @@ TEST(LoggingIntegration, SetLevelFiltersServerEmissions) {
 // Progress + cancellation (limited Phase 2 scope)
 // -------------------------------------------------------------------------
 
-TEST(ProgressIntegration, ServerProgressReachesClient) {
+void ProgressIntegration::ServerProgressReachesClient() {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.tool("loud_op",
-               json{{"type", "object"}},
-               [&s](const json&) {
+               QJsonObject{{"type", "object"}},
+               [&s](const Json&) {
                    s.report_progress(mcp::ProgressToken{"job-1"}, 0.25);
                    s.report_progress(mcp::ProgressToken{"job-1"}, 0.75, 1.0, "almost");
                    return mcp::CallToolResult{
@@ -230,14 +284,14 @@ TEST(ProgressIntegration, ServerProgressReachesClient) {
     std::this_thread::sleep_for(50ms);
 
     std::lock_guard<std::mutex> lk(mu);
-    ASSERT_GE(progresses.size(), 2u);
-    EXPECT_DOUBLE_EQ(progresses[0], 0.25);
-    EXPECT_DOUBLE_EQ(progresses[1], 0.75);
+    QVERIFY(progresses.size() >= 2u);
+    QCOMPARE(progresses[0], 0.25);
+    QCOMPARE(progresses[1], 0.75);
 
     client.disconnect();
 }
 
-TEST(CancellationIntegration, ClientCanSendCancelledNotification) {
+void CancellationIntegration::ClientCanSendCancelledNotification() {
     auto p = mcp::test::make_in_memory_pair();
     std::promise<mcp::CancelledNotificationParams> got;
     auto fut = got.get_future();
@@ -247,26 +301,60 @@ TEST(CancellationIntegration, ClientCanSendCancelledNotification) {
     auto server_session = std::make_unique<mcp::Session>(std::move(pair.b));
     server_session->set_notification_handler(
         std::string{mcp::method_notifications_cancelled},
-        [&](const json& params) {
-            try { got.set_value(params.get<mcp::CancelledNotificationParams>()); }
+        [&](const Json& params) {
+            try { got.set_value(mcp::from_json<mcp::CancelledNotificationParams>(params)); }
             catch (...) {}
         });
     client_session->start();
     server_session->start();
 
-    EXPECT_FALSE(client_session->send_notification(
+    QVERIFY(!(client_session->send_notification(
         std::string{mcp::method_notifications_cancelled},
-        json(mcp::CancelledNotificationParams{
+        mcp::to_json(mcp::CancelledNotificationParams{
             .request_id = mcp::RequestId{7},
             .reason     = "stopped",
-        })));
+        }))));
 
     auto received = fut.get();
-    ASSERT_TRUE(received.request_id.has_value());
-    EXPECT_EQ(received.request_id->as_integer(), 7);
+    QVERIFY(received.request_id.has_value());
+    QCOMPARE(received.request_id->as_integer(), std::int64_t{7});
 
     client_session->close();
     server_session->close();
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        Cancelled suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    {
+        Progress suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    {
+        Logging suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    {
+        Ping suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    {
+        LoggingIntegration suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    {
+        ProgressIntegration suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    {
+        CancellationIntegration suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "utilities_test.moc"

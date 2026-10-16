@@ -7,8 +7,6 @@
 #include "mcp/protocol.hpp"
 #include "mcp/transport.hpp"
 
-#include <nlohmann/json.hpp>
-
 #include <chrono>
 #include <exception>
 #include <future>
@@ -167,23 +165,23 @@ RequestId Session::next_id() noexcept {
     return RequestId{next_id_.fetch_add(1, std::memory_order_relaxed)};
 }
 
-std::future<nlohmann::json>
+std::future<Json>
 Session::send_request(std::string method,
-                      nlohmann::json params,
+                      Json params,
                       std::chrono::milliseconds timeout) {
-    return send_request_for<nlohmann::json>(
+    return send_request_for<Json>(
         std::move(method), std::move(params),
-        [](nlohmann::json j) { return j; }, timeout);
+        [](Json j) { return j; }, timeout);
 }
 
 std::future<void>
 Session::send_request_void(std::string method,
-                           nlohmann::json params,
+                           Json params,
                            std::chrono::milliseconds timeout) {
     auto pr  = std::make_shared<std::promise<void>>();
     auto fut = pr->get_future();
     Pending pending;
-    pending.resolve = [pr](nlohmann::json) { pr->set_value(); };
+    pending.resolve = [pr](Json) { pr->set_value(); };
     pending.reject  = [pr](std::exception_ptr e) { pr->set_exception(e); };
     register_pending(std::move(method), std::move(params),
                      std::move(pending), timeout);
@@ -191,7 +189,7 @@ Session::send_request_void(std::string method,
 }
 
 void Session::register_pending(std::string    method,
-                               nlohmann::json params,
+                               Json params,
                                Pending        pending,
                                std::chrono::milliseconds timeout) {
     auto id = next_id();
@@ -199,7 +197,7 @@ void Session::register_pending(std::string    method,
     JsonRpcRequest req;
     req.id     = id;
     req.method = std::move(method);
-    if (!params.is_null()) req.params = std::move(params);
+    if (!params.isNull()) req.params = std::move(params);
 
     const auto effective_timeout =
         timeout == std::chrono::milliseconds{0} ? opts_.default_request_timeout : timeout;
@@ -268,10 +266,10 @@ void Session::register_pending(std::string    method,
 }
 
 std::error_code
-Session::send_notification(std::string method, nlohmann::json params) {
+Session::send_notification(std::string method, Json params) {
     JsonRpcNotification note;
     note.method = std::move(method);
-    if (!params.is_null()) note.params = std::move(params);
+    if (!params.isNull()) note.params = std::move(params);
     try {
         send_message(note);
     } catch (const std::system_error& e) {
@@ -284,7 +282,7 @@ Session::send_notification(std::string method, nlohmann::json params) {
 
 void Session::send_message(const JsonRpcMessage& msg) {
     const auto j   = serialize_message(msg);
-    const auto str = j.dump();
+    const auto str = dump(j);
     auto ec = transport_->send(str);
     if (ec) {
         throw std::system_error{ec, "Session::send_message: transport->send failed"};
@@ -296,10 +294,10 @@ void Session::send_message(const JsonRpcMessage& msg) {
 // =====================================================================
 
 void Session::handle_frame(std::string raw) {
-    nlohmann::json j;
+    Json j;
     try {
-        j = nlohmann::json::parse(raw);
-    } catch (const nlohmann::json::exception& e) {
+        j = parse_json(raw);
+    } catch (const Error& e) {
         MCP_LOG_WARN(std::string{"rejecting non-JSON frame: "} + e.what());
         return;  // JSON-RPC says we send a parse error response, but per the
                  // spec we cannot when there is no id; simplest is to drop.
@@ -311,10 +309,10 @@ void Session::handle_frame(std::string raw) {
     } catch (const Error& e) {
         MCP_LOG_WARN(std::string{"rejecting malformed JSON-RPC frame: "} + e.what());
         return;
-    } catch (const nlohmann::json::exception& e) {
-        // A from_json deeper in parse_message can throw a json type_error
-        // or out_of_range when fields are mistyped or missing. Treat
-        // those identically to a parse error and drop the frame.
+    } catch (const std::exception& e) {
+        // A from_json deeper in parse_message can throw when fields are
+        // mistyped or missing. Treat those identically to a parse error
+        // and drop the frame.
         MCP_LOG_WARN(std::string{"rejecting malformed JSON-RPC frame: "} + e.what());
         return;
     }
@@ -373,20 +371,22 @@ void Session::handle_request(JsonRpcRequest req) {
         };
     } else {
         try {
-            const auto& params_in = req.params.value_or(nullptr);
+            static const Json kNull{QJsonValue::Null};
+            const Json& params_in = req.params.has_value() ? *req.params : kNull;
             resp.outcome = handler(params_in);
         } catch (const Error& e) {
-            resp.outcome = e.object();
-        } catch (const nlohmann::json::exception& e) {
-            // A nlohmann json type/range error escaping a handler almost
-            // always means the inbound params were the wrong shape;
-            // map to invalid_params rather than internal_error so
-            // clients can fix their request.
-            resp.outcome = ErrorObject{
-                error_code::invalid_params,
-                std::string{"invalid params: "} + e.what(),
-                {},
-            };
+            if (e.code() == error_code::parse_error) {
+                // A codec error escaping a handler almost always means the
+                // inbound params were the wrong shape; map to invalid_params
+                // rather than parse_error so clients can fix their request.
+                resp.outcome = ErrorObject{
+                    error_code::invalid_params,
+                    std::string{"invalid params: "} + e.what(),
+                    {},
+                };
+            } else {
+                resp.outcome = e.object();
+            }
         } catch (const std::exception& e) {
             resp.outcome = ErrorObject{
                 error_code::internal_error,
@@ -419,7 +419,8 @@ void Session::handle_notification(JsonRpcNotification note) {
     }
     if (!handler) return;
     try {
-        handler(note.params.value_or(nullptr));
+        static const Json kNull{QJsonValue::Null};
+        handler(note.params.has_value() ? *note.params : kNull);
     } catch (const std::exception& e) {
         MCP_LOG_ERROR(std::string{"notification handler threw: "} + e.what());
     } catch (...) {

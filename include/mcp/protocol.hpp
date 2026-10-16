@@ -6,7 +6,10 @@
 // The C++ struct fields are snake_case; the JSON wire format uses the spec's
 // camelCase names. JSON serialization is implemented via ADL `to_json` /
 // `from_json` free functions defined alongside each type so they can be
-// reached through nlohmann::json's `.get<T>()` and implicit-construct paths.
+// reached through the generic codec in <mcp/json.hpp>.
+//
+// Encoding:  QJsonValue to_json(const T&);
+// Decoding:  void from_json(const QJsonValue&, T&);
 //
 // Forward compatibility: unknown JSON fields are silently dropped on read.
 // Optional spec fields are represented with `std::optional<T>`; their
@@ -16,8 +19,7 @@
 #pragma once
 
 #include "mcp/error.hpp"
-
-#include <nlohmann/json.hpp>
+#include "mcp/json.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -72,41 +74,41 @@ private:
     Value value_;
 };
 
-void to_json(nlohmann::json& j, const RequestId& id);
-void from_json(const nlohmann::json& j, RequestId& id);
+[[nodiscard]] QJsonValue to_json(const RequestId& id);
+void from_json(const QJsonValue& j, RequestId& id);
 
 /// A JSON-RPC 2.0 request. Always has an id.
 struct JsonRpcRequest {
-    RequestId                     id;
-    std::string                   method;
-    std::optional<nlohmann::json> params;
+    RequestId          id;
+    std::string        method;
+    std::optional<Json> params;
 };
 
-void to_json(nlohmann::json& j, const JsonRpcRequest& r);
-void from_json(const nlohmann::json& j, JsonRpcRequest& r);
+[[nodiscard]] QJsonValue to_json(const JsonRpcRequest& r);
+void from_json(const QJsonValue& j, JsonRpcRequest& r);
 
 /// A JSON-RPC 2.0 notification. Has no id; sender expects no response.
 struct JsonRpcNotification {
-    std::string                   method;
-    std::optional<nlohmann::json> params;
+    std::string        method;
+    std::optional<Json> params;
 };
 
-void to_json(nlohmann::json& j, const JsonRpcNotification& n);
-void from_json(const nlohmann::json& j, JsonRpcNotification& n);
+[[nodiscard]] QJsonValue to_json(const JsonRpcNotification& n);
+void from_json(const QJsonValue& j, JsonRpcNotification& n);
 
 /// A JSON-RPC 2.0 response. Carries either a `result` or an `error`. Per
 /// the spec the id is REQUIRED on success, and `null`/absent only on parse
 /// errors that prevented identifying the request — we model that with
 /// `std::optional<RequestId>`.
 struct JsonRpcResponse {
-    std::optional<RequestId>                       id;
-    std::variant<nlohmann::json /*result*/,
-                 ErrorObject    /*error*/>         outcome;
+    std::optional<RequestId>          id;
+    std::variant<Json /*result*/,
+                 ErrorObject /*error*/> outcome;
 
     [[nodiscard]] bool is_error()   const noexcept { return outcome.index() == 1; }
     [[nodiscard]] bool is_success() const noexcept { return outcome.index() == 0; }
 
-    [[nodiscard]] const nlohmann::json& result() const {
+    [[nodiscard]] const Json& result() const {
         return std::get<0>(outcome);
     }
     [[nodiscard]] const ErrorObject& error() const {
@@ -114,8 +116,13 @@ struct JsonRpcResponse {
     }
 };
 
-void to_json(nlohmann::json& j, const JsonRpcResponse& r);
-void from_json(const nlohmann::json& j, JsonRpcResponse& r);
+[[nodiscard]] QJsonValue to_json(const JsonRpcResponse& r);
+void from_json(const QJsonValue& j, JsonRpcResponse& r);
+
+// Codec for the wire error object (defined here rather than in error.hpp so
+// that header stays free of the JSON codec).
+[[nodiscard]] QJsonValue to_json(const ErrorObject& e);
+void from_json(const QJsonValue& j, ErrorObject& e);
 
 /// Tagged union over every JSON-RPC frame we accept off the wire. Use
 /// `std::visit` to dispatch on the concrete kind.
@@ -124,12 +131,12 @@ using JsonRpcMessage = std::variant<JsonRpcRequest,
                                     JsonRpcResponse>;
 
 /// Parse a single JSON-RPC frame. Returns the variant; throws
-/// `nlohmann::json::exception` on parse error or `mcp::Error(parse_error)` on
-/// envelope-shape errors that prevent classification.
-[[nodiscard]] JsonRpcMessage parse_message(const nlohmann::json& j);
+/// `mcp::Error(parse_error)` on parse error or envelope-shape errors that
+/// prevent classification.
+[[nodiscard]] JsonRpcMessage parse_message(const Json& j);
 
 /// Serialize a JSON-RPC frame.
-[[nodiscard]] nlohmann::json serialize_message(const JsonRpcMessage& m);
+[[nodiscard]] Json serialize_message(const JsonRpcMessage& m);
 
 // --------------------------------------------------------------------------
 // Implementation metadata
@@ -148,8 +155,8 @@ struct Icon {
     /// "light" / "dark" / "monochrome" / app-defined.
     std::optional<std::string> theme;
 };
-void to_json(nlohmann::json& j, const Icon& c);
-void from_json(const nlohmann::json& j, Icon& c);
+[[nodiscard]] QJsonValue to_json(const Icon& c);
+void from_json(const QJsonValue& j, Icon& c);
 
 struct Implementation {
     std::string                name;
@@ -162,11 +169,11 @@ struct Implementation {
     /// Top-level `_meta` envelope for protocol-level metadata.
     /// Round-trips opaquely; spec reserves keys with the
     /// `io.modelcontextprotocol/` prefix.
-    std::optional<nlohmann::json>    meta;
+    std::optional<Json>    meta;
 };
 
-void to_json(nlohmann::json& j, const Implementation& i);
-void from_json(const nlohmann::json& j, Implementation& i);
+[[nodiscard]] QJsonValue to_json(const Implementation& i);
+void from_json(const QJsonValue& j, Implementation& i);
 
 // --------------------------------------------------------------------------
 // Tasks: small capability/augmentation types (the primitive's own
@@ -179,28 +186,28 @@ struct TaskAugmentation {
     /// means unlimited (or implementation-defined retention).
     std::optional<std::int64_t> ttl;
 };
-void to_json(nlohmann::json& j, const TaskAugmentation& t);
-void from_json(const nlohmann::json& j, TaskAugmentation& t);
+[[nodiscard]] QJsonValue to_json(const TaskAugmentation& t);
+void from_json(const QJsonValue& j, TaskAugmentation& t);
 
 struct TasksRequestsCapability {
     /// Per-namespace presence-only objects — e.g. `tools.call`,
     /// `sampling.createMessage`, `elicitation.create`. Held as raw
     /// json so a future spec extension (a new method) round-trips
     /// without an SDK release.
-    std::optional<nlohmann::json> tools;
-    std::optional<nlohmann::json> sampling;
-    std::optional<nlohmann::json> elicitation;
+    std::optional<Json> tools;
+    std::optional<Json> sampling;
+    std::optional<Json> elicitation;
 };
-void to_json(nlohmann::json& j, const TasksRequestsCapability& c);
-void from_json(const nlohmann::json& j, TasksRequestsCapability& c);
+[[nodiscard]] QJsonValue to_json(const TasksRequestsCapability& c);
+void from_json(const QJsonValue& j, TasksRequestsCapability& c);
 
 struct TasksCapability {
-    std::optional<nlohmann::json>          list;
-    std::optional<nlohmann::json>          cancel;
+    std::optional<Json>          list;
+    std::optional<Json>          cancel;
     std::optional<TasksRequestsCapability> requests;
 };
-void to_json(nlohmann::json& j, const TasksCapability& c);
-void from_json(const nlohmann::json& j, TasksCapability& c);
+[[nodiscard]] QJsonValue to_json(const TasksCapability& c);
+void from_json(const QJsonValue& j, TasksCapability& c);
 
 // --------------------------------------------------------------------------
 // Capabilities
@@ -209,27 +216,27 @@ void from_json(const nlohmann::json& j, TasksCapability& c);
 struct RootsCapability {
     std::optional<bool> list_changed;
 };
-void to_json(nlohmann::json& j, const RootsCapability& c);
-void from_json(const nlohmann::json& j, RootsCapability& c);
+[[nodiscard]] QJsonValue to_json(const RootsCapability& c);
+void from_json(const QJsonValue& j, RootsCapability& c);
 
 struct SamplingCapability {
     // Per spec: `context?: object`, `tools?: object`. Presence-only flags;
     // we capture the raw object so future fields round-trip.
-    std::optional<nlohmann::json> context;
-    std::optional<nlohmann::json> tools;
+    std::optional<Json> context;
+    std::optional<Json> tools;
 };
-void to_json(nlohmann::json& j, const SamplingCapability& c);
-void from_json(const nlohmann::json& j, SamplingCapability& c);
+[[nodiscard]] QJsonValue to_json(const SamplingCapability& c);
+void from_json(const QJsonValue& j, SamplingCapability& c);
 
 struct ElicitationCapability {
-    std::optional<nlohmann::json> form;  // form-based elicitation
-    std::optional<nlohmann::json> url;   // URL-based elicitation
+    std::optional<Json> form;  // form-based elicitation
+    std::optional<Json> url;   // URL-based elicitation
 };
-void to_json(nlohmann::json& j, const ElicitationCapability& c);
-void from_json(const nlohmann::json& j, ElicitationCapability& c);
+[[nodiscard]] QJsonValue to_json(const ElicitationCapability& c);
+void from_json(const QJsonValue& j, ElicitationCapability& c);
 
 struct ClientCapabilities {
-    std::optional<nlohmann::json>        experimental;
+    std::optional<Json>        experimental;
     std::optional<RootsCapability>       roots;
     std::optional<SamplingCapability>    sampling;
     std::optional<ElicitationCapability> elicitation;
@@ -237,32 +244,32 @@ struct ClientCapabilities {
     /// methods it can handle (e.g. sampling/createMessage as a task).
     std::optional<TasksCapability>       tasks;
 };
-void to_json(nlohmann::json& j, const ClientCapabilities& c);
-void from_json(const nlohmann::json& j, ClientCapabilities& c);
+[[nodiscard]] QJsonValue to_json(const ClientCapabilities& c);
+void from_json(const QJsonValue& j, ClientCapabilities& c);
 
 struct PromptsCapability {
     std::optional<bool> list_changed;
 };
-void to_json(nlohmann::json& j, const PromptsCapability& c);
-void from_json(const nlohmann::json& j, PromptsCapability& c);
+[[nodiscard]] QJsonValue to_json(const PromptsCapability& c);
+void from_json(const QJsonValue& j, PromptsCapability& c);
 
 struct ResourcesCapability {
     std::optional<bool> subscribe;
     std::optional<bool> list_changed;
 };
-void to_json(nlohmann::json& j, const ResourcesCapability& c);
-void from_json(const nlohmann::json& j, ResourcesCapability& c);
+[[nodiscard]] QJsonValue to_json(const ResourcesCapability& c);
+void from_json(const QJsonValue& j, ResourcesCapability& c);
 
 struct ToolsCapability {
     std::optional<bool> list_changed;
 };
-void to_json(nlohmann::json& j, const ToolsCapability& c);
-void from_json(const nlohmann::json& j, ToolsCapability& c);
+[[nodiscard]] QJsonValue to_json(const ToolsCapability& c);
+void from_json(const QJsonValue& j, ToolsCapability& c);
 
 struct ServerCapabilities {
-    std::optional<nlohmann::json>      experimental;
-    std::optional<nlohmann::json>      logging;     // presence-only
-    std::optional<nlohmann::json>      completions; // presence-only
+    std::optional<Json>      experimental;
+    std::optional<Json>      logging;     // presence-only
+    std::optional<Json>      completions; // presence-only
     std::optional<PromptsCapability>   prompts;
     std::optional<ResourcesCapability> resources;
     std::optional<ToolsCapability>     tools;
@@ -270,8 +277,8 @@ struct ServerCapabilities {
     /// can handle (e.g. tools/call as a task), plus list/cancel.
     std::optional<TasksCapability>     tasks;
 };
-void to_json(nlohmann::json& j, const ServerCapabilities& c);
-void from_json(const nlohmann::json& j, ServerCapabilities& c);
+[[nodiscard]] QJsonValue to_json(const ServerCapabilities& c);
+void from_json(const QJsonValue& j, ServerCapabilities& c);
 
 // --------------------------------------------------------------------------
 // initialize / initialized
@@ -282,18 +289,18 @@ struct InitializeRequestParams {
     ClientCapabilities capabilities;
     Implementation     client_info;
 };
-void to_json(nlohmann::json& j, const InitializeRequestParams& p);
-void from_json(const nlohmann::json& j, InitializeRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const InitializeRequestParams& p);
+void from_json(const QJsonValue& j, InitializeRequestParams& p);
 
 struct InitializeResult {
     std::string                protocol_version;
     ServerCapabilities         capabilities;
     Implementation             server_info;
     std::optional<std::string> instructions;
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const InitializeResult& r);
-void from_json(const nlohmann::json& j, InitializeResult& r);
+[[nodiscard]] QJsonValue to_json(const InitializeResult& r);
+void from_json(const QJsonValue& j, InitializeResult& r);
 
 inline constexpr std::string_view method_initialize             = "initialize";
 inline constexpr std::string_view method_notifications_initialized
@@ -305,37 +312,39 @@ inline constexpr std::string_view method_notifications_initialized
 
 enum class Role : int { user, assistant };
 [[nodiscard]] std::string_view to_string(Role r) noexcept;
+[[nodiscard]] QJsonValue to_json(Role r);
+void from_json(const QJsonValue& j, Role& r);
 
 struct Annotations {
     std::optional<std::vector<Role>> audience;
     std::optional<double>            priority;
     std::optional<std::string>       last_modified;
 };
-void to_json(nlohmann::json& j, const Annotations& a);
-void from_json(const nlohmann::json& j, Annotations& a);
+[[nodiscard]] QJsonValue to_json(const Annotations& a);
+void from_json(const QJsonValue& j, Annotations& a);
 
 struct TextContent {
     std::string                text;
     std::optional<Annotations> annotations;
 };
-void to_json(nlohmann::json& j, const TextContent& c);
-void from_json(const nlohmann::json& j, TextContent& c);
+[[nodiscard]] QJsonValue to_json(const TextContent& c);
+void from_json(const QJsonValue& j, TextContent& c);
 
 struct ImageContent {
     std::string                data;       // base64
     std::string                mime_type;
     std::optional<Annotations> annotations;
 };
-void to_json(nlohmann::json& j, const ImageContent& c);
-void from_json(const nlohmann::json& j, ImageContent& c);
+[[nodiscard]] QJsonValue to_json(const ImageContent& c);
+void from_json(const QJsonValue& j, ImageContent& c);
 
 struct AudioContent {
     std::string                data;       // base64
     std::string                mime_type;
     std::optional<Annotations> annotations;
 };
-void to_json(nlohmann::json& j, const AudioContent& c);
-void from_json(const nlohmann::json& j, AudioContent& c);
+[[nodiscard]] QJsonValue to_json(const AudioContent& c);
+void from_json(const QJsonValue& j, AudioContent& c);
 
 // --------------------------------------------------------------------------
 // Resources (must come before ContentBlock; ResourceLink and
@@ -347,24 +356,24 @@ struct TextResourceContents {
     std::optional<std::string> mime_type;
     std::string                text;
 };
-void to_json(nlohmann::json& j, const TextResourceContents& c);
-void from_json(const nlohmann::json& j, TextResourceContents& c);
+[[nodiscard]] QJsonValue to_json(const TextResourceContents& c);
+void from_json(const QJsonValue& j, TextResourceContents& c);
 
 struct BlobResourceContents {
     std::string                uri;
     std::optional<std::string> mime_type;
     std::string                blob;  // base64
 };
-void to_json(nlohmann::json& j, const BlobResourceContents& c);
-void from_json(const nlohmann::json& j, BlobResourceContents& c);
+[[nodiscard]] QJsonValue to_json(const BlobResourceContents& c);
+void from_json(const QJsonValue& j, BlobResourceContents& c);
 
 /// Resource contents carry either text or a base64 blob; on the wire
 /// the discriminator is which member ("text" or "blob") is present.
 using ResourceContents = std::variant<TextResourceContents,
                                       BlobResourceContents>;
 
-void to_json(nlohmann::json& j, const ResourceContents& c);
-void from_json(const nlohmann::json& j, ResourceContents& c);
+[[nodiscard]] QJsonValue to_json(const ResourceContents& c);
+void from_json(const QJsonValue& j, ResourceContents& c);
 
 struct Resource {
     std::string                 uri;
@@ -376,10 +385,10 @@ struct Resource {
     std::optional<std::int64_t> size;  // bytes
     /// 2025-11-25 additions:
     std::optional<std::vector<Icon>> icons;
-    std::optional<nlohmann::json>    meta;
+    std::optional<Json>    meta;
 };
-void to_json(nlohmann::json& j, const Resource& r);
-void from_json(const nlohmann::json& j, Resource& r);
+[[nodiscard]] QJsonValue to_json(const Resource& r);
+void from_json(const QJsonValue& j, Resource& r);
 
 struct ResourceTemplate {
     std::string                uri_template;
@@ -390,10 +399,10 @@ struct ResourceTemplate {
     std::optional<Annotations> annotations;
     /// 2025-11-25 additions:
     std::optional<std::vector<Icon>> icons;
-    std::optional<nlohmann::json>    meta;
+    std::optional<Json>    meta;
 };
-void to_json(nlohmann::json& j, const ResourceTemplate& r);
-void from_json(const nlohmann::json& j, ResourceTemplate& r);
+[[nodiscard]] QJsonValue to_json(const ResourceTemplate& r);
+void from_json(const QJsonValue& j, ResourceTemplate& r);
 
 struct ResourceLink {
     std::string                 uri;
@@ -405,17 +414,17 @@ struct ResourceLink {
     std::optional<std::int64_t> size;
     /// 2025-11-25 additions:
     std::optional<std::vector<Icon>> icons;
-    std::optional<nlohmann::json>    meta;
+    std::optional<Json>    meta;
 };
-void to_json(nlohmann::json& j, const ResourceLink& r);
-void from_json(const nlohmann::json& j, ResourceLink& r);
+[[nodiscard]] QJsonValue to_json(const ResourceLink& r);
+void from_json(const QJsonValue& j, ResourceLink& r);
 
 struct EmbeddedResource {
     ResourceContents           resource;
     std::optional<Annotations> annotations;
 };
-void to_json(nlohmann::json& j, const EmbeddedResource& r);
-void from_json(const nlohmann::json& j, EmbeddedResource& r);
+[[nodiscard]] QJsonValue to_json(const EmbeddedResource& r);
+void from_json(const QJsonValue& j, EmbeddedResource& r);
 
 /// 2025-11-25: tool-use content block. Used in sampling messages to
 /// represent the assistant emitting a tool call (i.e. an
@@ -429,11 +438,11 @@ struct ToolUseContent {
     std::string                name;
     /// Arguments to the tool. JSON object matching the tool's
     /// `inputSchema`.
-    nlohmann::json             input;
+    Json                       input;
     std::optional<Annotations> annotations;
 };
-void to_json(nlohmann::json& j, const ToolUseContent& c);
-void from_json(const nlohmann::json& j, ToolUseContent& c);
+[[nodiscard]] QJsonValue to_json(const ToolUseContent& c);
+void from_json(const QJsonValue& j, ToolUseContent& c);
 
 /// Plain (non-tool) content blocks — the subset legal as the
 /// `content` of a ToolResultContent. The spec forbids nested
@@ -444,8 +453,8 @@ using PlainContentBlock = std::variant<TextContent,
                                        AudioContent,
                                        ResourceLink,
                                        EmbeddedResource>;
-void to_json(nlohmann::json& j, const PlainContentBlock& c);
-void from_json(const nlohmann::json& j, PlainContentBlock& c);
+[[nodiscard]] QJsonValue to_json(const PlainContentBlock& c);
+void from_json(const QJsonValue& j, PlainContentBlock& c);
 
 /// 2025-11-25: tool-result content block. Carries the result of a
 /// previous `tool_use` block, referenced by `toolUseId`. Wire type
@@ -461,8 +470,8 @@ struct ToolResultContent {
     std::optional<bool>             is_error;
     std::optional<Annotations>      annotations;
 };
-void to_json(nlohmann::json& j, const ToolResultContent& c);
-void from_json(const nlohmann::json& j, ToolResultContent& c);
+[[nodiscard]] QJsonValue to_json(const ToolResultContent& c);
+void from_json(const QJsonValue& j, ToolResultContent& c);
 
 /// Content blocks used by tools/calls, prompts, and sampling. The
 /// type discriminator on the wire is `"text" | "image" | "audio"
@@ -477,8 +486,8 @@ using ContentBlock = std::variant<TextContent,
                                   ToolUseContent,
                                   ToolResultContent>;
 
-void to_json(nlohmann::json& j, const ContentBlock& c);
-void from_json(const nlohmann::json& j, ContentBlock& c);
+[[nodiscard]] QJsonValue to_json(const ContentBlock& c);
+void from_json(const QJsonValue& j, ContentBlock& c);
 
 // --------------------------------------------------------------------------
 // Tools
@@ -491,72 +500,72 @@ struct ToolAnnotations {
     std::optional<bool>        idempotent_hint;
     std::optional<bool>        open_world_hint;
 };
-void to_json(nlohmann::json& j, const ToolAnnotations& a);
-void from_json(const nlohmann::json& j, ToolAnnotations& a);
+[[nodiscard]] QJsonValue to_json(const ToolAnnotations& a);
+void from_json(const QJsonValue& j, ToolAnnotations& a);
 
 /// 2025-11-25: per-tool execution policy. The receiver advertises
 /// whether a tool supports being task-augmented at all, optionally,
 /// or requires it.
 enum class TaskSupport { forbidden, optional, required };
-void to_json(nlohmann::json& j, TaskSupport t);
-void from_json(const nlohmann::json& j, TaskSupport& t);
+[[nodiscard]] QJsonValue to_json(TaskSupport t);
+void from_json(const QJsonValue& j, TaskSupport& t);
 
 struct ToolExecution {
     /// "forbidden" / "optional" / "required". Default is
     /// "optional" when `execution` is absent.
     TaskSupport task_support = TaskSupport::optional;
 };
-void to_json(nlohmann::json& j, const ToolExecution& e);
-void from_json(const nlohmann::json& j, ToolExecution& e);
+[[nodiscard]] QJsonValue to_json(const ToolExecution& e);
+void from_json(const QJsonValue& j, ToolExecution& e);
 
 struct Tool {
     std::string                    name;
     std::optional<std::string>     title;
     std::optional<std::string>     description;
-    nlohmann::json                 input_schema;   // JSON Schema; type:"object"
-    std::optional<nlohmann::json>  output_schema;  // optional JSON Schema
+    Json                           input_schema;   // JSON Schema; type:"object"
+    std::optional<Json>  output_schema;  // optional JSON Schema
     std::optional<ToolAnnotations> annotations;
     /// 2025-11-25 additions:
     std::optional<std::vector<Icon>> icons;
     std::optional<ToolExecution>     execution;
-    std::optional<nlohmann::json>    meta;
+    std::optional<Json>    meta;
 };
-void to_json(nlohmann::json& j, const Tool& t);
-void from_json(const nlohmann::json& j, Tool& t);
+[[nodiscard]] QJsonValue to_json(const Tool& t);
+void from_json(const QJsonValue& j, Tool& t);
 
 struct ListToolsRequestParams {
     std::optional<std::string> cursor;
 };
-void to_json(nlohmann::json& j, const ListToolsRequestParams& p);
-void from_json(const nlohmann::json& j, ListToolsRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ListToolsRequestParams& p);
+void from_json(const QJsonValue& j, ListToolsRequestParams& p);
 
 struct ListToolsResult {
     std::vector<Tool>          tools;
     std::optional<std::string> next_cursor;
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const ListToolsResult& r);
-void from_json(const nlohmann::json& j, ListToolsResult& r);
+[[nodiscard]] QJsonValue to_json(const ListToolsResult& r);
+void from_json(const QJsonValue& j, ListToolsResult& r);
 
 struct CallToolRequestParams {
     std::string                       name;
-    std::optional<nlohmann::json>     arguments;  // JSON object
+    std::optional<Json>     arguments;  // JSON object
     /// When set, the request is task-augmented: the receiver should
     /// return a CreateTaskResult envelope and run the call async. The
     /// final CallToolResult is fetched via `tasks/result`.
     std::optional<TaskAugmentation>   task;
 };
-void to_json(nlohmann::json& j, const CallToolRequestParams& p);
-void from_json(const nlohmann::json& j, CallToolRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const CallToolRequestParams& p);
+void from_json(const QJsonValue& j, CallToolRequestParams& p);
 
 struct CallToolResult {
     std::vector<ContentBlock>     content;
-    std::optional<nlohmann::json> structured_content;  // matches outputSchema
+    std::optional<Json> structured_content;  // matches outputSchema
     std::optional<bool>           is_error;
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const CallToolResult& r);
-void from_json(const nlohmann::json& j, CallToolResult& r);
+[[nodiscard]] QJsonValue to_json(const CallToolResult& r);
+void from_json(const QJsonValue& j, CallToolResult& r);
 
 inline constexpr std::string_view method_tools_list = "tools/list";
 inline constexpr std::string_view method_tools_call = "tools/call";
@@ -568,61 +577,61 @@ inline constexpr std::string_view method_tools_call = "tools/call";
 struct ListResourcesRequestParams {
     std::optional<std::string> cursor;
 };
-void to_json(nlohmann::json& j, const ListResourcesRequestParams& p);
-void from_json(const nlohmann::json& j, ListResourcesRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ListResourcesRequestParams& p);
+void from_json(const QJsonValue& j, ListResourcesRequestParams& p);
 
 struct ListResourcesResult {
     std::vector<Resource>      resources;
     std::optional<std::string> next_cursor;
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const ListResourcesResult& r);
-void from_json(const nlohmann::json& j, ListResourcesResult& r);
+[[nodiscard]] QJsonValue to_json(const ListResourcesResult& r);
+void from_json(const QJsonValue& j, ListResourcesResult& r);
 
 struct ListResourceTemplatesRequestParams {
     std::optional<std::string> cursor;
 };
-void to_json(nlohmann::json& j, const ListResourceTemplatesRequestParams& p);
-void from_json(const nlohmann::json& j, ListResourceTemplatesRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ListResourceTemplatesRequestParams& p);
+void from_json(const QJsonValue& j, ListResourceTemplatesRequestParams& p);
 
 struct ListResourceTemplatesResult {
     std::vector<ResourceTemplate> resource_templates;
     std::optional<std::string>    next_cursor;
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const ListResourceTemplatesResult& r);
-void from_json(const nlohmann::json& j, ListResourceTemplatesResult& r);
+[[nodiscard]] QJsonValue to_json(const ListResourceTemplatesResult& r);
+void from_json(const QJsonValue& j, ListResourceTemplatesResult& r);
 
 struct ReadResourceRequestParams {
     std::string uri;
 };
-void to_json(nlohmann::json& j, const ReadResourceRequestParams& p);
-void from_json(const nlohmann::json& j, ReadResourceRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ReadResourceRequestParams& p);
+void from_json(const QJsonValue& j, ReadResourceRequestParams& p);
 
 struct ReadResourceResult {
     std::vector<ResourceContents> contents;
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const ReadResourceResult& r);
-void from_json(const nlohmann::json& j, ReadResourceResult& r);
+[[nodiscard]] QJsonValue to_json(const ReadResourceResult& r);
+void from_json(const QJsonValue& j, ReadResourceResult& r);
 
 struct SubscribeRequestParams {
     std::string uri;
 };
-void to_json(nlohmann::json& j, const SubscribeRequestParams& p);
-void from_json(const nlohmann::json& j, SubscribeRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const SubscribeRequestParams& p);
+void from_json(const QJsonValue& j, SubscribeRequestParams& p);
 
 struct UnsubscribeRequestParams {
     std::string uri;
 };
-void to_json(nlohmann::json& j, const UnsubscribeRequestParams& p);
-void from_json(const nlohmann::json& j, UnsubscribeRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const UnsubscribeRequestParams& p);
+void from_json(const QJsonValue& j, UnsubscribeRequestParams& p);
 
 struct ResourceUpdatedNotificationParams {
     std::string uri;
 };
-void to_json(nlohmann::json& j, const ResourceUpdatedNotificationParams& p);
-void from_json(const nlohmann::json& j, ResourceUpdatedNotificationParams& p);
+[[nodiscard]] QJsonValue to_json(const ResourceUpdatedNotificationParams& p);
+void from_json(const QJsonValue& j, ResourceUpdatedNotificationParams& p);
 
 inline constexpr std::string_view method_resources_list           = "resources/list";
 inline constexpr std::string_view method_resources_templates_list = "resources/templates/list";
@@ -644,8 +653,8 @@ struct PromptArgument {
     std::optional<std::string> description;
     std::optional<bool>        required;
 };
-void to_json(nlohmann::json& j, const PromptArgument& a);
-void from_json(const nlohmann::json& j, PromptArgument& a);
+[[nodiscard]] QJsonValue to_json(const PromptArgument& a);
+void from_json(const QJsonValue& j, PromptArgument& a);
 
 struct Prompt {
     std::string                       name;
@@ -654,46 +663,46 @@ struct Prompt {
     std::optional<std::vector<PromptArgument>> arguments;
     /// 2025-11-25 additions:
     std::optional<std::vector<Icon>> icons;
-    std::optional<nlohmann::json>    meta;
+    std::optional<Json>    meta;
 };
-void to_json(nlohmann::json& j, const Prompt& p);
-void from_json(const nlohmann::json& j, Prompt& p);
+[[nodiscard]] QJsonValue to_json(const Prompt& p);
+void from_json(const QJsonValue& j, Prompt& p);
 
 struct PromptMessage {
     Role         role;
     ContentBlock content;
 };
-void to_json(nlohmann::json& j, const PromptMessage& m);
-void from_json(const nlohmann::json& j, PromptMessage& m);
+[[nodiscard]] QJsonValue to_json(const PromptMessage& m);
+void from_json(const QJsonValue& j, PromptMessage& m);
 
 struct ListPromptsRequestParams {
     std::optional<std::string> cursor;
 };
-void to_json(nlohmann::json& j, const ListPromptsRequestParams& p);
-void from_json(const nlohmann::json& j, ListPromptsRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ListPromptsRequestParams& p);
+void from_json(const QJsonValue& j, ListPromptsRequestParams& p);
 
 struct ListPromptsResult {
     std::vector<Prompt>        prompts;
     std::optional<std::string> next_cursor;
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const ListPromptsResult& r);
-void from_json(const nlohmann::json& j, ListPromptsResult& r);
+[[nodiscard]] QJsonValue to_json(const ListPromptsResult& r);
+void from_json(const QJsonValue& j, ListPromptsResult& r);
 
 struct GetPromptRequestParams {
     std::string                                            name;
     std::optional<std::unordered_map<std::string, std::string>> arguments;
 };
-void to_json(nlohmann::json& j, const GetPromptRequestParams& p);
-void from_json(const nlohmann::json& j, GetPromptRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const GetPromptRequestParams& p);
+void from_json(const QJsonValue& j, GetPromptRequestParams& p);
 
 struct GetPromptResult {
     std::optional<std::string>  description;
     std::vector<PromptMessage>  messages;
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const GetPromptResult& r);
-void from_json(const nlohmann::json& j, GetPromptResult& r);
+[[nodiscard]] QJsonValue to_json(const GetPromptResult& r);
+void from_json(const QJsonValue& j, GetPromptResult& r);
 
 inline constexpr std::string_view method_prompts_list = "prompts/list";
 inline constexpr std::string_view method_prompts_get  = "prompts/get";
@@ -708,8 +717,8 @@ struct CancelledNotificationParams {
     std::optional<RequestId>   request_id;
     std::optional<std::string> reason;
 };
-void to_json(nlohmann::json& j, const CancelledNotificationParams& p);
-void from_json(const nlohmann::json& j, CancelledNotificationParams& p);
+[[nodiscard]] QJsonValue to_json(const CancelledNotificationParams& p);
+void from_json(const QJsonValue& j, CancelledNotificationParams& p);
 
 inline constexpr std::string_view method_notifications_cancelled
     = "notifications/cancelled";
@@ -741,8 +750,8 @@ public:
 private:
     std::variant<std::string, std::int64_t> value_;
 };
-void to_json(nlohmann::json& j, const ProgressToken& t);
-void from_json(const nlohmann::json& j, ProgressToken& t);
+[[nodiscard]] QJsonValue to_json(const ProgressToken& t);
+void from_json(const QJsonValue& j, ProgressToken& t);
 
 struct ProgressNotificationParams {
     ProgressToken              progress_token;
@@ -750,8 +759,8 @@ struct ProgressNotificationParams {
     std::optional<double>      total;
     std::optional<std::string> message;
 };
-void to_json(nlohmann::json& j, const ProgressNotificationParams& p);
-void from_json(const nlohmann::json& j, ProgressNotificationParams& p);
+[[nodiscard]] QJsonValue to_json(const ProgressNotificationParams& p);
+void from_json(const QJsonValue& j, ProgressNotificationParams& p);
 
 inline constexpr std::string_view method_notifications_progress
     = "notifications/progress";
@@ -767,22 +776,22 @@ enum class LoggingLevel {
     debug, info, notice, warning, error, critical, alert, emergency,
 };
 [[nodiscard]] std::string_view to_string(LoggingLevel l) noexcept;
-void to_json(nlohmann::json& j, const LoggingLevel& l);
-void from_json(const nlohmann::json& j, LoggingLevel& l);
+[[nodiscard]] QJsonValue to_json(LoggingLevel l);
+void from_json(const QJsonValue& j, LoggingLevel& l);
 
 struct SetLevelRequestParams {
     LoggingLevel level;
 };
-void to_json(nlohmann::json& j, const SetLevelRequestParams& p);
-void from_json(const nlohmann::json& j, SetLevelRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const SetLevelRequestParams& p);
+void from_json(const QJsonValue& j, SetLevelRequestParams& p);
 
 struct LoggingMessageNotificationParams {
     LoggingLevel               level;
     std::optional<std::string> logger;  // optional name of the logger source
-    nlohmann::json             data;    // free-form payload (string/object/...)
+    Json                       data;    // free-form payload (string/object/...)
 };
-void to_json(nlohmann::json& j, const LoggingMessageNotificationParams& p);
-void from_json(const nlohmann::json& j, LoggingMessageNotificationParams& p);
+[[nodiscard]] QJsonValue to_json(const LoggingMessageNotificationParams& p);
+void from_json(const QJsonValue& j, LoggingMessageNotificationParams& p);
 
 inline constexpr std::string_view method_logging_set_level = "logging/setLevel";
 inline constexpr std::string_view method_notifications_message = "notifications/message";
@@ -800,8 +809,8 @@ inline constexpr std::string_view method_ping = "ping";
 struct ModelHint {
     std::optional<std::string> name;
 };
-void to_json(nlohmann::json& j, const ModelHint& h);
-void from_json(const nlohmann::json& j, ModelHint& h);
+[[nodiscard]] QJsonValue to_json(const ModelHint& h);
+void from_json(const QJsonValue& j, ModelHint& h);
 
 struct ModelPreferences {
     std::optional<std::vector<ModelHint>> hints;
@@ -809,13 +818,13 @@ struct ModelPreferences {
     std::optional<double> speed_priority;
     std::optional<double> intelligence_priority;
 };
-void to_json(nlohmann::json& j, const ModelPreferences& p);
-void from_json(const nlohmann::json& j, ModelPreferences& p);
+[[nodiscard]] QJsonValue to_json(const ModelPreferences& p);
+void from_json(const QJsonValue& j, ModelPreferences& p);
 
 enum class IncludeContext { none, this_server, all_servers };
 [[nodiscard]] std::string_view to_string(IncludeContext c) noexcept;
-void to_json(nlohmann::json& j, const IncludeContext& c);
-void from_json(const nlohmann::json& j, IncludeContext& c);
+[[nodiscard]] QJsonValue to_json(IncludeContext c);
+void from_json(const QJsonValue& j, IncludeContext& c);
 
 /// Sampling tool-choice mode (2025-11-25). The spec lets the
 /// requester force / forbid / pin tool use:
@@ -825,8 +834,8 @@ void from_json(const nlohmann::json& j, IncludeContext& c);
 ///   - "tool"   — model MUST call the specific tool named
 enum class ToolChoiceMode { auto_, any, none, tool };
 [[nodiscard]] std::string_view to_string(ToolChoiceMode m) noexcept;
-void to_json(nlohmann::json& j, const ToolChoiceMode& m);
-void from_json(const nlohmann::json& j, ToolChoiceMode& m);
+[[nodiscard]] QJsonValue to_json(ToolChoiceMode m);
+void from_json(const QJsonValue& j, ToolChoiceMode& m);
 
 /// Tool choice. The wire shape is either a bare string ("auto" |
 /// "any" | "none") or an object `{ type: "tool", name: "..." }`
@@ -838,8 +847,8 @@ struct ToolChoice {
     /// Required when mode == ToolChoiceMode::tool.
     std::optional<std::string>    name;
 };
-void to_json(nlohmann::json& j, const ToolChoice& c);
-void from_json(const nlohmann::json& j, ToolChoice& c);
+[[nodiscard]] QJsonValue to_json(const ToolChoice& c);
+void from_json(const QJsonValue& j, ToolChoice& c);
 
 /// A message in a sampling exchange. Phase 3 supports text/image/audio
 /// content; tool_use and tool_result variants land in Phase 4 alongside
@@ -854,8 +863,8 @@ struct SamplingMessage {
     Role                      role;
     std::vector<ContentBlock> content;
 };
-void to_json(nlohmann::json& j, const SamplingMessage& m);
-void from_json(const nlohmann::json& j, SamplingMessage& m);
+[[nodiscard]] QJsonValue to_json(const SamplingMessage& m);
+void from_json(const QJsonValue& j, SamplingMessage& m);
 
 struct CreateMessageRequestParams {
     std::vector<SamplingMessage>      messages;
@@ -865,7 +874,7 @@ struct CreateMessageRequestParams {
     std::optional<double>             temperature;
     std::int64_t                      max_tokens{};   // required by spec
     std::optional<std::vector<std::string>> stop_sequences;
-    std::optional<nlohmann::json>     metadata;
+    std::optional<Json>     metadata;
     /// 2025-11-25: tools the assistant may call during this
     /// sampling. Server side is expected to translate to the
     /// underlying LLM's tool-calling shape; `Tool::input_schema`
@@ -874,8 +883,8 @@ struct CreateMessageRequestParams {
     /// 2025-11-25: how to constrain tool calling.
     std::optional<ToolChoice>         tool_choice;
 };
-void to_json(nlohmann::json& j, const CreateMessageRequestParams& p);
-void from_json(const nlohmann::json& j, CreateMessageRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const CreateMessageRequestParams& p);
+void from_json(const QJsonValue& j, CreateMessageRequestParams& p);
 
 struct CreateMessageResult {
     Role                         role;
@@ -883,10 +892,10 @@ struct CreateMessageResult {
     std::string                  model;
     std::optional<std::string>   stop_reason;
     /// Top-level _meta envelope for protocol-level metadata.
-    std::optional<nlohmann::json> meta;
+    std::optional<Json> meta;
 };
-void to_json(nlohmann::json& j, const CreateMessageResult& r);
-void from_json(const nlohmann::json& j, CreateMessageResult& r);
+[[nodiscard]] QJsonValue to_json(const CreateMessageResult& r);
+void from_json(const QJsonValue& j, CreateMessageResult& r);
 
 inline constexpr std::string_view method_sampling_create_message
     = "sampling/createMessage";
@@ -899,14 +908,14 @@ struct Root {
     std::string                uri;
     std::optional<std::string> name;
 };
-void to_json(nlohmann::json& j, const Root& r);
-void from_json(const nlohmann::json& j, Root& r);
+[[nodiscard]] QJsonValue to_json(const Root& r);
+void from_json(const QJsonValue& j, Root& r);
 
 struct ListRootsResult {
     std::vector<Root> roots;
 };
-void to_json(nlohmann::json& j, const ListRootsResult& r);
-void from_json(const nlohmann::json& j, ListRootsResult& r);
+[[nodiscard]] QJsonValue to_json(const ListRootsResult& r);
+void from_json(const QJsonValue& j, ListRootsResult& r);
 
 inline constexpr std::string_view method_roots_list = "roots/list";
 inline constexpr std::string_view method_notifications_roots_list_changed
@@ -919,48 +928,48 @@ inline constexpr std::string_view method_notifications_roots_list_changed
 struct ResourceTemplateReference {
     std::string uri_template;
 };
-void to_json(nlohmann::json& j, const ResourceTemplateReference& r);
-void from_json(const nlohmann::json& j, ResourceTemplateReference& r);
+[[nodiscard]] QJsonValue to_json(const ResourceTemplateReference& r);
+void from_json(const QJsonValue& j, ResourceTemplateReference& r);
 
 struct PromptReference {
     std::string                name;
     std::optional<std::string> title;
 };
-void to_json(nlohmann::json& j, const PromptReference& r);
-void from_json(const nlohmann::json& j, PromptReference& r);
+[[nodiscard]] QJsonValue to_json(const PromptReference& r);
+void from_json(const QJsonValue& j, PromptReference& r);
 
 using CompletionReference = std::variant<ResourceTemplateReference, PromptReference>;
-void to_json(nlohmann::json& j, const CompletionReference& r);
-void from_json(const nlohmann::json& j, CompletionReference& r);
+[[nodiscard]] QJsonValue to_json(const CompletionReference& r);
+void from_json(const QJsonValue& j, CompletionReference& r);
 
 struct CompleteArgument {
     std::string name;
     std::string value;
 };
-void to_json(nlohmann::json& j, const CompleteArgument& a);
-void from_json(const nlohmann::json& j, CompleteArgument& a);
+[[nodiscard]] QJsonValue to_json(const CompleteArgument& a);
+void from_json(const QJsonValue& j, CompleteArgument& a);
 
 struct CompleteRequestParams {
     CompletionReference                     reference;
     CompleteArgument                        argument;
     std::optional<std::unordered_map<std::string, std::string>> context_arguments;
 };
-void to_json(nlohmann::json& j, const CompleteRequestParams& p);
-void from_json(const nlohmann::json& j, CompleteRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const CompleteRequestParams& p);
+void from_json(const QJsonValue& j, CompleteRequestParams& p);
 
 struct CompletionValues {
     std::vector<std::string>    values;
     std::optional<std::int64_t> total;
     std::optional<bool>         has_more;
 };
-void to_json(nlohmann::json& j, const CompletionValues& v);
-void from_json(const nlohmann::json& j, CompletionValues& v);
+[[nodiscard]] QJsonValue to_json(const CompletionValues& v);
+void from_json(const QJsonValue& j, CompletionValues& v);
 
 struct CompleteResult {
     CompletionValues completion;
 };
-void to_json(nlohmann::json& j, const CompleteResult& r);
-void from_json(const nlohmann::json& j, CompleteResult& r);
+[[nodiscard]] QJsonValue to_json(const CompleteResult& r);
+void from_json(const QJsonValue& j, CompleteResult& r);
 
 inline constexpr std::string_view method_completion_complete = "completion/complete";
 
@@ -983,10 +992,10 @@ struct ElicitFormRequestParams {
     /// to a flat object of primitive properties; we don't enforce that
     /// here so applications can negotiate richer shapes when both sides
     /// agree, but the basic SDK sticks to the spec.
-    nlohmann::json requested_schema;
+    Json requested_schema;
 };
-void to_json(nlohmann::json& j, const ElicitFormRequestParams& p);
-void from_json(const nlohmann::json& j, ElicitFormRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ElicitFormRequestParams& p);
+void from_json(const QJsonValue& j, ElicitFormRequestParams& p);
 
 struct ElicitUrlRequestParams {
     std::string message;
@@ -996,27 +1005,27 @@ struct ElicitUrlRequestParams {
     /// `notifications/elicitation/complete` notifications.
     std::string elicitation_id;
 };
-void to_json(nlohmann::json& j, const ElicitUrlRequestParams& p);
-void from_json(const nlohmann::json& j, ElicitUrlRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ElicitUrlRequestParams& p);
+void from_json(const QJsonValue& j, ElicitUrlRequestParams& p);
 
 using ElicitRequestParams =
     std::variant<ElicitFormRequestParams, ElicitUrlRequestParams>;
-void to_json(nlohmann::json& j, const ElicitRequestParams& p);
-void from_json(const nlohmann::json& j, ElicitRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ElicitRequestParams& p);
+void from_json(const QJsonValue& j, ElicitRequestParams& p);
 
 enum class ElicitAction { accept, decline, cancel };
-void to_json(nlohmann::json& j, ElicitAction a);
-void from_json(const nlohmann::json& j, ElicitAction& a);
+[[nodiscard]] QJsonValue to_json(ElicitAction a);
+void from_json(const QJsonValue& j, ElicitAction& a);
 
 struct ElicitResult {
     ElicitAction                  action;
     /// Form-mode only: the user's submission, conforming to the
     /// server-supplied schema. Absent for decline/cancel and for URL
     /// mode.
-    std::optional<nlohmann::json> content;
+    std::optional<Json> content;
 };
-void to_json(nlohmann::json& j, const ElicitResult& r);
-void from_json(const nlohmann::json& j, ElicitResult& r);
+[[nodiscard]] QJsonValue to_json(const ElicitResult& r);
+void from_json(const QJsonValue& j, ElicitResult& r);
 
 /// URL-mode out-of-band completion notification. Emitted by the server
 /// or relayed by the client once the out-of-band flow finishes — but
@@ -1025,8 +1034,8 @@ void from_json(const nlohmann::json& j, ElicitResult& r);
 struct ElicitationCompleteNotificationParams {
     std::string elicitation_id;
 };
-void to_json(nlohmann::json& j, const ElicitationCompleteNotificationParams& p);
-void from_json(const nlohmann::json& j, ElicitationCompleteNotificationParams& p);
+[[nodiscard]] QJsonValue to_json(const ElicitationCompleteNotificationParams& p);
+void from_json(const QJsonValue& j, ElicitationCompleteNotificationParams& p);
 
 inline constexpr std::string_view method_elicitation_create
     = "elicitation/create";
@@ -1045,8 +1054,8 @@ struct UrlElicitationRequiredErrorData {
     /// request — message + url + elicitationId.
     std::vector<ElicitUrlRequestParams> elicitations;
 };
-void to_json(nlohmann::json& j, const UrlElicitationRequiredErrorData& d);
-void from_json(const nlohmann::json& j, UrlElicitationRequiredErrorData& d);
+[[nodiscard]] QJsonValue to_json(const UrlElicitationRequiredErrorData& d);
+void from_json(const QJsonValue& j, UrlElicitationRequiredErrorData& d);
 
 // --------------------------------------------------------------------------
 // Tasks (long-running operations)
@@ -1067,8 +1076,8 @@ enum class TaskStatus {
     failed,
     cancelled,
 };
-void to_json(nlohmann::json& j, TaskStatus s);
-void from_json(const nlohmann::json& j, TaskStatus& s);
+[[nodiscard]] QJsonValue to_json(TaskStatus s);
+void from_json(const QJsonValue& j, TaskStatus& s);
 
 struct Task {
     /// Receiver-generated, unique. The string need not be a UUID; we
@@ -1086,55 +1095,55 @@ struct Task {
     /// Suggested polling interval in milliseconds; advisory.
     std::optional<std::int64_t> poll_interval;
 };
-void to_json(nlohmann::json& j, const Task& t);
-void from_json(const nlohmann::json& j, Task& t);
+[[nodiscard]] QJsonValue to_json(const Task& t);
+void from_json(const QJsonValue& j, Task& t);
 
 /// Returned in place of the underlying request's normal result when
 /// the request was task-augmented.
 struct CreateTaskResult {
     Task task;
 };
-void to_json(nlohmann::json& j, const CreateTaskResult& r);
-void from_json(const nlohmann::json& j, CreateTaskResult& r);
+[[nodiscard]] QJsonValue to_json(const CreateTaskResult& r);
+void from_json(const QJsonValue& j, CreateTaskResult& r);
 
 struct GetTaskRequestParams {
     std::string task_id;
 };
-void to_json(nlohmann::json& j, const GetTaskRequestParams& p);
-void from_json(const nlohmann::json& j, GetTaskRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const GetTaskRequestParams& p);
+void from_json(const QJsonValue& j, GetTaskRequestParams& p);
 
 struct GetTaskResultRequestParams {
     std::string task_id;
 };
-void to_json(nlohmann::json& j, const GetTaskResultRequestParams& p);
-void from_json(const nlohmann::json& j, GetTaskResultRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const GetTaskResultRequestParams& p);
+void from_json(const QJsonValue& j, GetTaskResultRequestParams& p);
 
 struct ListTasksRequestParams {
     std::optional<std::string> cursor;
 };
-void to_json(nlohmann::json& j, const ListTasksRequestParams& p);
-void from_json(const nlohmann::json& j, ListTasksRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const ListTasksRequestParams& p);
+void from_json(const QJsonValue& j, ListTasksRequestParams& p);
 
 struct ListTasksResult {
     std::vector<Task>          tasks;
     std::optional<std::string> next_cursor;
 };
-void to_json(nlohmann::json& j, const ListTasksResult& r);
-void from_json(const nlohmann::json& j, ListTasksResult& r);
+[[nodiscard]] QJsonValue to_json(const ListTasksResult& r);
+void from_json(const QJsonValue& j, ListTasksResult& r);
 
 struct CancelTaskRequestParams {
     std::string task_id;
 };
-void to_json(nlohmann::json& j, const CancelTaskRequestParams& p);
-void from_json(const nlohmann::json& j, CancelTaskRequestParams& p);
+[[nodiscard]] QJsonValue to_json(const CancelTaskRequestParams& p);
+void from_json(const QJsonValue& j, CancelTaskRequestParams& p);
 
 struct TaskStatusNotificationParams {
     /// A point-in-time projection of the underlying Task. Same shape
     /// as Task, no extra fields.
     Task task;
 };
-void to_json(nlohmann::json& j, const TaskStatusNotificationParams& p);
-void from_json(const nlohmann::json& j, TaskStatusNotificationParams& p);
+[[nodiscard]] QJsonValue to_json(const TaskStatusNotificationParams& p);
+void from_json(const QJsonValue& j, TaskStatusNotificationParams& p);
 
 inline constexpr std::string_view method_tasks_get    = "tasks/get";
 inline constexpr std::string_view method_tasks_result = "tasks/result";

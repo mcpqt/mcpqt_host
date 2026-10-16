@@ -64,17 +64,18 @@ int main() {
     };
 
     server.tool("add",
-        nlohmann::json{
+        QJsonObject{
             {"type", "object"},
-            {"properties", {
-                {"a", {{"type", "number"}}},
-                {"b", {{"type", "number"}}},
+            {"properties", QJsonObject{
+                {"a", QJsonObject{{"type", "number"}}},
+                {"b", QJsonObject{{"type", "number"}}},
             }},
-            {"required", nlohmann::json::array({"a", "b"})},
+            {"required", QJsonArray{"a", "b"}},
         },
-        [](const nlohmann::json& args) -> mcp::CallToolResult {
-            const double a = args.at("a").get<double>();
-            const double b = args.at("b").get<double>();
+        [](const mcp::Json& args) -> mcp::CallToolResult {
+            const QJsonObject o = args.toObject();
+            const double a = mcp::require<double>(o, "a");
+            const double b = mcp::require<double>(o, "b");
             return {
                 .content = { mcp::TextContent{.text = std::to_string(a + b)} },
             };
@@ -110,7 +111,7 @@ int main() {
     }
 
     auto out = client.call_tool("add",
-                                nlohmann::json{{"a", 2}, {"b", 3}}).get();
+                                QJsonObject{{"a", 2}, {"b", 3}}).get();
     if (auto* text = std::get_if<mcp::TextContent>(&out.content[0])) {
         std::cout << "result: " << text->text << "\n";
     }
@@ -183,12 +184,14 @@ an LLM call on its behalf.
 
 ```cpp
 server.tool("ask", schema,
-    [&server](const nlohmann::json& args) -> mcp::CallToolResult {
+    [&server](const mcp::Json& args) -> mcp::CallToolResult {
         auto resp = server.sample(mcp::CreateMessageRequestParams{
             .messages = {
                 mcp::SamplingMessage{
                     .role    = mcp::Role::user,
-                    .content = mcp::TextContent{.text = args["q"]},
+                    .content = mcp::TextContent{
+                        .text = args.toObject().value("q").toString().toStdString(),
+                    },
                 },
             },
             .max_tokens = 512,
@@ -221,6 +224,13 @@ deadlock.
 
 ## Building
 
+Requires a C++20 compiler and Qt 6.4+ (development packages for `Core`,
+`Network`, `HttpServer`, and `Test`). On Debian/Ubuntu:
+
+```bash
+sudo apt install qt6-base-dev qt6-httpserver-dev
+```
+
 ```bash
 cmake -B build -G Ninja
 cmake --build build
@@ -231,15 +241,17 @@ ctest --test-dir build --output-on-failure
 
 | Option                    | Default | Effect                                       |
 | ------------------------- | ------- | -------------------------------------------- |
-| `MCP_BUILD_TESTS`         | ON      | Build the GTest test suite.                  |
+| `MCP_BUILD_TESTS`         | ON      | Build the QtTest test suite.                 |
 | `MCP_BUILD_EXAMPLES`      | ON      | Build the example servers/clients.           |
 | `MCP_WARNINGS_AS_ERRORS`  | ON*     | Promote warnings to errors (top-level only). |
-| `MCP_USE_SYSTEM_DEPS`     | OFF     | `find_package` instead of `FetchContent`.    |
-| `MCP_ENABLE_HTTP`         | ON      | Build the `mcp::http` target (Streamable HTTP transport, cpp-httplib + OpenSSL). |
-| `MCP_HTTP_NO_TLS`         | OFF     | Build `mcp::http` without OpenSSL (plaintext only) — for hosts that must not link a second OpenSSL (e.g. game engines). |
+| `MCP_ENABLE_HTTP`         | ON      | Build the `mcp::http` target (Streamable HTTP transport; needs Qt Network + Qt HttpServer). |
 | `MCP_ENABLE_ASAN`         | OFF     | `-fsanitize=address,undefined`.              |
 | `MCP_ENABLE_TSAN`         | OFF     | `-fsanitize=thread`.                         |
 | `MCP_ENABLE_COVERAGE`     | OFF     | `--coverage` for gcov/llvm-cov.              |
+
+The library targets **Qt 6.4 or newer** (`Qt6::Core`, `Qt6::Network`,
+`Qt6::HttpServer` for HTTP, `Qt6::Test` for the test suite); no bundled
+third-party dependencies are downloaded at configure time.
 
 \* defaults to ON when this is the top-level project; OFF when consumed via `add_subdirectory`.
 
@@ -251,13 +263,13 @@ After `cmake --install build`, downstream projects can do:
 
 ```cmake
 find_package(mcp REQUIRED)
-target_link_libraries(my_app PRIVATE mcp::mcp)   # stdio + core: no OpenSSL
+target_link_libraries(my_app PRIVATE mcp::mcp)   # stdio + core: QtCore only
 ```
 
-The core `mcp::mcp` target depends only on `nlohmann_json` and carries no TLS
-dependency. To use the Streamable HTTP transport (`HttpServerHost` /
+The core `mcp::mcp` target depends only on `Qt6::Core` (plus `Qt6::Network`).
+To use the Streamable HTTP transport (`HttpServerHost` /
 `HttpClientTransport`), link the separate `mcp::http` target instead — it pulls
-in `mcp::mcp` plus cpp-httplib/OpenSSL:
+in `mcp::mcp` plus `Qt6::Network` and `Qt6::HttpServer`:
 
 ```cmake
 target_link_libraries(my_app PRIVATE mcp::http)  # HTTP transport (needs MCP_ENABLE_HTTP)

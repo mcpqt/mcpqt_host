@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
         const auto& first = tools.tools[0].name;
         std::cout << "\ncalling " << first << "(a=2, b=3)...\n";
         auto out = client.call_tool(first,
-                                    nlohmann::json{{"a", 2}, {"b", 3}}).get();
+                                    QJsonObject{{"a", 2}, {"b", 3}}).get();
         if (auto* text = std::get_if<mcp::TextContent>(&out.content[0])) {
             std::cout << "  -> " << text->text << "\n";
         }

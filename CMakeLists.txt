@@ -26,9 +26,7 @@ endif()
 option(MCP_BUILD_TESTS    "Build the mcp-cpp test suite"     ${MCP_IS_TOP_LEVEL})
 option(MCP_BUILD_EXAMPLES "Build the mcp-cpp examples"        ${MCP_IS_TOP_LEVEL})
 option(MCP_WARNINGS_AS_ERRORS "Treat warnings as errors"      ${MCP_IS_TOP_LEVEL})
-option(MCP_USE_SYSTEM_DEPS "Use find_package for deps"        OFF)
-option(MCP_ENABLE_HTTP    "Build the Streamable HTTP transport (depends on cpp-httplib)" ON)
-option(MCP_HTTP_NO_TLS    "Build the HTTP transport without OpenSSL (plaintext only; for hosts that must not link a second OpenSSL, e.g. game engines)" OFF)
+option(MCP_ENABLE_HTTP    "Build the Streamable HTTP transport (depends on Qt Network + HttpServer)" ON)
 option(MCP_ENABLE_ASAN    "Build with AddressSanitizer + UBSan" OFF)
 option(MCP_ENABLE_TSAN    "Build with ThreadSanitizer"           OFF)
 option(MCP_ENABLE_COVERAGE "Build with code-coverage flags"      OFF)
@@ -55,63 +53,25 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ----- Dependencies --------------------------------------------------------
+#
+# The SDK's only dependencies are Qt 6 and the C++ standard library. QtCore is
+# a PUBLIC dependency (the wire types are exposed as QJsonValue/QJsonObject).
+# The optional HTTP transport additionally uses QtNetwork + QtHttpServer; the
+# test suite uses QtTest.
 
-include(FetchContent)
-set(FETCHCONTENT_QUIET FALSE)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Network)
 
-if(MCP_USE_SYSTEM_DEPS)
-    find_package(nlohmann_json 3.11 REQUIRED)
-else()
-    FetchContent_Declare(nlohmann_json
-        GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG        v3.11.3
-        GIT_SHALLOW    TRUE)
-    set(JSON_BuildTests OFF CACHE INTERNAL "")
-    set(JSON_Install    ON  CACHE INTERNAL "")
-    FetchContent_MakeAvailable(nlohmann_json)
+if(MCP_ENABLE_HTTP)
+    find_package(Qt6 6.4 REQUIRED COMPONENTS HttpServer)
 endif()
 
 if(MCP_BUILD_TESTS)
-    if(MCP_USE_SYSTEM_DEPS)
-        find_package(GTest REQUIRED)
-    else()
-        FetchContent_Declare(googletest
-            GIT_REPOSITORY https://github.com/google/googletest.git
-            GIT_TAG        v1.14.0
-            GIT_SHALLOW    TRUE)
-        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-        set(INSTALL_GTEST          OFF CACHE BOOL "" FORCE)
-        FetchContent_MakeAvailable(googletest)
-    endif()
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
 endif()
 
-if(MCP_ENABLE_HTTP)
-    if(MCP_USE_SYSTEM_DEPS)
-        find_package(httplib CONFIG REQUIRED)
-    else()
-        FetchContent_Declare(httplib
-            GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-            GIT_TAG        v0.18.5
-            GIT_SHALLOW    TRUE)
-        set(HTTPLIB_INSTALL ON  CACHE INTERNAL "")
-        # Pin httplib's optional compression deps OFF so the build is
-        # deterministic regardless of what's installed on the host. Without
-        # this, httplib auto-detects a system brotli and then fails to
-        # compile on `#include <brotli/decode.h>` when the headers aren't on
-        # the include path. OpenSSL detection is left ON so HTTPS works.
-        set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE INTERNAL "")
-        set(HTTPLIB_USE_ZLIB_IF_AVAILABLE   OFF CACHE INTERNAL "")
-        # MCP_HTTP_NO_TLS drops the OpenSSL dependency entirely: https://
-        # URLs then fail at runtime, which plaintext-loopback deployments
-        # (and hosts that terminate TLS elsewhere) don't care about — and
-        # embedders like Unreal Engine must NOT link a second OpenSSL
-        # into a process that already ships its own.
-        if(MCP_HTTP_NO_TLS)
-            set(HTTPLIB_USE_OPENSSL_IF_AVAILABLE OFF CACHE INTERNAL "")
-        endif()
-        FetchContent_MakeAvailable(httplib)
-    endif()
-endif()
+# Qt's moc/rcc/uic are needed for the QObject-based HTTP transports.
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 # ----- Library -------------------------------------------------------------
 
@@ -135,9 +95,9 @@ function(mcp_target_warnings tgt)
 endfunction()
 
 # Core library: stdio transport + protocol/session/server/client. Depends only
-# on nlohmann_json — deliberately free of httplib/OpenSSL/brotli so stdio-only
-# servers stay lean and start in single-digit ms. The HTTP transport lives in a
-# separate `mcp::http` target (see src/CMakeLists.txt).
+# on Qt6::Core — deliberately free of QtNetwork/QtHttpServer so stdio-only
+# servers stay lean. The HTTP transport lives in a separate `mcp::http` target
+# (see src/CMakeLists.txt).
 add_library(mcp)
 add_library(mcp::mcp ALIAS mcp)
 
@@ -149,7 +109,7 @@ target_include_directories(mcp
         $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(mcp PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(mcp PUBLIC Qt6::Core)
 
 mcp_target_warnings(mcp)
 

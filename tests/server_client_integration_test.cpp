@@ -13,9 +13,11 @@
 #include "mcp/server.hpp"
 #include "mcp/transport.hpp"
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
 
-#include <nlohmann/json.hpp>
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <chrono>
 #include <future>
@@ -26,7 +28,7 @@
 
 namespace {
 
-using nlohmann::json;
+using mcp::Json;
 using namespace std::chrono_literals;
 
 // Run a Server in a background thread with the supplied transport, and
@@ -65,13 +67,14 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
         [](mcp::Server& s) {
             s.set_instructions("A tiny arithmetic server.");
             s.tool("add",
-                json{{"type", "object"},
-                     {"properties", {{"a", {{"type", "number"}}},
-                                     {"b", {{"type", "number"}}}}},
-                     {"required", json::array({"a", "b"})}},
-                [](const json& args) -> mcp::CallToolResult {
-                    const double a = args.at("a").get<double>();
-                    const double b = args.at("b").get<double>();
+                QJsonObject{{"type", "object"},
+                            {"properties",
+                             QJsonObject{{"a", QJsonObject{{"type", "number"}}},
+                                         {"b", QJsonObject{{"type", "number"}}}}},
+                            {"required", QJsonArray{"a", "b"}}},
+                [](const Json& args) -> mcp::CallToolResult {
+                    const double a = args["a"].toDouble();
+                    const double b = args["b"].toDouble();
                     return mcp::CallToolResult{
                         .content = { mcp::TextContent{
                             .text = std::to_string(a + b),
@@ -79,12 +82,13 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
                     };
                 });
             s.tool("divide",
-                json{{"type", "object"},
-                     {"properties", {{"a", {{"type", "number"}}},
-                                     {"b", {{"type", "number"}}}}},
-                     {"required", json::array({"a", "b"})}},
-                [](const json& args) -> mcp::CallToolResult {
-                    const double b = args.at("b").get<double>();
+                QJsonObject{{"type", "object"},
+                            {"properties",
+                             QJsonObject{{"a", QJsonObject{{"type", "number"}}},
+                                         {"b", QJsonObject{{"type", "number"}}}}},
+                            {"required", QJsonArray{"a", "b"}}},
+                [](const Json& args) -> mcp::CallToolResult {
+                    const double b = args["b"].toDouble();
                     if (b == 0.0) {
                         // Reportable error: visible to the LLM via isError.
                         return mcp::CallToolResult{
@@ -94,7 +98,7 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
                             .is_error = true,
                         };
                     }
-                    const double a = args.at("a").get<double>();
+                    const double a = args["a"].toDouble();
                     return mcp::CallToolResult{
                         .content = { mcp::TextContent{
                             .text = std::to_string(a / b),
@@ -104,9 +108,24 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
         });
 }
 
+}  // namespace
+
 // -------------------------------------------------------------------------
 
-TEST(Integration, InitializeReturnsExpectedShape) {
+class Integration : public QObject {
+    Q_OBJECT
+private slots:
+    void InitializeReturnsExpectedShape();
+    void ListToolsReturnsRegisteredTools();
+    void CallToolReturnsTextContent();
+    void ToolErrorIsReportedViaIsError();
+    void MissingToolMapsToMethodNotFound();
+    void RequestsBeforeInitializeAreRejected();
+    void ConcurrentToolCallsAllResolve();
+    void ServerInfoCachedOnInitialize();
+};
+
+void Integration::InitializeReturnsExpectedShape() {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -114,16 +133,16 @@ TEST(Integration, InitializeReturnsExpectedShape) {
     client.connect(std::move(p.a));
 
     auto info = client.initialize().get();
-    EXPECT_EQ(info.protocol_version, mcp::kLatestProtocolVersion);
-    EXPECT_EQ(info.server_info.name, "calc");
-    ASSERT_TRUE(info.capabilities.tools.has_value());
-    ASSERT_TRUE(info.instructions.has_value());
-    EXPECT_EQ(*info.instructions, "A tiny arithmetic server.");
+    QCOMPARE(info.protocol_version, std::string{mcp::kLatestProtocolVersion});
+    QCOMPARE(info.server_info.name, std::string{"calc"});
+    QVERIFY(info.capabilities.tools.has_value());
+    QVERIFY(info.instructions.has_value());
+    QCOMPARE(*info.instructions, std::string{"A tiny arithmetic server."});
 
     client.disconnect();
 }
 
-TEST(Integration, ListToolsReturnsRegisteredTools) {
+void Integration::ListToolsReturnsRegisteredTools() {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -132,16 +151,16 @@ TEST(Integration, ListToolsReturnsRegisteredTools) {
     (void)client.initialize().get();
 
     auto list = client.list_tools().get();
-    ASSERT_EQ(list.tools.size(), 2u);
+    QCOMPARE(list.tools.size(), std::size_t{2});
     std::vector<std::string> names;
     for (const auto& t : list.tools) names.push_back(t.name);
     std::sort(names.begin(), names.end());
-    EXPECT_EQ(names, (std::vector<std::string>{"add", "divide"}));
+    QCOMPARE(names, (std::vector<std::string>{"add", "divide"}));
 
     client.disconnect();
 }
 
-TEST(Integration, CallToolReturnsTextContent) {
+void Integration::CallToolReturnsTextContent() {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -149,17 +168,17 @@ TEST(Integration, CallToolReturnsTextContent) {
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    auto out = client.call_tool("add", json{{"a", 2.0}, {"b", 3.5}}).get();
-    ASSERT_EQ(out.content.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<mcp::TextContent>(out.content[0]));
+    auto out = client.call_tool("add", QJsonObject{{"a", 2.0}, {"b", 3.5}}).get();
+    QCOMPARE(out.content.size(), std::size_t{1});
+    QVERIFY(std::holds_alternative<mcp::TextContent>(out.content[0]));
     const auto& text = std::get<mcp::TextContent>(out.content[0]).text;
-    EXPECT_NE(text.find("5.5"), std::string::npos);
-    EXPECT_FALSE(out.is_error.value_or(false));
+    QVERIFY(text.find("5.5") != std::string::npos);
+    QVERIFY(!out.is_error.value_or(false));
 
     client.disconnect();
 }
 
-TEST(Integration, ToolErrorIsReportedViaIsError) {
+void Integration::ToolErrorIsReportedViaIsError() {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -167,17 +186,17 @@ TEST(Integration, ToolErrorIsReportedViaIsError) {
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    auto out = client.call_tool("divide", json{{"a", 1.0}, {"b", 0.0}}).get();
-    ASSERT_TRUE(out.is_error.has_value());
-    EXPECT_TRUE(*out.is_error);
-    ASSERT_EQ(out.content.size(), 1u);
-    EXPECT_NE(std::get<mcp::TextContent>(out.content[0]).text.find("division by zero"),
-              std::string::npos);
+    auto out = client.call_tool("divide", QJsonObject{{"a", 1.0}, {"b", 0.0}}).get();
+    QVERIFY(out.is_error.has_value());
+    QVERIFY(*out.is_error);
+    QCOMPARE(out.content.size(), std::size_t{1});
+    QVERIFY(std::get<mcp::TextContent>(out.content[0]).text.find("division by zero") !=
+            std::string::npos);
 
     client.disconnect();
 }
 
-TEST(Integration, MissingToolMapsToMethodNotFound) {
+void Integration::MissingToolMapsToMethodNotFound() {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -188,15 +207,15 @@ TEST(Integration, MissingToolMapsToMethodNotFound) {
     auto fut = client.call_tool("does-not-exist");
     try {
         (void)fut.get();
-        FAIL() << "expected Error";
+        QFAIL("expected Error");
     } catch (const mcp::Error& e) {
-        EXPECT_EQ(e.code(), mcp::error_code::method_not_found);
+        QCOMPARE(e.code(), mcp::error_code::method_not_found);
     }
 
     client.disconnect();
 }
 
-TEST(Integration, RequestsBeforeInitializeAreRejected) {
+void Integration::RequestsBeforeInitializeAreRejected() {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -206,15 +225,15 @@ TEST(Integration, RequestsBeforeInitializeAreRejected) {
     auto fut = client.list_tools();
     try {
         (void)fut.get();
-        FAIL() << "expected Error before initialize";
+        QFAIL("expected Error before initialize");
     } catch (const mcp::Error& e) {
-        EXPECT_EQ(e.code(), mcp::error_code::invalid_request);
+        QCOMPARE(e.code(), mcp::error_code::invalid_request);
     }
 
     client.disconnect();
 }
 
-TEST(Integration, ConcurrentToolCallsAllResolve) {
+void Integration::ConcurrentToolCallsAllResolve() {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -226,29 +245,39 @@ TEST(Integration, ConcurrentToolCallsAllResolve) {
     std::vector<std::future<mcp::CallToolResult>> futs;
     futs.reserve(N);
     for (int i = 0; i < N; ++i) {
-        futs.push_back(client.call_tool("add", json{{"a", i}, {"b", 1}}));
+        futs.push_back(client.call_tool("add", QJsonObject{{"a", i}, {"b", 1}}));
     }
     for (int i = 0; i < N; ++i) {
         auto r = futs[i].get();
-        EXPECT_FALSE(r.is_error.value_or(false));
+        QVERIFY(!r.is_error.value_or(false));
     }
 
     client.disconnect();
 }
 
-TEST(Integration, ServerInfoCachedOnInitialize) {
+void Integration::ServerInfoCachedOnInitialize() {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
     mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0.1.0"} };
     client.connect(std::move(p.a));
-    EXPECT_FALSE(client.server().has_value());
+    QVERIFY(!client.server().has_value());
     (void)client.initialize().get();
     auto cached = client.server();
-    ASSERT_TRUE(cached.has_value());
-    EXPECT_EQ(cached->server_info.name, "calc");
+    QVERIFY(cached.has_value());
+    QCOMPARE(cached->server_info.name, std::string{"calc"});
     client.disconnect();
-    EXPECT_FALSE(client.server().has_value());
+    QVERIFY(!client.server().has_value());
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        Integration suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "server_client_integration_test.moc"

@@ -12,9 +12,11 @@
 #include "mcp/protocol.hpp"
 #include "mcp/session.hpp"
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
 
-#include <nlohmann/json.hpp>
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <chrono>
 #include <future>
@@ -25,7 +27,7 @@
 
 namespace {
 
-using nlohmann::json;
+using mcp::Json;
 using namespace std::chrono_literals;
 
 // Helper that builds two Sessions back-to-back via in-memory pair.
@@ -45,213 +47,236 @@ Pair make_session_pair(mcp::Session::Options opts = {}) {
     return sp;
 }
 
+}  // namespace
+
 // -------------------------------------------------------------------------
 
-TEST(Session, RequestRoundTripThroughHandler) {
+class Session : public QObject {
+    Q_OBJECT
+private slots:
+    void RequestRoundTripThroughHandler();
+    void NotificationDeliveredToHandler();
+    void MissingHandlerYieldsMethodNotFound();
+    void HandlerThrowingMcpErrorPropagates();
+    void HandlerThrowingStdExceptionMapsToInternal();
+    void FallbackHandlerCatchesUnknownMethods();
+    void ManyConcurrentRequestsAllResolveCorrectly();
+    void RequestTimeoutFiresErrorOnFuture();
+    void ClosingCancelsPendingRequests();
+    void IdsForDifferentRequestsAreDistinct();
+    void IsOpenReflectsLifecycle();
+    void DoubleCloseDoesNotLeaveJoinableThread();
+    void OnClosedHookFiresWhenPeerCloses();
+    void MalformedFrameIsDropped();
+};
+
+void Session::RequestRoundTripThroughHandler() {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("echo", [](const json& params) -> json {
-        return json{{"echoed", params}};
+    sp.b->set_request_handler("echo", [](const Json& params) -> Json {
+        return QJsonObject{{"echoed", params}};
     });
 
-    auto fut = sp.a->send_request("echo", json{{"hi", 1}}, 2s);
+    auto fut = sp.a->send_request("echo", QJsonObject{{"hi", 1}}, 2s);
     auto result = fut.get();
-    EXPECT_EQ(result["echoed"]["hi"], 1);
+    QCOMPARE(result["echoed"]["hi"], mcp::test::jv(1));
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, NotificationDeliveredToHandler) {
+void Session::NotificationDeliveredToHandler() {
     auto sp = make_session_pair();
 
-    std::promise<json> got;
+    std::promise<Json> got;
     auto fut = got.get_future();
 
-    sp.b->set_notification_handler("ping", [&](const json& params) {
+    sp.b->set_notification_handler("ping", [&](const Json& params) {
         got.set_value(params);
     });
 
-    EXPECT_FALSE(sp.a->send_notification("ping", json{{"k", "v"}}));
+    QVERIFY(!sp.a->send_notification("ping", QJsonObject{{"k", "v"}}));
 
     auto p = fut.get();
-    EXPECT_EQ(p["k"], "v");
+    QCOMPARE(p["k"], mcp::test::jv("v"));
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, MissingHandlerYieldsMethodNotFound) {
+void Session::MissingHandlerYieldsMethodNotFound() {
     auto sp = make_session_pair();
-    auto fut = sp.a->send_request("nope", nullptr, 2s);
-    EXPECT_THROW({
-        try { (void)fut.get(); }
-        catch (const mcp::Error& e) {
-            EXPECT_EQ(e.code(), mcp::error_code::method_not_found);
+    auto fut = sp.a->send_request("nope", Json{}, 2s);
+    QVERIFY_EXCEPTION_THROWN(([&] {
+        try {
+            (void)fut.get();
+        } catch (const mcp::Error& e) {
+            QCOMPARE(e.code(), mcp::error_code::method_not_found);
             throw;
         }
-    }, mcp::Error);
+    }()), mcp::Error);
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, HandlerThrowingMcpErrorPropagates) {
+void Session::HandlerThrowingMcpErrorPropagates() {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("explode", [](const json&) -> json {
-        throw mcp::Error{mcp::error_code::invalid_params, "bad", json{{"why", "missing"}}};
+    sp.b->set_request_handler("explode", [](const Json&) -> Json {
+        throw mcp::Error{mcp::error_code::invalid_params, "bad",
+                         QJsonObject{{"why", "missing"}}};
     });
 
-    auto fut = sp.a->send_request("explode", nullptr, 2s);
+    auto fut = sp.a->send_request("explode", Json{}, 2s);
     try {
         (void)fut.get();
-        FAIL() << "expected Error";
+        QFAIL("expected Error");
     } catch (const mcp::Error& e) {
-        EXPECT_EQ(e.code(), mcp::error_code::invalid_params);
-        EXPECT_EQ(e.message(), "bad");
-        EXPECT_EQ(e.data()["why"], "missing");
+        QCOMPARE(e.code(), mcp::error_code::invalid_params);
+        QCOMPARE(e.message(), std::string{"bad"});
+        QCOMPARE(e.data()["why"], mcp::test::jv("missing"));
     }
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, HandlerThrowingStdExceptionMapsToInternal) {
+void Session::HandlerThrowingStdExceptionMapsToInternal() {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("explode", [](const json&) -> json {
+    sp.b->set_request_handler("explode", [](const Json&) -> Json {
         throw std::runtime_error{"boom"};
     });
 
-    auto fut = sp.a->send_request("explode", nullptr, 2s);
+    auto fut = sp.a->send_request("explode", Json{}, 2s);
     try {
         (void)fut.get();
-        FAIL() << "expected Error";
+        QFAIL("expected Error");
     } catch (const mcp::Error& e) {
-        EXPECT_EQ(e.code(), mcp::error_code::internal_error);
+        QCOMPARE(e.code(), mcp::error_code::internal_error);
     }
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, FallbackHandlerCatchesUnknownMethods) {
+void Session::FallbackHandlerCatchesUnknownMethods() {
     auto sp = make_session_pair();
-    sp.b->set_fallback_request_handler([](const json&) -> json {
-        return json{{"caught_by", "fallback"}};
+    sp.b->set_fallback_request_handler([](const Json&) -> Json {
+        return QJsonObject{{"caught_by", "fallback"}};
     });
 
-    auto fut = sp.a->send_request("anything", nullptr, 2s);
+    auto fut = sp.a->send_request("anything", Json{}, 2s);
     auto r = fut.get();
-    EXPECT_EQ(r["caught_by"], "fallback");
+    QCOMPARE(r["caught_by"], mcp::test::jv("fallback"));
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, ManyConcurrentRequestsAllResolveCorrectly) {
+void Session::ManyConcurrentRequestsAllResolveCorrectly() {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("double", [](const json& p) -> json {
-        return json{{"r", p["x"].get<int>() * 2}};
+    sp.b->set_request_handler("double", [](const Json& p) -> Json {
+        return QJsonObject{{"r", mcp::from_json<int>(p["x"]) * 2}};
     });
 
     constexpr int N = 200;
-    std::vector<std::future<json>> futs;
+    std::vector<std::future<Json>> futs;
     futs.reserve(N);
     for (int i = 0; i < N; ++i) {
-        futs.push_back(sp.a->send_request("double", json{{"x", i}}, 5s));
+        futs.push_back(sp.a->send_request("double", QJsonObject{{"x", i}}, 5s));
     }
     for (int i = 0; i < N; ++i) {
         auto r = futs[i].get();
-        EXPECT_EQ(r["r"], i * 2);
+        QCOMPARE(r["r"], mcp::test::jv(i * 2));
     }
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, RequestTimeoutFiresErrorOnFuture) {
+void Session::RequestTimeoutFiresErrorOnFuture() {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("slow", [](const json&) -> json {
+    sp.b->set_request_handler("slow", [](const Json&) -> Json {
         std::this_thread::sleep_for(2s);
         return {};
     });
 
-    auto fut = sp.a->send_request("slow", nullptr, 100ms);
+    auto fut = sp.a->send_request("slow", Json{}, 100ms);
     try {
         (void)fut.get();
-        FAIL() << "expected timeout error";
+        QFAIL("expected timeout error");
     } catch (const mcp::Error& e) {
-        EXPECT_EQ(e.code(), mcp::error_code::internal_error);
-        EXPECT_NE(e.message().find("timed out"), std::string::npos);
+        QCOMPARE(e.code(), mcp::error_code::internal_error);
+        QVERIFY(e.message().find("timed out") != std::string::npos);
     }
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, ClosingCancelsPendingRequests) {
+void Session::ClosingCancelsPendingRequests() {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("hang", [](const json&) -> json {
+    sp.b->set_request_handler("hang", [](const Json&) -> Json {
         std::this_thread::sleep_for(300ms);
         return {};
     });
 
-    auto fut = sp.a->send_request("hang", nullptr, 30s);
+    auto fut = sp.a->send_request("hang", Json{}, 30s);
     sp.a->close();
     try {
         (void)fut.get();
-        FAIL() << "expected error after close";
+        QFAIL("expected error after close");
     } catch (const mcp::Error&) {
-        SUCCEED();
+        // expected: closing the session rejects pending requests
     }
 
     sp.b->close();
 }
 
-TEST(Session, IdsForDifferentRequestsAreDistinct) {
+void Session::IdsForDifferentRequestsAreDistinct() {
     auto sp = make_session_pair();
     // Two requests are dispatched on detached workers, so the handler
     // can run on either thread first — the bookkeeping must be
     // thread-safe.
     std::mutex               ids_mu;
     std::vector<std::string> ids;
-    sp.b->set_request_handler("tag", [&](const json& p) -> json {
+    sp.b->set_request_handler("tag", [&](const Json& p) -> Json {
         std::lock_guard<std::mutex> lk(ids_mu);
-        ids.push_back(p["id"].get<std::string>());
+        ids.push_back(mcp::from_json<std::string>(p["id"]));
         return {};
     });
-    auto f1 = sp.a->send_request("tag", json{{"id", "x"}}, 2s);
-    auto f2 = sp.a->send_request("tag", json{{"id", "y"}}, 2s);
+    auto f1 = sp.a->send_request("tag", QJsonObject{{"id", "x"}}, 2s);
+    auto f2 = sp.a->send_request("tag", QJsonObject{{"id", "y"}}, 2s);
     f1.get();
     f2.get();
     {
         std::lock_guard<std::mutex> lk(ids_mu);
-        EXPECT_EQ(ids.size(), 2u);
+        QCOMPARE(ids.size(), std::size_t{2});
     }
 
     sp.a->close();
     sp.b->close();
 }
 
-TEST(Session, IsOpenReflectsLifecycle) {
+void Session::IsOpenReflectsLifecycle() {
     auto sp = make_session_pair();
-    EXPECT_TRUE(sp.a->is_open());
+    QVERIFY(sp.a->is_open());
     sp.a->close();
-    EXPECT_FALSE(sp.a->is_open());
+    QVERIFY(!sp.a->is_open());
     sp.b->close();
 }
 
-TEST(Session, DoubleCloseDoesNotLeaveJoinableThread) {
+void Session::DoubleCloseDoesNotLeaveJoinableThread() {
     // Regression: close() short-circuiting once closed_ was true left the
     // timeout thread joinable, so ~Session called std::terminate from
     // ~thread. Both close() callers must run to completion.
     auto sp = make_session_pair();
     sp.a->close();
     sp.a->close();           // explicit double close
-    SUCCEED();               // arriving here without terminate is the test
+    // arriving here without terminate is the test
     sp.b->close();
 }
 
-TEST(Session, OnClosedHookFiresWhenPeerCloses) {
+void Session::OnClosedHookFiresWhenPeerCloses() {
     auto p = mcp::test::make_in_memory_pair();
     auto a = std::make_unique<mcp::Session>(std::move(p.a));
     auto b = std::make_unique<mcp::Session>(std::move(p.b));
@@ -262,12 +287,12 @@ TEST(Session, OnClosedHookFiresWhenPeerCloses) {
     b->start();
 
     b->close();
-    EXPECT_EQ(got_close.get_future().wait_for(2s), std::future_status::ready);
+    QCOMPARE(got_close.get_future().wait_for(2s), std::future_status::ready);
 
     a->close();
 }
 
-TEST(Session, MalformedFrameIsDropped) {
+void Session::MalformedFrameIsDropped() {
     auto p = mcp::test::make_in_memory_pair();
     auto a = std::make_unique<mcp::Session>(std::move(p.a));
     // Sneak the raw end onto the b-side so we can poke garbage into a's
@@ -277,19 +302,29 @@ TEST(Session, MalformedFrameIsDropped) {
     a->start();
 
     auto invalid = "{not json";
-    EXPECT_FALSE(b_transport.send(invalid));
+    QVERIFY(!b_transport.send(invalid));
 
     // Subsequent valid frames still get through.
-    std::promise<json> got;
+    std::promise<Json> got;
     auto f = got.get_future();
-    a->set_notification_handler("hi", [&](const json& params) {
+    a->set_notification_handler("hi", [&](const Json& params) {
         got.set_value(params);
     });
-    EXPECT_FALSE(b_transport.send(R"({"jsonrpc":"2.0","method":"hi","params":{"k":1}})"));
-    EXPECT_EQ(f.get()["k"], 1);
+    QVERIFY(!b_transport.send(R"({"jsonrpc":"2.0","method":"hi","params":{"k":1}})"));
+    QCOMPARE(f.get()["k"], mcp::test::jv(1));
 
     a->close();
     b_transport.close();
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        Session suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "session_test.moc"

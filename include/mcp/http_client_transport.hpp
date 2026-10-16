@@ -147,11 +147,6 @@ private:
 
     Options opts_;
 
-    // Parsed url components — split once at construction so each send
-    // doesn't re-parse.
-    std::string scheme_host_port_;  // e.g. "http://localhost:8080"
-    std::string path_;              // e.g. "/mcp"
-
     std::atomic<bool> started_{false};
     std::atomic<bool> closed_{false};
     std::atomic<bool> close_fired_{false};
@@ -208,9 +203,9 @@ private:
     ErrorCallback                 on_error_;
     CloseCallback                 on_close_;
 
-    // pImpl-style holder for the cpp-httplib Client, kept opaque from
-    // the public header so consumers don't need cpp-httplib's
-    // include path on their own translation units.
+    // pImpl-style holder for the Qt network state (parsed QUrl, etc.),
+    // kept opaque from the public header so consumers don't need
+    // QtNetwork's include path on their own translation units.
     struct ClientImpl;
     std::unique_ptr<ClientImpl>   impl_;
 };

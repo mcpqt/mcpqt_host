@@ -7,7 +7,7 @@
 // Responsibilities:
 //   - Parse inbound raw frames into JsonRpcMessage and route them.
 //   - Correlate outbound requests with inbound responses by id, returning
-//     a std::future<nlohmann::json> that resolves with the result or
+//     a std::future<Json> that resolves with the result or
 //     throws mcp::Error on failure.
 //   - Generate fresh, monotonically-increasing request ids.
 //   - Apply per-request timeouts; an expired request raises Error with
@@ -27,10 +27,9 @@
 #pragma once
 
 #include "mcp/error.hpp"
+#include "mcp/json.hpp"
 #include "mcp/protocol.hpp"
 #include "mcp/transport.hpp"
-
-#include <nlohmann/json.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -54,11 +53,11 @@ public:
     /// Returns the result JSON (which is wrapped into a JSON-RPC response).
     /// Throwing `mcp::Error` reports back to the peer as a JSON-RPC error.
     /// Throwing anything else is reported as InternalError.
-    using RequestHandler = std::function<nlohmann::json(const nlohmann::json& params)>;
+    using RequestHandler = std::function<Json(const Json& params)>;
 
     /// Handler invoked when a peer sends a notification with `method`.
     /// Exceptions are caught and logged.
-    using NotificationHandler = std::function<void(const nlohmann::json& params)>;
+    using NotificationHandler = std::function<void(const Json& params)>;
 
     struct Options {
         std::chrono::milliseconds default_request_timeout{30 * 1000};  // 30s
@@ -113,9 +112,9 @@ public:
 
     /// Send a JSON-RPC request and return a future for its result.
     /// `timeout` of zero means use `Options::default_request_timeout`.
-    [[nodiscard]] std::future<nlohmann::json>
+    [[nodiscard]] std::future<Json>
     send_request(std::string                method,
-                 nlohmann::json             params  = nullptr,
+                 Json             params  = {},
                  std::chrono::milliseconds  timeout = std::chrono::milliseconds{0});
 
     /// Send a JSON-RPC request and return a future for a *typed* result.
@@ -129,14 +128,14 @@ public:
     template <class T>
     [[nodiscard]] std::future<T>
     send_request_for(std::string               method,
-                     nlohmann::json            params,
-                     std::function<T(nlohmann::json)> convert,
+                     Json            params,
+                     std::function<T(Json)> convert,
                      std::chrono::milliseconds timeout = std::chrono::milliseconds{0}) {
         auto pr  = std::make_shared<std::promise<T>>();
         auto fut = pr->get_future();
         Pending pending;
         pending.resolve =
-            [pr, convert = std::move(convert)](nlohmann::json j) {
+            [pr, convert = std::move(convert)](Json j) {
                 try {
                     pr->set_value(convert(std::move(j)));
                 } catch (...) {
@@ -154,12 +153,12 @@ public:
     /// future resolves to void on success and throws on error.
     [[nodiscard]] std::future<void>
     send_request_void(std::string               method,
-                      nlohmann::json            params  = nullptr,
+                      Json            params  = {},
                       std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
 
     /// Send a JSON-RPC notification (fire-and-forget).
     std::error_code send_notification(std::string    method,
-                                      nlohmann::json params = nullptr);
+                                      Json params = {});
 
     [[nodiscard]] bool is_open() const noexcept {
         return started_.load(std::memory_order_acquire) &&
@@ -183,7 +182,7 @@ private:
     /// `resolve` / `reject` is invoked, always *outside* `pending_mu_`
     /// (resolving a future can wake a waiter that re-enters the Session).
     struct Pending {
-        std::function<void(nlohmann::json)>     resolve;
+        std::function<void(Json)>     resolve;
         std::function<void(std::exception_ptr)> reject;
         std::chrono::steady_clock::time_point   deadline;
     };
@@ -192,7 +191,7 @@ private:
     /// closed session, duplicate id, or transport failure it invokes
     /// `pending.reject` (after releasing the lock) instead.
     void register_pending(std::string    method,
-                          nlohmann::json params,
+                          Json params,
                           Pending        pending,
                           std::chrono::milliseconds timeout);
 

@@ -4,8 +4,13 @@
 
 #include "mcp/log.hpp"
 
-// cpp-httplib lives entirely in this TU; the public header is opaque.
-#include <httplib.h>
+#include <QByteArray>
+#include <QEventLoop>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QString>
+#include <QUrl>
 
 #include <atomic>
 #include <chrono>
@@ -26,33 +31,14 @@ namespace mcp {
 // =====================================================================
 
 struct HttpClientTransport::ClientImpl {
-    explicit ClientImpl(const std::string& base)
-        : client_post(base), client_get(base) {}
-    // cpp-httplib's Client is not safe to use concurrently on the
-    // same instance. We need a long-lived GET in parallel with
-    // many POSTs, so each direction has its own client.
-    httplib::Client client_post;
-    httplib::Client client_get;
+    explicit ClientImpl(QUrl u) : url(std::move(u)) {}
+    // Fully-parsed endpoint URL. QNetworkAccessManager is created
+    // per-operation (on the thread that owns the operation), so we
+    // don't hold long-lived Qt objects here — just the URL.
+    QUrl url;
 };
 
 namespace {
-
-// Split a URL into the form cpp-httplib accepts (scheme://host[:port])
-// and a path. Returns {scheme_host_port, path}. Path is empty for "/".
-std::pair<std::string, std::string> split_url(std::string_view url) {
-    // Find scheme delimiter
-    const auto scheme_end = url.find("://");
-    if (scheme_end == std::string_view::npos) {
-        throw std::invalid_argument("HttpClientTransport: URL must contain a scheme (http:// or https://)");
-    }
-    const auto authority_start = scheme_end + 3;
-    const auto path_start = url.find('/', authority_start);
-    if (path_start == std::string_view::npos) {
-        return {std::string{url}, std::string{"/"}};
-    }
-    return {std::string{url.substr(0, path_start)},
-            std::string{url.substr(path_start)}};
-}
 
 /// One SSE event distilled out of a buffer. We carry the
 /// MCP-relevant fields plus side-channel info (`id`, `retry`) so
@@ -132,6 +118,34 @@ void drain_sse(std::string& buf, Callback&& cb) {
     }
 }
 
+// Attach the headers common to every outbound request: protocol
+// version, negotiated session id, bearer token, resumability cursor,
+// and caller-supplied extras.
+void set_common_headers(QNetworkRequest&                             req,
+                        const HttpClientTransport::Options&          opts,
+                        const std::optional<std::string>&            sid,
+                        const std::string&                           access_token,
+                        const std::string&                           last_event_id) {
+    req.setRawHeader("MCP-Protocol-Version",
+                     QByteArray::fromStdString(opts.protocol_version));
+    if (sid.has_value()) {
+        req.setRawHeader("Mcp-Session-Id", QByteArray::fromStdString(*sid));
+    }
+    if (!access_token.empty()) {
+        req.setRawHeader("Authorization",
+                         QByteArray("Bearer ") +
+                             QByteArray::fromStdString(access_token));
+    }
+    if (!last_event_id.empty()) {
+        req.setRawHeader("Last-Event-ID",
+                         QByteArray::fromStdString(last_event_id));
+    }
+    for (const auto& [k, v] : opts.extra_headers) {
+        req.setRawHeader(QByteArray::fromStdString(k),
+                         QByteArray::fromStdString(v));
+    }
+}
+
 }  // namespace
 
 // =====================================================================
@@ -139,9 +153,13 @@ void drain_sse(std::string& buf, Callback&& cb) {
 // =====================================================================
 
 HttpClientTransport::HttpClientTransport(Options opts) : opts_(std::move(opts)) {
-    auto split = split_url(opts_.url);
-    scheme_host_port_ = std::move(split.first);
-    path_             = std::move(split.second);
+    QUrl url{QString::fromStdString(opts_.url)};
+    if (!url.isValid() || url.scheme().isEmpty()) {
+        throw std::invalid_argument(
+            "HttpClientTransport: URL must contain a scheme "
+            "(http:// or https://)");
+    }
+    impl_ = std::make_unique<ClientImpl>(std::move(url));
     if (opts_.session_id.has_value()) {
         session_id_ = *opts_.session_id;
     }
@@ -151,22 +169,6 @@ HttpClientTransport::HttpClientTransport(Options opts) : opts_(std::move(opts)) 
     if (opts_.access_token.has_value()) {
         access_token_ = *opts_.access_token;
     }
-    impl_ = std::make_unique<ClientImpl>(scheme_host_port_);
-    const auto secs = std::chrono::duration_cast<std::chrono::seconds>(
-        opts_.connect_timeout).count();
-    const auto usecs = (opts_.connect_timeout.count() % 1000) * 1000;
-    const auto rt_secs = std::chrono::duration_cast<std::chrono::seconds>(
-        opts_.request_timeout).count();
-    const auto rt_usecs = (opts_.request_timeout.count() % 1000) * 1000;
-
-    impl_->client_post.set_connection_timeout(secs, usecs);
-    impl_->client_post.set_read_timeout(rt_secs, rt_usecs);
-    impl_->client_post.set_write_timeout(rt_secs, rt_usecs);
-    impl_->client_get.set_connection_timeout(secs, usecs);
-    // GET stream stays open indefinitely; let it sit on the read
-    // path without timing out. Heartbeats keep it alive.
-    impl_->client_get.set_read_timeout(60 * 60, 0);
-    impl_->client_get.set_write_timeout(rt_secs, rt_usecs);
 }
 
 HttpClientTransport::~HttpClientTransport() { close(); }
@@ -208,8 +210,7 @@ void HttpClientTransport::close() {
     // Spec: a client that no longer needs a session SHOULD send an
     // HTTP DELETE on the MCP path so the server can free per-session
     // state immediately. Best-effort: failure here is fine — close()
-    // always proceeds. Issue this BEFORE we stop the cpp-httplib
-    // clients below.
+    // always proceeds.
     std::optional<std::string> sid;
     {
         std::lock_guard<std::mutex> lk(session_id_mu_);
@@ -217,23 +218,20 @@ void HttpClientTransport::close() {
     }
     if (sid.has_value() && !sid->empty() && impl_) {
         try {
-            httplib::Headers headers;
-            headers.emplace("MCP-Protocol-Version", opts_.protocol_version);
-            headers.emplace("Mcp-Session-Id",       *sid);
+            std::string token;
             {
                 std::lock_guard<std::mutex> lk(auth_mu_);
-                if (!access_token_.empty()) {
-                    headers.emplace("Authorization", "Bearer " + access_token_);
-                }
+                token = access_token_;
             }
-            for (const auto& [k, v] : opts_.extra_headers) headers.emplace(k, v);
-            // Use a fresh client so we don't race with whatever
-            // post/get clients may already have in flight.
-            httplib::Client cli{scheme_host_port_};
-            cli.set_connection_timeout(2, 0);
-            cli.set_read_timeout(2, 0);
-            cli.set_write_timeout(2, 0);
-            (void)cli.Delete(path_.c_str(), headers);
+            QNetworkAccessManager nam;
+            QNetworkRequest req(impl_->url);
+            set_common_headers(req, opts_, sid, token, "");
+            req.setTransferTimeout(2000);
+            QNetworkReply* reply = nam.deleteResource(req);
+            QEventLoop loop;
+            QObject::connect(reply, &QNetworkReply::finished,
+                             &loop, &QEventLoop::quit);
+            loop.exec();
         } catch (...) {
             // best-effort; ignore
         }
@@ -246,10 +244,6 @@ void HttpClientTransport::close() {
     {
         std::lock_guard<std::mutex> lk(session_id_mu_);
         session_id_cv_.notify_all();
-    }
-    if (impl_) {
-        impl_->client_post.stop();
-        impl_->client_get.stop();
     }
 
     if (worker_.joinable()) worker_.join();
@@ -314,10 +308,11 @@ void HttpClientTransport::worker_loop() {
     // Each outbound frame is processed on its own thread so a slow
     // POST (e.g. one held open by the server while it's awaiting a
     // sampling reply that needs to come back through us) doesn't
-    // serialise with later sends. The host's POST handler can hold
-    // a request open for tens of seconds; if the worker were
-    // single-threaded, replying from inside that window would
-    // deadlock.
+    // serialise with later sends. QNetworkAccessManager is asynchronous
+    // and would allow one manager to multiplex these, but keeping the
+    // per-send thread preserves the exact concurrency semantics the
+    // transport had before (and each thread drives its own QNAM +
+    // QEventLoop).
     while (true) {
         std::string frame;
         {
@@ -343,64 +338,68 @@ void HttpClientTransport::worker_loop() {
 }
 
 void HttpClientTransport::process_send(std::string frame) {
-    httplib::Headers headers;
-    headers.emplace("Accept", "application/json, text/event-stream");
-    headers.emplace("MCP-Protocol-Version", opts_.protocol_version);
+    std::optional<std::string> sid;
     {
         std::lock_guard<std::mutex> lk(session_id_mu_);
-        if (session_id_.has_value()) headers.emplace("Mcp-Session-Id", *session_id_);
+        sid = session_id_;
     }
+    std::string token;
     {
         std::lock_guard<std::mutex> lk(auth_mu_);
-        if (!access_token_.empty()) {
-            headers.emplace("Authorization", "Bearer " + access_token_);
-        }
+        token = access_token_;
     }
-    for (const auto& [k, v] : opts_.extra_headers) headers.emplace(k, v);
 
     // Each send runs on its own thread (worker_loop dispatches), so
-    // we use a per-call Client instance — cpp-httplib's Client is not
-    // safe under concurrent use of the same instance, and using one
-    // shared instance under a mutex would re-introduce the
-    // serialisation deadlock we were just fighting.
-    httplib::Client cli{scheme_host_port_};
-    const auto secs = std::chrono::duration_cast<std::chrono::seconds>(
-        opts_.connect_timeout).count();
-    const auto usecs = (opts_.connect_timeout.count() % 1000) * 1000;
-    const auto rt_secs = std::chrono::duration_cast<std::chrono::seconds>(
-        opts_.request_timeout).count();
-    const auto rt_usecs = (opts_.request_timeout.count() % 1000) * 1000;
-    cli.set_connection_timeout(secs, usecs);
-    cli.set_read_timeout(rt_secs, rt_usecs);
-    cli.set_write_timeout(rt_secs, rt_usecs);
-    auto res = cli.Post(path_.c_str(), headers, frame, "application/json");
-    if (!res) {
-        deliver_error(std::make_error_code(std::errc::io_error));
-        return;
+    // we create a per-call QNetworkAccessManager + event loop. This
+    // keeps the "many concurrent POSTs, no serialisation" property
+    // the transport relies on.
+    QNetworkAccessManager nam;
+    QNetworkRequest req(impl_->url);
+    req.setHeader(QNetworkRequest::ContentTypeHeader,
+                  QStringLiteral("application/json"));
+    req.setRawHeader("Accept", "application/json, text/event-stream");
+    set_common_headers(req, opts_, sid, token, "");
+    if (opts_.request_timeout.count() > 0) {
+        req.setTransferTimeout(static_cast<int>(opts_.request_timeout.count()));
     }
+
+    QNetworkReply* reply =
+        nam.post(req, QByteArray(frame.data(), static_cast<qsizetype>(frame.size())));
+    QEventLoop loop;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    const int status =
+        reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
     // Capture session id if the server set one. Notify the GET
     // worker so it can issue its first GET right away, instead of
     // sleeping out a poll interval.
-    if (auto it = res->headers.find("Mcp-Session-Id");
-        it != res->headers.end() && !it->second.empty()) {
+    const QByteArray sid_hdr = reply->rawHeader("Mcp-Session-Id");
+    if (!sid_hdr.isEmpty()) {
         bool first_set = false;
         {
             std::lock_guard<std::mutex> lk(session_id_mu_);
             first_set = !session_id_.has_value();
-            session_id_ = it->second;
+            session_id_ = sid_hdr.toStdString();
         }
         if (first_set) session_id_cv_.notify_all();
     }
 
-    if (res->status == 202) {
+    // A status of 0 means the request never got an HTTP response
+    // (connection refused, timeout, TLS failure, ...).
+    if (status == 0) {
+        deliver_error(std::make_error_code(std::errc::io_error));
+        return;
+    }
+    if (status == 202) {
         // Empty 202 Accepted — server absorbed a notification or response.
         // A successful response also re-arms the on_unauthorized
         // callback so the next 401-batch can fire it again.
         auth_callback_armed_.store(true, std::memory_order_release);
         return;
     }
-    if (res->status == 401 || res->status == 403) {
+    if (status == 401 || status == 403) {
         // Surface OAuth challenge to the application via the
         // optional callback. The transport itself can't drive the
         // OAuth dance; the application either updates `access_token`
@@ -410,34 +409,30 @@ void HttpClientTransport::process_send(std::string frame) {
         // Many in-flight POSTs hitting a 401 batch would otherwise
         // each call the callback, racing the application's refresh.
         // Fire ONCE per batch — re-arm on the next 2xx.
-        std::string challenge;
-        if (auto it = res->headers.find("WWW-Authenticate");
-            it != res->headers.end()) {
-            challenge = it->second;
-        }
+        const std::string challenge =
+            reply->rawHeader("WWW-Authenticate").toStdString();
         bool expected = true;
         if (opts_.on_unauthorized &&
             auth_callback_armed_.compare_exchange_strong(
                 expected, false, std::memory_order_acq_rel)) {
-            try { opts_.on_unauthorized(res->status, challenge); }
+            try { opts_.on_unauthorized(status, challenge); }
             catch (...) {}
         }
         deliver_error(std::make_error_code(std::errc::permission_denied));
         return;
     }
-    if (res->status < 200 || res->status >= 300) {
+    if (status < 200 || status >= 300) {
         deliver_error(std::make_error_code(std::errc::protocol_error));
         return;
     }
     // Any 2xx re-arms the dedup flag.
     auth_callback_armed_.store(true, std::memory_order_release);
 
-    auto ct_it = res->headers.find("Content-Type");
-    const std::string ct = (ct_it != res->headers.end()) ? ct_it->second : "";
+    const std::string ct = reply->rawHeader("Content-Type").toStdString();
+    std::string body = reply->readAll().toStdString();
 
     if (ct.find("text/event-stream") != std::string::npos) {
-        std::string buf = res->body;
-        drain_sse(buf, [this](SseEvent se) {
+        drain_sse(body, [this](SseEvent se) {
             // Track the last-seen event id so a future reconnect
             // (typically on the GET stream) can resume via
             // Last-Event-ID.
@@ -449,12 +444,9 @@ void HttpClientTransport::process_send(std::string frame) {
         });
         return;
     }
-    if (ct.find("application/json") != std::string::npos) {
-        deliver_frame(std::move(res->body));
-        return;
-    }
-    // Unknown content-type — try to pass body anyway.
-    deliver_frame(std::move(res->body));
+    // `application/json` and unknown content-types both pass the body
+    // through unchanged.
+    deliver_frame(std::move(body));
 }
 
 // =====================================================================
@@ -482,54 +474,68 @@ void HttpClientTransport::run_get_stream() noexcept {
             sid = session_id_;
         }
         if (!sid.has_value()) continue;
-        std::string buf;
-        httplib::Headers headers;
-        headers.emplace("Accept", "text/event-stream");
-        headers.emplace("MCP-Protocol-Version", opts_.protocol_version);
-        headers.emplace("Mcp-Session-Id", *sid);
+
+        std::string token;
         {
             std::lock_guard<std::mutex> lk(auth_mu_);
-            if (!access_token_.empty()) {
-                headers.emplace("Authorization", "Bearer " + access_token_);
-            }
+            token = access_token_;
         }
         // Resumability: hand back the last event id we saw on this
         // session so the server can replay anything we missed during
         // the disconnect.
+        std::string last_event_id;
         {
             std::lock_guard<std::mutex> lk(get_mu_state_);
-            if (!last_event_id_.empty()) {
-                headers.emplace("Last-Event-ID", last_event_id_);
-            }
+            last_event_id = last_event_id_;
         }
-        for (const auto& [k, v] : opts_.extra_headers) headers.emplace(k, v);
 
-        httplib::Result res;
-        try {
-            res = impl_->client_get.Get(path_.c_str(), headers,
-                [&](const char* data, std::size_t n) {
-                    if (closed_.load(std::memory_order_acquire)) return false;
-                    buf.append(data, n);
-                    drain_sse(buf, [this](SseEvent se) {
-                        if (se.id.has_value() && !se.id->empty()) {
-                            std::lock_guard<std::mutex> lk(get_mu_state_);
-                            last_event_id_ = *se.id;
-                        }
-                        if (se.retry_ms.has_value()) {
-                            std::lock_guard<std::mutex> lk(get_mu_state_);
-                            next_retry_ms_ = se.retry_ms;
-                        }
-                        if (!se.data.empty()) deliver_frame(std::move(se.data));
-                    });
-                    return true;
-                });
-        } catch (...) {
-            res = httplib::Result{};
-        }
+        QNetworkAccessManager nam;
+        QNetworkRequest req(impl_->url);
+        req.setRawHeader("Accept", "text/event-stream");
+        set_common_headers(req, opts_, sid, token, last_event_id);
+        // The GET stream stays open indefinitely; no transfer timeout.
+        // Heartbeats keep it alive.
+
+        std::string buf;
+        QNetworkReply* reply = nam.get(req);
+        QEventLoop loop;
+        QObject::connect(reply, &QNetworkReply::readyRead, &loop, [&] {
+            buf.append(reply->readAll());
+            drain_sse(buf, [this](SseEvent se) {
+                if (se.id.has_value() && !se.id->empty()) {
+                    std::lock_guard<std::mutex> lk(get_mu_state_);
+                    last_event_id_ = *se.id;
+                }
+                if (se.retry_ms.has_value()) {
+                    std::lock_guard<std::mutex> lk(get_mu_state_);
+                    next_retry_ms_ = se.retry_ms;
+                }
+                if (!se.data.empty()) deliver_frame(std::move(se.data));
+            });
+        });
+        QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        loop.exec();
+
+        // Drain anything that arrived after the last readyRead.
+        buf.append(reply->readAll());
+        drain_sse(buf, [this](SseEvent se) {
+            if (se.id.has_value() && !se.id->empty()) {
+                std::lock_guard<std::mutex> lk(get_mu_state_);
+                last_event_id_ = *se.id;
+            }
+            if (se.retry_ms.has_value()) {
+                std::lock_guard<std::mutex> lk(get_mu_state_);
+                next_retry_ms_ = se.retry_ms;
+            }
+            if (!se.data.empty()) deliver_frame(std::move(se.data));
+        });
+
+        const int status =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
         // 405 Method Not Allowed is the spec's way of saying "no
         // server-initiated stream"; retry isn't useful, exit cleanly.
-        if (res && res->status == 405) return;
+        if (status == 405) return;
 
         // 401/403: the access token has expired or been revoked.
         // Without this branch, run_get_stream would busy-retry every
@@ -538,14 +544,11 @@ void HttpClientTransport::run_get_stream() noexcept {
         // and exit; the application is expected to call
         // set_access_token() and start a new transport (or restart
         // this one) to recover.
-        if (res && (res->status == 401 || res->status == 403)) {
+        if (status == 401 || status == 403) {
             if (opts_.on_unauthorized) {
-                std::string challenge;
-                if (auto it = res->headers.find("WWW-Authenticate");
-                    it != res->headers.end()) {
-                    challenge = it->second;
-                }
-                try { opts_.on_unauthorized(res->status, challenge); }
+                const std::string challenge =
+                    reply->rawHeader("WWW-Authenticate").toStdString();
+                try { opts_.on_unauthorized(status, challenge); }
                 catch (...) {}
             }
             return;
@@ -557,7 +560,7 @@ void HttpClientTransport::run_get_stream() noexcept {
         // re-initializes. We don't re-open a GET stream from here:
         // the next initialize will give us a fresh session id, at
         // which point the GET worker re-arms.
-        if (res && res->status == 404) {
+        if (status == 404) {
             {
                 std::lock_guard<std::mutex> lk(session_id_mu_);
                 session_id_.reset();

@@ -33,17 +33,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build tools (Ubuntu)
+      - name: Install build tools + Qt6 (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake \
+            qt6-base-dev qt6-httpserver-dev \
             ${{ matrix.compiler.cc }}
 
-      - name: Install build tools (macOS)
+      - name: Install build tools + Qt6 (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install ninja cmake
+          brew install ninja cmake qt
+
+      - name: Point CMake at Homebrew Qt (macOS)
+        if: runner.os == 'macOS'
+        run: echo "CMAKE_PREFIX_PATH=$(brew --prefix qt)" >> "$GITHUB_ENV"
 
       - name: Configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
@@ -66,6 +71,13 @@ jobs:
         config: [Debug, RelWithDebInfo]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.4.2'
+          modules: 'qthttpserver'
+          cache: true
 
       - name: Configure
         # Warnings-as-errors stays off until the MSVC warning surface has
@@ -91,10 +103,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install build tools + Qt6
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake clang
+          sudo apt-get install -y ninja-build cmake clang \
+            qt6-base-dev qt6-httpserver-dev
 
       # TSan needs the entire std machinery instrumented. With the default
       # libstdc++ (uninstrumented, precompiled) TSan cannot see the atomic
@@ -132,10 +145,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install build tools + Qt6
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake clang
+          sudo apt-get install -y ninja-build cmake clang \
+            qt6-base-dev qt6-httpserver-dev
 
       - name: Configure & build & install
         run: |

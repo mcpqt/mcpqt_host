@@ -34,10 +34,9 @@
 #error "mcp::HttpServerHost requires MCP_ENABLE_HTTP=1 (CMake option MCP_ENABLE_HTTP=ON)"
 #endif
 
+#include "mcp/json.hpp"
 #include "mcp/protocol.hpp"
 #include "mcp/server.hpp"
-
-#include <nlohmann/json.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -138,7 +137,7 @@ public:
         /// metadata endpoint includes `Access-Control-Allow-Origin: *`
         /// because RFC 9728 expects discovery to be publicly readable
         /// cross-origin.
-        std::optional<nlohmann::json> resource_metadata;
+        std::optional<Json> resource_metadata;
 
         /// Public URL of the resource metadata document, embedded in
         /// the WWW-Authenticate challenge so the client can discover
@@ -184,10 +183,10 @@ public:
         /// this pre-destruction hook to close that window.
         ///
         /// Threading contract:
-        ///   - Called on the thread that drives the teardown: an httplib
-        ///     worker thread for the `DELETE` path, and the thread that
-        ///     called `stop()` for the shutdown path. Never the session's
-        ///     own run thread.
+        ///   - Called on the thread that drives the teardown: the
+        ///     QHttpServer thread for the `DELETE` path, and the thread
+        ///     that called `stop()` for the shutdown path. Never the
+        ///     session's own run thread.
         ///   - The host's `sessions` map lock is NOT held during the
         ///     call, so the callback may call back into the host
         ///     (`active_sessions()`, etc.) without deadlocking.

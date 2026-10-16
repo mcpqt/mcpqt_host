@@ -4,6 +4,11 @@ CLAUDE.md
 # Environment variables
 .env
 
+# Documentation
+doc
+doc/
+docs/
+
 # Build Directory (any build*/ variant: build/, build-rel/, build-asan/, …)
 build*/
 

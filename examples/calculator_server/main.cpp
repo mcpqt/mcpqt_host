@@ -40,14 +40,14 @@ extern "C" void on_signal(int) {
     g_shutdown_requested.test_and_set(std::memory_order_release);
 }
 
-nlohmann::json arith_schema() {
-    return {
+mcp::Json arith_schema() {
+    QJsonObject a{{"type", "number"}, {"description", "left operand"}};
+    QJsonObject b{{"type", "number"}, {"description", "right operand"}};
+    QJsonObject props{{"a", a}, {"b", b}};
+    return QJsonObject{
         {"type", "object"},
-        {"properties", {
-            {"a", {{"type", "number"}, {"description", "left operand"}}},
-            {"b", {{"type", "number"}, {"description", "right operand"}}},
-        }},
-        {"required", nlohmann::json::array({"a", "b"})},
+        {"properties", props},
+        {"required", QJsonArray{"a", "b"}},
     };
 }
 
@@ -73,36 +73,40 @@ int main() {
         "multiply, divide). Each takes two numbers `a` and `b`.");
 
     server.tool("add", arith_schema(),
-        [](const nlohmann::json& args) {
-            const double a = args.at("a").get<double>();
-            const double b = args.at("b").get<double>();
+        [](const mcp::Json& args) {
+            const QJsonObject o = args.toObject();
+            const double a = mcp::require<double>(o, "a");
+            const double b = mcp::require<double>(o, "b");
             return text_result(std::to_string(a + b));
         },
         "Add",
         "Returns a + b.");
 
     server.tool("subtract", arith_schema(),
-        [](const nlohmann::json& args) {
-            const double a = args.at("a").get<double>();
-            const double b = args.at("b").get<double>();
+        [](const mcp::Json& args) {
+            const QJsonObject o = args.toObject();
+            const double a = mcp::require<double>(o, "a");
+            const double b = mcp::require<double>(o, "b");
             return text_result(std::to_string(a - b));
         },
         "Subtract",
         "Returns a - b.");
 
     server.tool("multiply", arith_schema(),
-        [](const nlohmann::json& args) {
-            const double a = args.at("a").get<double>();
-            const double b = args.at("b").get<double>();
+        [](const mcp::Json& args) {
+            const QJsonObject o = args.toObject();
+            const double a = mcp::require<double>(o, "a");
+            const double b = mcp::require<double>(o, "b");
             return text_result(std::to_string(a * b));
         },
         "Multiply",
         "Returns a * b.");
 
     server.tool("divide", arith_schema(),
-        [](const nlohmann::json& args) {
-            const double a = args.at("a").get<double>();
-            const double b = args.at("b").get<double>();
+        [](const mcp::Json& args) {
+            const QJsonObject o = args.toObject();
+            const double a = mcp::require<double>(o, "a");
+            const double b = mcp::require<double>(o, "b");
             if (b == 0.0) return text_result("division by zero", /*is_err=*/true);
             return text_result(std::to_string(a / b));
         },

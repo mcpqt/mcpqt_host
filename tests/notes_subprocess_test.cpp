@@ -11,9 +11,15 @@
 #include "mcp/protocol.hpp"
 #include "mcp/stdio_transport.hpp"
 
+#if __has_include("test_binary_paths.hpp")
 #include "test_binary_paths.hpp"
+#endif
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
+
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <fcntl.h>
 #include <signal.h>
@@ -34,7 +40,7 @@ extern char** environ;
 namespace {
 
 namespace fs = std::filesystem;
-using nlohmann::json;
+using mcp::Json;
 using namespace std::chrono_literals;
 
 struct Subprocess {
@@ -103,9 +109,18 @@ spawn_notes(const std::string& binary, const std::string& db_path) {
     return sp;
 }
 
-TEST(NotesSubprocess, EndToEnd) {
+}  // namespace
+
+class NotesSubprocess : public QObject {
+    Q_OBJECT
+private slots:
+    void EndToEnd();
+    void DeleteWithoutConfirmIsAbortedOnElicitDecline();
+};
+
+void NotesSubprocess::EndToEnd() {
 #if !defined(MCP_TEST_NOTES_SERVER)
-    GTEST_SKIP() << "mcp_notes_server not built (no SQLite3); skipping";
+    QSKIP("mcp_notes_server not built (no SQLite3); skipping");
 #else
     const char* path = MCP_TEST_NOTES_SERVER;
 
@@ -118,7 +133,7 @@ TEST(NotesSubprocess, EndToEnd) {
     fs::remove(db_path, ec);
 
     auto sp = spawn_notes(path, db_path);
-    ASSERT_TRUE(sp) << "spawn failed";
+    QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
     opts.read_fd  = sp->read_fd;
@@ -132,74 +147,75 @@ TEST(NotesSubprocess, EndToEnd) {
     client.connect(std::move(transport));
 
     auto info = client.initialize().get();
-    EXPECT_EQ(info.server_info.name, "mcp-notes");
-    ASSERT_TRUE(info.capabilities.tools.has_value());
-    ASSERT_TRUE(info.capabilities.resources.has_value());
+    QCOMPARE(info.server_info.name, std::string{"mcp-notes"});
+    QVERIFY(info.capabilities.tools.has_value());
+    QVERIFY(info.capabilities.resources.has_value());
 
     auto tools = client.list_tools().get();
-    EXPECT_GE(tools.tools.size(), 6u);  // write/read/list/search/delete/info
+    QVERIFY(tools.tools.size() >= 6u);  // write/read/list/search/delete/info
 
     // write a note
     {
-        auto out = client.call_tool("notes/write", json{
+        auto out = client.call_tool("notes/write", QJsonObject{
             {"key",   "db.prod"},
             {"value", "postgres://prod.example/main"},
             {"tags",  "db,connection"},
         }).get();
-        ASSERT_FALSE(out.is_error.value_or(false));
+        QVERIFY(!out.is_error.value_or(false));
     }
 
     // read it back
     {
         auto out = client.call_tool("notes/read",
-                                     json{{"key", "db.prod"}}).get();
-        ASSERT_FALSE(out.is_error.value_or(false));
-        EXPECT_EQ(std::get<mcp::TextContent>(out.content[0]).text,
-                  "postgres://prod.example/main");
+                                     QJsonObject{{"key", "db.prod"}}).get();
+        QVERIFY(!out.is_error.value_or(false));
+        QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
+                 std::string{"postgres://prod.example/main"});
     }
 
     // list — should see exactly one note
     {
-        auto out = client.call_tool("notes/list", json{}).get();
-        ASSERT_FALSE(out.is_error.value_or(false));
-        ASSERT_TRUE(out.structured_content.has_value());
-        EXPECT_EQ((*out.structured_content)["notes"].size(), 1u);
+        auto out = client.call_tool("notes/list", QJsonObject{}).get();
+        QVERIFY(!out.is_error.value_or(false));
+        QVERIFY(out.structured_content.has_value());
+        QCOMPARE((*out.structured_content)["notes"].toArray().size(),
+                 std::size_t{1});
     }
 
     // search by content
     {
         auto out = client.call_tool("notes/search",
-                                     json{{"query", "postgres"}}).get();
-        ASSERT_FALSE(out.is_error.value_or(false));
-        ASSERT_TRUE(out.structured_content.has_value());
-        const auto& matches = (*out.structured_content)["matches"];
-        ASSERT_EQ(matches.size(), 1u);
-        EXPECT_NE(matches[0]["snippet"].get<std::string>().find("postgres"),
-                  std::string::npos);
+                                     QJsonObject{{"query", "postgres"}}).get();
+        QVERIFY(!out.is_error.value_or(false));
+        QVERIFY(out.structured_content.has_value());
+        const auto matches = (*out.structured_content)["matches"];
+        QCOMPARE(matches.toArray().size(), std::size_t{1});
+        QVERIFY(matches[0]["snippet"].toString().toStdString().find("postgres")
+                != std::string::npos);
     }
 
     // resource read
     {
         auto res = client.read_resource("notes://all").get();
-        ASSERT_EQ(res.contents.size(), 1u);
+        QCOMPARE(res.contents.size(), std::size_t{1});
         const auto& tc = std::get<mcp::TextResourceContents>(res.contents[0]);
-        EXPECT_NE(tc.text.find("db.prod"), std::string::npos);
+        QVERIFY(tc.text.find("db.prod") != std::string::npos);
     }
 
     // delete with confirm=true (no elicitation needed)
     {
-        auto out = client.call_tool("notes/delete", json{
+        auto out = client.call_tool("notes/delete", QJsonObject{
             {"key", "db.prod"}, {"confirm", true},
         }).get();
-        ASSERT_FALSE(out.is_error.value_or(false));
+        QVERIFY(!out.is_error.value_or(false));
     }
 
     // info — count is back to zero
     {
-        auto out = client.call_tool("notes/info", json{}).get();
-        ASSERT_FALSE(out.is_error.value_or(false));
-        ASSERT_TRUE(out.structured_content.has_value());
-        EXPECT_EQ((*out.structured_content)["noteCount"].get<int>(), 0);
+        auto out = client.call_tool("notes/info", QJsonObject{}).get();
+        QVERIFY(!out.is_error.value_or(false));
+        QVERIFY(out.structured_content.has_value());
+        QCOMPARE((*out.structured_content)["noteCount"].toInt(), 0);
     }
 
     client.disconnect();
@@ -207,9 +223,9 @@ TEST(NotesSubprocess, EndToEnd) {
 #endif
 }
 
-TEST(NotesSubprocess, DeleteWithoutConfirmIsAbortedOnElicitDecline) {
+void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline() {
 #if !defined(MCP_TEST_NOTES_SERVER)
-    GTEST_SKIP() << "mcp_notes_server not built; skipping";
+    QSKIP("mcp_notes_server not built; skipping");
 #else
     // notes/delete with confirm omitted routes through elicitation;
     // declining the elicitation should leave the row in place.
@@ -222,7 +238,7 @@ TEST(NotesSubprocess, DeleteWithoutConfirmIsAbortedOnElicitDecline) {
     fs::remove(db_path, ec);
 
     auto sp = spawn_notes(path, db_path);
-    ASSERT_TRUE(sp);
+    QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
     opts.read_fd  = sp->read_fd;
@@ -243,24 +259,34 @@ TEST(NotesSubprocess, DeleteWithoutConfirmIsAbortedOnElicitDecline) {
 
     (void)client.initialize().get();
 
-    (void)client.call_tool("notes/write", json{
+    (void)client.call_tool("notes/write", QJsonObject{
         {"key", "k1"}, {"value", "v1"},
     }).get();
 
     auto del = client.call_tool("notes/delete",
-                                  json{{"key", "k1"}}).get();
-    EXPECT_TRUE(del.is_error.value_or(false));
-    EXPECT_NE(std::get<mcp::TextContent>(del.content[0]).text.find("cancelled"),
-              std::string::npos);
+                                  QJsonObject{{"key", "k1"}}).get();
+    QVERIFY(del.is_error.value_or(false));
+    QVERIFY(std::get<mcp::TextContent>(del.content[0]).text.find("cancelled")
+            != std::string::npos);
 
     // Note should still be there.
-    auto info = client.call_tool("notes/info", json{}).get();
-    ASSERT_TRUE(info.structured_content.has_value());
-    EXPECT_EQ((*info.structured_content)["noteCount"].get<int>(), 1);
+    auto info = client.call_tool("notes/info", QJsonObject{}).get();
+    QVERIFY(info.structured_content.has_value());
+    QCOMPARE((*info.structured_content)["noteCount"].toInt(), 1);
 
     client.disconnect();
     fs::remove(db_path, ec);
 #endif
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        NotesSubprocess suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "notes_subprocess_test.moc"

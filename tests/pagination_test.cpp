@@ -10,9 +10,11 @@
 #include "mcp/protocol.hpp"
 #include "mcp/server.hpp"
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
 
-#include <nlohmann/json.hpp>
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <memory>
 #include <set>
@@ -21,7 +23,7 @@
 
 namespace {
 
-using nlohmann::json;
+using mcp::Json;
 
 struct ServerThread {
     std::shared_ptr<mcp::Server> server;
@@ -43,14 +45,25 @@ struct ServerThread {
     }
 };
 
-TEST(Pagination, ToolsListReturnsPagesWithCursor) {
+}  // namespace
+
+class Pagination : public QObject {
+    Q_OBJECT
+private slots:
+    void ToolsListReturnsPagesWithCursor();
+    void NoPaginationByDefault();
+    void ResourcesPaginate();
+    void MalformedCursorRejected();
+};
+
+void Pagination::ToolsListReturnsPagesWithCursor() {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(3);
         for (int i = 0; i < 7; ++i) {
             s.tool("t" + std::to_string(i),
-                   json{{"type", "object"}},
-                   [](const json&) -> mcp::CallToolResult {
+                   QJsonObject{{"type", "object"}},
+                   [](const Json&) -> mcp::CallToolResult {
                        return {.content = { mcp::TextContent{.text = "ok"} }};
                    });
         }
@@ -65,25 +78,25 @@ TEST(Pagination, ToolsListReturnsPagesWithCursor) {
     int pages = 0;
     do {
         auto res = client.list_tools(cursor).get();
-        EXPECT_LE(res.tools.size(), 3u);
+        QVERIFY(res.tools.size() <= 3u);
         for (const auto& t : res.tools) seen.insert(t.name);
         cursor = res.next_cursor;
         ++pages;
-        ASSERT_LT(pages, 10) << "infinite loop in pagination";
+        QVERIFY(pages < 10);
     } while (cursor.has_value());
 
-    EXPECT_GE(pages, 3);
-    EXPECT_EQ(seen.size(), 7u);
+    QVERIFY(pages >= 3);
+    QCOMPARE(seen.size(), std::size_t{7});
     client.disconnect();
 }
 
-TEST(Pagination, NoPaginationByDefault) {
+void Pagination::NoPaginationByDefault() {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         for (int i = 0; i < 5; ++i) {
             s.tool("t" + std::to_string(i),
-                   json{{"type", "object"}},
-                   [](const json&) -> mcp::CallToolResult {
+                   QJsonObject{{"type", "object"}},
+                   [](const Json&) -> mcp::CallToolResult {
                        return {.content = { mcp::TextContent{.text = "ok"} }};
                    });
         }
@@ -94,25 +107,25 @@ TEST(Pagination, NoPaginationByDefault) {
     (void)client.initialize().get();
 
     auto res = client.list_tools().get();
-    EXPECT_EQ(res.tools.size(), 5u);
-    EXPECT_FALSE(res.next_cursor.has_value());
+    QCOMPARE(res.tools.size(), std::size_t{5});
+    QVERIFY(!(res.next_cursor.has_value()));
     client.disconnect();
 }
 
-TEST(Pagination, ResourcesPaginate) {
+void Pagination::ResourcesPaginate() {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);
         for (int i = 0; i < 5; ++i) {
             s.resource(mcp::Resource{
-                    .uri  = "file:///x" + std::to_string(i),
-                    .name = "n" + std::to_string(i),
-                },
-                [](const std::string& uri) {
-                    return mcp::ReadResourceResult{
-                        .contents = { mcp::TextResourceContents{.uri = uri, .text = "y"} },
-                    };
-                });
+                           .uri  = "file:///x" + std::to_string(i),
+                           .name = "n" + std::to_string(i),
+                       },
+                       [](const std::string& uri) {
+                           return mcp::ReadResourceResult{
+                               .contents = { mcp::TextResourceContents{.uri = uri, .text = "y"} },
+                           };
+                       });
         }
     });
 
@@ -128,21 +141,21 @@ TEST(Pagination, ResourcesPaginate) {
         total += static_cast<int>(res.resources.size());
         cursor = res.next_cursor;
         ++pages;
-        ASSERT_LT(pages, 10);
+        QVERIFY(pages < 10);
     } while (cursor.has_value());
 
-    EXPECT_EQ(total, 5);
+    QCOMPARE(total, 5);
     client.disconnect();
 }
 
-TEST(Pagination, MalformedCursorRejected) {
+void Pagination::MalformedCursorRejected() {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);
         for (int i = 0; i < 5; ++i) {
             s.tool("t" + std::to_string(i),
-                   json{{"type", "object"}},
-                   [](const json&) -> mcp::CallToolResult {
+                   QJsonObject{{"type", "object"}},
+                   [](const Json&) -> mcp::CallToolResult {
                        return {.content = { mcp::TextContent{.text = "ok"} }};
                    });
         }
@@ -155,11 +168,21 @@ TEST(Pagination, MalformedCursorRejected) {
     auto fut = client.list_tools(std::string{"not-a-number"});
     try {
         (void)fut.get();
-        FAIL() << "expected Error for bad cursor";
+        QFAIL("expected Error for bad cursor");
     } catch (const mcp::Error& e) {
-        EXPECT_EQ(e.code(), mcp::error_code::invalid_params);
+        QCOMPARE(e.code(), mcp::error_code::invalid_params);
     }
     client.disconnect();
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        Pagination suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "pagination_test.moc"

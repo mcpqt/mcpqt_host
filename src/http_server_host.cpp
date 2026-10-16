@@ -3,15 +3,36 @@
 #include "mcp/http_server_host.hpp"
 
 #include "mcp/error.hpp"
+#include "mcp/json.hpp"
 #include "mcp/log.hpp"
 #include "mcp/protocol.hpp"
 #include "mcp/session.hpp"
 #include "mcp/server.hpp"
 #include "mcp/transport.hpp"
 
-#include <httplib.h>
-
-#include <nlohmann/json.hpp>
+#include <QAbstractSocket>
+#include <QByteArray>
+#include <QFuture>
+#include <QHostAddress>
+#include <QHttpServer>
+#include <QHttpServerRequest>
+#include <QHttpServerResponder>
+#include <QHttpServerResponse>
+#include <QHttpServerRouter>
+#include <QHttpServerRouterRule>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
+#include <QJsonValue>
+#include <QMetaObject>
+#include <QPointer>
+#include <QPromise>
+#include <QRegularExpressionMatch>
+#include <QString>
+#include <QTcpSocket>
+#include <QThread>
+#include <QTimer>
+#include <QUrl>
 
 #include <algorithm>
 #include <atomic>
@@ -23,7 +44,6 @@
 #include <exception>
 #include <functional>
 #include <future>
-#include <ios>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -53,15 +73,14 @@ namespace {
 // `deliver`, and awaits the slot's future. The Session dispatches the
 // request to a worker, the user's handler returns, the Session calls
 // `send(response_frame)`, and that send routes to the matching slot
-// to satisfy the future. The POST handler then writes the JSON to
+// to satisfy the future. The QTcpSocket timer then writes the JSON to
 // the HTTP response.
 //
 // Notifications and responses inbound from the peer get fed via
 // `deliver` and produce no future; the POST handler returns 202.
 //
 // Server-initiated traffic (transport->send called with no matching
-// pending slot) is currently dropped with a warning. Phase 3e/3 adds
-// a GET-opened SSE stream to receive that traffic.
+// pending slot) is buffered and drained by the GET-opened SSE stream.
 
 class HttpSessionTransport final : public Transport {
 public:
@@ -131,18 +150,20 @@ public:
         }
         // Parse the frame's id (responses have one) so we can route
         // back to the awaiting POST slot.
-        nlohmann::json j;
-        try { j = nlohmann::json::parse(frame); }
-        catch (const std::exception& e) {
-            MCP_LOG_ERROR(std::string{"HttpSessionTransport: bad outbound JSON: "} + e.what());
+        QJsonParseError perr{};
+        const QJsonDocument doc = QJsonDocument::fromJson(
+            QByteArray(frame.data(), static_cast<int>(frame.size())), &perr);
+        if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
+            MCP_LOG_ERROR("HttpSessionTransport: bad outbound JSON");
             return std::make_error_code(std::errc::invalid_argument);
         }
-        const bool has_id     = j.contains("id") && !j["id"].is_null();
+        const QJsonObject j = doc.object();
+        const bool has_id     = j.contains("id") && !j.value("id").isNull();
         const bool has_method = j.contains("method");
 
         if (has_id && !has_method) {
             // Response — route to the awaiting POST.
-            std::string key = canonical_id(j["id"]);
+            std::string key = canonical_id(j.value("id"));
             std::promise<std::string> awaiter;
             {
                 std::lock_guard<std::mutex> lk(pending_mu_);
@@ -171,11 +192,10 @@ public:
         return {};
     }
 
-    // Host-facing: block until a frame is available for the GET
-    // stream, the close flag fires, or `until` is reached. Returns
-    // a frame if one was available, std::nullopt otherwise. Caller
-    // must call `enter_get_stream()` once before the first wait so
-    // outbound traffic stops being dropped.
+    // Host-facing: try to grab a frame for the GET stream. Returns a
+    // frame if one was available, std::nullopt otherwise. Caller must
+    // call `enter_get_stream()` once before the first drain so outbound
+    // traffic stops being dropped.
     void enter_get_stream() {
         std::lock_guard<std::mutex> lk(get_mu_);
         get_active_ = true;
@@ -184,17 +204,12 @@ public:
         std::lock_guard<std::mutex> lk(get_mu_);
         get_active_ = false;
         // Don't drain the queue: another GET might be opened (with
-        // resumability). Phase 3e/3 ships without resumability so in
+        // resumability). This build ships without resumability so in
         // practice we simply lose the queue's contents on disconnect.
     }
-    template <typename Rep, typename Period>
     std::optional<std::string>
-    wait_get_frame(std::chrono::duration<Rep, Period> timeout) {
-        std::unique_lock<std::mutex> lk(get_mu_);
-        if (!get_cv_.wait_for(lk, timeout, [&] {
-                return !get_queue_.empty()
-                    || closed_.load(std::memory_order_acquire);
-            })) return std::nullopt;
+    try_get_frame() {
+        std::lock_guard<std::mutex> lk(get_mu_);
         if (get_queue_.empty()) return std::nullopt;
         std::string out = std::move(get_queue_.front());
         get_queue_.pop_front();
@@ -214,15 +229,18 @@ public:
     /// returns std::nullopt (POST should reply 202).
     std::optional<std::future<std::string>>
     deliver_request_or_notification(std::string raw) {
-        nlohmann::json j;
-        try { j = nlohmann::json::parse(raw); }
-        catch (...) { return std::nullopt; }
-        const bool is_request = j.contains("id") && !j["id"].is_null()
+        QJsonParseError perr{};
+        const QJsonDocument doc = QJsonDocument::fromJson(
+            QByteArray(raw.data(), static_cast<int>(raw.size())), &perr);
+        const bool parsed    = (perr.error == QJsonParseError::NoError) && doc.isObject();
+        const QJsonObject j  = parsed ? doc.object() : QJsonObject{};
+        const bool is_request = parsed
+                             && j.contains("id") && !j.value("id").isNull()
                              && j.contains("method");
 
         std::optional<std::future<std::string>> reply;
         if (is_request) {
-            std::string key = canonical_id(j["id"]);
+            std::string key = canonical_id(j.value("id"));
             std::promise<std::string> p;
             reply = p.get_future();
             std::lock_guard<std::mutex> lk(pending_mu_);
@@ -244,10 +262,9 @@ public:
     }
 
 private:
-    static std::string canonical_id(const nlohmann::json& id) {
-        if (id.is_string())          return "s:" + id.get<std::string>();
-        if (id.is_number_integer())  return "i:" + std::to_string(id.get<std::int64_t>());
-        if (id.is_number_unsigned()) return "i:" + std::to_string(id.get<std::int64_t>());
+    static std::string canonical_id(const QJsonValue& id) {
+        if (id.isString()) return "s:" + id.toString().toStdString();
+        if (id.isDouble()) return "i:" + std::to_string(id.toInteger());
         return std::string{};
     }
 
@@ -310,7 +327,7 @@ private:
 // Fire the user's on_session_closed hook for a session about to be torn
 // down, with the Server still fully alive. Exception-contained: the hook
 // is embedder code and must not abort a teardown or unwind through the
-// httplib worker / stop() caller.
+// HTTP worker / stop() caller.
 void invoke_session_closed(const HttpServerHost::Options& opts,
                            Server&                        server) {
     if (!opts.on_session_closed) return;
@@ -329,7 +346,7 @@ std::string make_session_id() {
     // 128-bit hex string from a per-call seeded RNG. Cryptographic
     // strength isn't promised here (std::random_device quality varies
     // per platform) — this is "unguessable enough" for non-adversarial
-    // single-tenant hosts. Phase 3e/3 may upgrade to /dev/urandom.
+    // single-tenant hosts.
     std::random_device rd;
     std::mt19937_64 rng{(static_cast<std::uint64_t>(rd()) << 32) ^ rd()};
     std::uniform_int_distribution<std::uint64_t> dist;
@@ -338,70 +355,67 @@ std::string make_session_id() {
     return os.str();
 }
 
-}  // namespace
-
 // =====================================================================
-// Per-session context owned by the host
+// HTTP request helpers (Qt-typed)
 // =====================================================================
 
-struct HttpServerHost::SessionContext {
-    std::string                                  id;
-    std::shared_ptr<HttpSessionTransport>        transport;
-    std::unique_ptr<Server>                      server;
-    std::thread                                  run_thread;
-    std::chrono::steady_clock::time_point        last_seen;
-};
-
-// =====================================================================
-// Host impl (httplib::Server lives here, and the session map)
-// =====================================================================
-
-struct HttpServerHost::Impl {
-    httplib::Server                                              http;
-    std::thread                                                  listener;
-    int                                                          port = 0;
-
-    std::mutex                                                   sessions_mu;
-    std::unordered_map<std::string,
-                       std::shared_ptr<HttpServerHost::SessionContext>>
-                                                                 sessions;
-};
-
-// =====================================================================
-// Construction / destruction
-// =====================================================================
-
-HttpServerHost::HttpServerHost(Implementation server_info,
-                               Options        opts,
-                               SessionFactory factory)
-    : server_info_(std::move(server_info)),
-      opts_(std::move(opts)),
-      factory_(std::move(factory)),
-      impl_(std::make_unique<Impl>()) {}
-
-HttpServerHost::~HttpServerHost() { stop(); }
-
-int HttpServerHost::port() const noexcept { return impl_ ? impl_->port : 0; }
-
-std::size_t HttpServerHost::active_sessions() const {
-    if (!impl_) return 0;
-    std::lock_guard<std::mutex> lk(impl_->sessions_mu);
-    return impl_->sessions.size();
+// Fetch the first value for a header, case-insensitively. std::nullopt
+// if the header is absent.
+inline std::optional<std::string>
+header_value(const QHttpServerRequest& req, const char* name) {
+    const QByteArray wanted{name};
+    const auto headers = req.headers();
+    for (const auto& kv : headers) {
+        if (kv.first.compare(wanted, Qt::CaseInsensitive) == 0) {
+            return kv.second.toStdString();
+        }
+    }
+    return std::nullopt;
 }
 
-// =====================================================================
-// Origin validation
-// =====================================================================
+// Count occurrences of a header (used to reject duplicate Authorization).
+inline int header_count(const QHttpServerRequest& req, const char* name) {
+    const QByteArray wanted{name};
+    int n = 0;
+    const auto headers = req.headers();
+    for (const auto& kv : headers) {
+        if (kv.first.compare(wanted, Qt::CaseInsensitive) == 0) ++n;
+    }
+    return n;
+}
 
-namespace {
+inline QHttpServerResponder::StatusCode status_from_int(int s) {
+    using S = QHttpServerResponder::StatusCode;
+    switch (s) {
+        case 200: return S::Ok;
+        case 201: return S::Created;
+        case 202: return S::Accepted;
+        case 204: return S::NoContent;
+        case 400: return S::BadRequest;
+        case 401: return S::Unauthorized;
+        case 403: return S::Forbidden;
+        case 404: return S::NotFound;
+        case 405: return S::MethodNotAllowed;
+        case 415: return S::UnsupportedMediaType;
+        case 500: return S::InternalServerError;
+        case 504: return S::GatewayTimeout;
+        default:  return S::InternalServerError;
+    }
+}
 
-bool origin_allowed(const httplib::Request& req,
-                    const std::vector<std::string>& allow) {
-    auto it = req.headers.find("Origin");
-    if (it == req.headers.end()) return true;  // no Origin header -> not a browser-initiated XS request
+inline QHttpServerResponse text_response(const std::string& body,
+                                         QHttpServerResponder::StatusCode code) {
+    return QHttpServerResponse(QByteArrayLiteral("text/plain"),
+                               QByteArray::fromStdString(body), code);
+}
+
+inline bool origin_allowed(const QHttpServerRequest& req,
+                           const std::vector<std::string>& allow) {
+    const auto origin = header_value(req, "Origin");
+    if (!origin) return true;  // no Origin header -> not a browser XS request
     if (allow.empty()) return false;
     for (const auto& a : allow) {
-        if (a == "*" || a == it->second) return true;
+        if (a == "*" || a == *origin) return true;
     }
     return false;
 }
@@ -427,13 +441,13 @@ inline bool valid_quoted_param(std::string_view s) noexcept {
 // Origin verbatim ONLY when the origin passes the same allowlist
 // check that POST/GET/DELETE go through. Returns empty string if
 // the origin would be rejected — caller skips the ACAO header.
-inline std::string resolve_cors_origin(const httplib::Request&         req,
-                                        const std::vector<std::string>& allow) {
-    const auto it = req.headers.find("Origin");
-    if (it == req.headers.end() || it->second.empty()) return {};
+inline std::string resolve_cors_origin(const QHttpServerRequest&       req,
+                                       const std::vector<std::string>& allow) {
+    const auto it = header_value(req, "Origin");
+    if (!it || it->empty()) return {};
     for (const auto& a : allow) {
         if (a == "*") return "*";
-        if (a == it->second) return it->second;
+        if (a == *it) return *it;
     }
     return {};
 }
@@ -442,10 +456,10 @@ inline std::string resolve_cors_origin(const httplib::Request&         req,
 // responses per RFC 6750 §3. error_code is "invalid_request" |
 // "invalid_token" | "insufficient_scope" (or empty to omit). scope is
 // the space-separated scope hint for insufficient_scope.
-inline std::string build_bearer_challenge(const std::string&     realm,
-                                           const std::string&     metadata_url,
-                                           std::string_view       error_code,
-                                           std::string_view       scope) {
+inline std::string build_bearer_challenge(const std::string& realm,
+                                          const std::string& metadata_url,
+                                          std::string_view   error_code,
+                                          std::string_view   scope) {
     // valid_quoted_param() at start() guarantees realm + metadata_url
     // never contain unsafe characters; we just splice them.
     std::string out = "Bearer realm=\"";
@@ -469,9 +483,8 @@ inline std::string build_bearer_challenge(const std::string&     realm,
     return out;
 }
 
-// Case-insensitive ASCII prefix match. cpp-httplib's trim semantics
-// don't normalize the scheme, so we have to. RFC 7235 §2.1 says
-// scheme tokens are case-insensitive.
+// Case-insensitive ASCII prefix match. HTTP scheme tokens are
+// case-insensitive (RFC 7235 §2.1).
 inline bool starts_with_bearer_ci(std::string_view s) noexcept {
     constexpr std::string_view prefix = "Bearer ";
     if (s.size() < prefix.size()) return false;
@@ -502,87 +515,250 @@ inline bool valid_protocol_version_header(std::string_view v) noexcept {
     return v == "2025-03-26" || v == "2025-06-18" || v == "2025-11-25";
 }
 
-// Validate the Authorization header against the host's bearer
-// validator (if configured). Returns true when the request is allowed
-// to proceed; if false, fills `res` with a 401/403 response.
-inline bool authorize(const httplib::Request&         req,
-                      httplib::Response&              res,
-                      const HttpServerHost::Options&  opts) {
-    if (!opts.bearer_validator) return true;
+// The outcome of bearer-token validation, expressed toolkit-neutrally
+// so it can be rendered as either a QHttpServerResponse (POST/DELETE)
+// or a raw HTTP error (SSE GET).
+struct AuthOutcome {
+    bool        allowed  = true;
+    int         status   = 200;
+    std::string challenge;  // WWW-Authenticate value, when non-empty
+    std::string body;       // plain-text body for the error
+};
 
-    const auto count_auth = req.headers.count("Authorization");
+// Validate the Authorization header against the host's bearer
+// validator (if configured). Returns allowed=true when the request may
+// proceed; otherwise fills the outcome with a 400/401/403 response.
+inline AuthOutcome authorize(const QHttpServerRequest&      req,
+                             const HttpServerHost::Options& opts) {
+    AuthOutcome out;
+    if (!opts.bearer_validator) return out;
+
+    const int count_auth = header_count(req, "Authorization");
     if (count_auth == 0) {
-        res.status = 401;
-        res.set_header("WWW-Authenticate",
-            build_bearer_challenge(opts.auth_realm,
-                                   opts.resource_metadata_url,
-                                   "invalid_request", {}));
-        res.set_content("missing Authorization header", "text/plain");
-        return false;
+        out.allowed   = false;
+        out.status    = 401;
+        out.challenge = build_bearer_challenge(opts.auth_realm,
+                                               opts.resource_metadata_url,
+                                               "invalid_request", {});
+        out.body      = "missing Authorization header";
+        return out;
     }
     // RFC 7230: a request with multiple Authorization headers is
     // syntactically invalid — refuse rather than pick one arbitrarily.
     if (count_auth > 1) {
-        res.status = 400;
-        res.set_content("multiple Authorization headers", "text/plain");
-        return false;
+        out.allowed = false;
+        out.status  = 400;
+        out.body    = "multiple Authorization headers";
+        return out;
     }
 
-    const auto it = req.headers.find("Authorization");
-    const std::string& hdr = it->second;
+    const std::string hdr = *header_value(req, "Authorization");
     if (!starts_with_bearer_ci(hdr)) {
-        res.status = 401;
-        res.set_header("WWW-Authenticate",
-            build_bearer_challenge(opts.auth_realm,
-                                   opts.resource_metadata_url,
-                                   "invalid_request", {}));
-        res.set_content("expected Bearer scheme", "text/plain");
-        return false;
+        out.allowed   = false;
+        out.status    = 401;
+        out.challenge = build_bearer_challenge(opts.auth_realm,
+                                               opts.resource_metadata_url,
+                                               "invalid_request", {});
+        out.body      = "expected Bearer scheme";
+        return out;
     }
     constexpr std::size_t prefix_len = 7;  // "Bearer "
     auto token = trim_ows(std::string_view{hdr}.substr(prefix_len));
     if (token.empty()) {
-        res.status = 401;
-        res.set_header("WWW-Authenticate",
-            build_bearer_challenge(opts.auth_realm,
-                                   opts.resource_metadata_url,
-                                   "invalid_request", {}));
-        res.set_content("empty bearer token", "text/plain");
-        return false;
+        out.allowed   = false;
+        out.status    = 401;
+        out.challenge = build_bearer_challenge(opts.auth_realm,
+                                               opts.resource_metadata_url,
+                                               "invalid_request", {});
+        out.body      = "empty bearer token";
+        return out;
     }
 
     const auto outcome = opts.bearer_validator(token);
     switch (outcome.status) {
         case HttpServerHost::Options::BearerStatus::allow:
-            return true;
+            return out;
         case HttpServerHost::Options::BearerStatus::invalid_token:
-            res.status = 401;
-            res.set_header("WWW-Authenticate",
-                build_bearer_challenge(opts.auth_realm,
-                                       opts.resource_metadata_url,
-                                       "invalid_token", {}));
-            res.set_content("invalid bearer token", "text/plain");
-            return false;
+            out.allowed   = false;
+            out.status    = 401;
+            out.challenge = build_bearer_challenge(opts.auth_realm,
+                                                   opts.resource_metadata_url,
+                                                   "invalid_token", {});
+            out.body      = "invalid bearer token";
+            return out;
         case HttpServerHost::Options::BearerStatus::insufficient_scope:
             // Scope strings have the same control-char concern as the
             // realm. valid_quoted_param() is checked at start() but
             // validator output is fresh per request — drop unsafe
             // strings here rather than splicing them blindly.
-            res.status = 403;
-            res.set_header("WWW-Authenticate",
-                build_bearer_challenge(opts.auth_realm,
-                                       opts.resource_metadata_url,
-                                       "insufficient_scope",
-                                       valid_quoted_param(outcome.required_scopes)
-                                           ? std::string_view{outcome.required_scopes}
-                                           : std::string_view{}));
-            res.set_content("insufficient scope", "text/plain");
-            return false;
+            out.allowed   = false;
+            out.status    = 403;
+            out.challenge = build_bearer_challenge(
+                opts.auth_realm, opts.resource_metadata_url,
+                "insufficient_scope",
+                valid_quoted_param(outcome.required_scopes)
+                    ? std::string_view{outcome.required_scopes}
+                    : std::string_view{});
+            out.body      = "insufficient scope";
+            return out;
     }
-    return false;  // unreachable
+    return out;
+}
+
+// =====================================================================
+// Raw-socket SSE writing (chunked transfer encoding)
+// =====================================================================
+//
+// Qt 6.4's QHttpServer has no public streaming/chunked API, so the GET
+// SSE endpoint is served by a custom QHttpServerRouterRule that writes
+// HTTP/1.1 chunked framing straight to the connection's QTcpSocket.
+
+inline void write_sse_chunk(QTcpSocket* socket, const QByteArray& payload) {
+    QByteArray data = "data: ";
+    data += payload;
+    data += "\n\n";
+    QByteArray chunk = QByteArray::number(data.size(), 16).toLower();
+    chunk += "\r\n";
+    chunk += data;
+    chunk += "\r\n";
+    socket->write(chunk);
+}
+
+inline void write_sse_comment(QTcpSocket* socket) {
+    const QByteArray data = ":\n\n";
+    QByteArray chunk = QByteArray::number(data.size(), 16).toLower();
+    chunk += "\r\n";
+    chunk += data;
+    chunk += "\r\n";
+    socket->write(chunk);
+}
+
+inline QByteArray http_reason_phrase(int status) {
+    switch (status) {
+        case 200: return QByteArrayLiteral("OK");
+        case 400: return QByteArrayLiteral("Bad Request");
+        case 401: return QByteArrayLiteral("Unauthorized");
+        case 403: return QByteArrayLiteral("Forbidden");
+        case 404: return QByteArrayLiteral("Not Found");
+        case 405: return QByteArrayLiteral("Method Not Allowed");
+        case 500: return QByteArrayLiteral("Internal Server Error");
+        default:  return QByteArrayLiteral("Error");
+    }
+}
+
+inline void write_raw_http_error(QTcpSocket*        socket,
+                                 int                status,
+                                 const std::string& body,
+                                 const std::string& www_authenticate = {}) {
+    QByteArray out = QByteArrayLiteral("HTTP/1.1 ");
+    out += QByteArray::number(status);
+    out += ' ';
+    out += http_reason_phrase(status);
+    out += QByteArrayLiteral("\r\n");
+    if (!www_authenticate.empty()) {
+        out += QByteArrayLiteral("WWW-Authenticate: ");
+        out += QByteArray::fromStdString(www_authenticate);
+        out += QByteArrayLiteral("\r\n");
+    }
+    out += QByteArrayLiteral("Content-Type: text/plain\r\n");
+    out += QByteArrayLiteral("Content-Length: ");
+    out += QByteArray::number(static_cast<int>(body.size()));
+    out += QByteArrayLiteral("\r\n");
+    out += QByteArrayLiteral("Connection: close\r\n\r\n");
+    socket->write(out);
+    if (!body.empty()) socket->write(QByteArray::fromStdString(body));
+    socket->disconnectFromHost();
+}
+
+// Full raw HTTP/1.1 response (status line + headers + framed body) written
+// straight to the connection's socket, then closed. Used by the POST/CORS
+// paths so a request can be answered asynchronously from a QTimer without
+// going through QHttpServer's QFuture continuation machinery (which is
+// crash-prone in Qt 6.4 when an unfinished QPromise is destroyed).
+struct RawResponseSpec {
+    int                                           status       = 200;
+    QByteArray                                    content_type = QByteArrayLiteral("application/json");
+    QByteArray                                    body;
+    std::vector<std::pair<QByteArray, QByteArray>> headers;
+};
+
+inline void write_raw_http_response(QTcpSocket* socket, const RawResponseSpec& spec) {
+    QByteArray out = QByteArrayLiteral("HTTP/1.1 ");
+    out += QByteArray::number(spec.status);
+    out += ' ';
+    out += http_reason_phrase(spec.status);
+    out += QByteArrayLiteral("\r\n");
+    out += QByteArrayLiteral("Content-Type: ");
+    out += spec.content_type;
+    out += QByteArrayLiteral("\r\n");
+    for (const auto& [k, v] : spec.headers) {
+        out += k;
+        out += QByteArrayLiteral(": ");
+        out += v;
+        out += QByteArrayLiteral("\r\n");
+    }
+    out += QByteArrayLiteral("Content-Length: ");
+    out += QByteArray::number(spec.body.size());
+    out += QByteArrayLiteral("\r\n");
+    out += QByteArrayLiteral("Connection: close\r\n\r\n");
+    out += spec.body;
+    socket->write(out);
+    socket->disconnectFromHost();
 }
 
 }  // namespace
+
+// =====================================================================
+// Per-session context owned by the host
+// =====================================================================
+
+struct HttpServerHost::SessionContext {
+    std::string                                  id;
+    std::shared_ptr<HttpSessionTransport>        transport;
+    std::unique_ptr<Server>                      server;
+    std::thread                                  run_thread;
+    std::chrono::steady_clock::time_point        last_seen;
+};
+
+// =====================================================================
+// Host impl (the QHttpServer lives on a dedicated QThread)
+// =====================================================================
+
+struct HttpServerHost::Impl {
+    QThread*      thread = nullptr;
+    QHttpServer*  http   = nullptr;
+
+    std::atomic<int> port{0};
+
+    std::mutex                                                   sessions_mu;
+    std::unordered_map<std::string,
+                       std::shared_ptr<HttpServerHost::SessionContext>>
+                                                                 sessions;
+};
+
+// =====================================================================
+// Construction / destruction
+// =====================================================================
+
+HttpServerHost::HttpServerHost(Implementation server_info,
+                               Options        opts,
+                               SessionFactory factory)
+    : server_info_(std::move(server_info)),
+      opts_(std::move(opts)),
+      factory_(std::move(factory)),
+      impl_(std::make_unique<Impl>()) {}
+
+HttpServerHost::~HttpServerHost() { stop(); }
+
+int HttpServerHost::port() const noexcept {
+    return impl_ ? impl_->port.load(std::memory_order_acquire) : 0;
+}
+
+std::size_t HttpServerHost::active_sessions() const {
+    if (!impl_) return 0;
+    std::lock_guard<std::mutex> lk(impl_->sessions_mu);
+    return impl_->sessions.size();
+}
 
 // =====================================================================
 // Lifecycle
@@ -636,52 +812,72 @@ void HttpServerHost::start() {
             "proxy), or bind to 127.0.0.1/::1 for development.");
     }
 
-    auto* host = this;
+    impl_->http   = new QHttpServer();
+    impl_->thread = new QThread();
+    impl_->thread->setObjectName(QStringLiteral("mcp-http-server"));
 
-    // Capture small things so the lambdas don't copy the host.
-    auto& srv = impl_->http;
+    auto* http = impl_->http;
 
-    // Capture-by-value lambdas live for the lifetime of the
-    // httplib::Server, which we own. start() returns after binding,
-    // so any locals captured by reference here would dangle on every
-    // subsequent request.
+    // ---- POST: a client frame -> JSON response or 202 Accepted ----
+    //
+    // Served as a raw router rule (like the GET SSE endpoint) rather
+    // than a QFuture-returning QHttpServer route: Qt 6.4 crashes if an
+    // unfinished QPromise<QHttpServerResponse> is destroyed while
+    // QHttpServer still holds a continuation on its future. Writing the
+    // response (JSON, or a 202/4xx) straight to the socket keeps the
+    // async reply on a QTimer and out of that machinery entirely.
+    http->router()->addRule<std::function<void()>>(
+        std::make_unique<QHttpServerRouterRule>(
+            QString::fromStdString(opts_.path),
+            QHttpServerRequest::Method::Post,
+            [this](const QRegularExpressionMatch&,
+                   const QHttpServerRequest& req,
+                   QTcpSocket*              socket) {
+        auto send = [socket](RawResponseSpec spec) {
+            write_raw_http_response(socket, spec);
+        };
 
-    // POST: client sends a frame. Reply with either application/json
-    // (response to a request) or 202 Accepted (notification/response).
-    srv.Post(opts_.path, [host](const httplib::Request& req,
-                                 httplib::Response&      res) {
-        if (!origin_allowed(req, host->opts_.allowed_origins)) {
-            res.status = 403;
-            res.set_content("Origin not allowed", "text/plain");
+        if (!origin_allowed(req, opts_.allowed_origins)) {
+            send({403, QByteArrayLiteral("text/plain"),
+                  QByteArrayLiteral("Origin not allowed"), {}});
             return;
         }
         // Spec MUST: a present-but-unsupported MCP-Protocol-Version
         // is a 400. Header is allowed to be absent.
-        if (auto it = req.headers.find("MCP-Protocol-Version");
-            it != req.headers.end() &&
-            !valid_protocol_version_header(it->second)) {
-            res.status = 400;
-            res.set_content("unsupported MCP-Protocol-Version: " + it->second,
-                            "text/plain");
+        if (const auto v = header_value(req, "MCP-Protocol-Version");
+            v && !valid_protocol_version_header(*v)) {
+            send({400, QByteArrayLiteral("text/plain"),
+                  QByteArray::fromStdString("unsupported MCP-Protocol-Version: " + *v),
+                  {}});
             return;
         }
-        if (!authorize(req, res, host->opts_)) return;
+        {
+            const auto auth = authorize(req, opts_);
+            if (!auth.allowed) {
+                std::vector<std::pair<QByteArray, QByteArray>> h;
+                if (!auth.challenge.empty()) {
+                    h.emplace_back(QByteArrayLiteral("WWW-Authenticate"),
+                                   QByteArray::fromStdString(auth.challenge));
+                }
+                send({auth.status, QByteArrayLiteral("text/plain"),
+                      QByteArray::fromStdString(auth.body), std::move(h)});
+                return;
+            }
+        }
 
         // Resolve or mint session id.
         std::string sid;
-        if (auto it = req.headers.find("Mcp-Session-Id"); it != req.headers.end()) {
-            sid = it->second;
-        }
-        const bool is_initialize_body = req.body.find("\"initialize\"") != std::string::npos;
-        if (sid.empty() && is_initialize_body) {
-            sid = make_session_id();
-        }
+        if (const auto h = header_value(req, "Mcp-Session-Id")) sid = *h;
+        const std::string body = req.body().toStdString();
+        const bool is_initialize_body =
+            body.find("\"initialize\"") != std::string::npos;
+        if (sid.empty() && is_initialize_body) sid = make_session_id();
 
         std::shared_ptr<SessionContext> ctx;
         if (!sid.empty()) {
-            std::lock_guard<std::mutex> lk(host->impl_->sessions_mu);
-            auto it = host->impl_->sessions.find(sid);
-            if (it != host->impl_->sessions.end()) {
+            std::lock_guard<std::mutex> lk(impl_->sessions_mu);
+            auto it = impl_->sessions.find(sid);
+            if (it != impl_->sessions.end()) {
                 ctx = it->second;
                 ctx->last_seen = std::chrono::steady_clock::now();
             } else if (is_initialize_body) {
@@ -689,8 +885,8 @@ void HttpServerHost::start() {
                 ctx->id        = sid;
                 ctx->last_seen = std::chrono::steady_clock::now();
                 ctx->transport = std::make_shared<HttpSessionTransport>();
-                ctx->server    = std::make_unique<Server>(host->server_info_);
-                host->factory_(*ctx->server);
+                ctx->server    = std::make_unique<Server>(server_info_);
+                factory_(*ctx->server);
 
                 // Run the Server on its own thread, wrapping our
                 // shared_ptr transport in a unique_ptr-shaped shim so
@@ -701,7 +897,7 @@ void HttpServerHost::start() {
                 ctx->run_thread = std::thread([server_ptr, transport]() {
                     server_ptr->run(std::make_unique<SharedTransportShim>(transport));
                 });
-                host->impl_->sessions.emplace(sid, ctx);
+                impl_->sessions.emplace(sid, ctx);
             }
         }
 
@@ -711,218 +907,317 @@ void HttpServerHost::start() {
                 // (expired, deleted, or bogus). Spec: the server
                 // MUST respond 404 so the client knows to start a
                 // fresh session with a new InitializeRequest.
-                res.status = 404;
-                res.set_content("unknown or expired session id",
-                                "text/plain");
-            } else {
-                // No session id and not an initialize — malformed
-                // usage rather than a stale session.
-                res.status = 400;
-                res.set_content("missing session id; send initialize first",
-                                "text/plain");
+                send({404, QByteArrayLiteral("text/plain"),
+                      QByteArrayLiteral("unknown or expired session id"), {}});
+                return;
             }
+            // No session id and not an initialize — malformed usage.
+            send({400, QByteArrayLiteral("text/plain"),
+                  QByteArrayLiteral("missing session id; send initialize first"),
+                  {}});
             return;
         }
-
-        res.set_header("Mcp-Session-Id", ctx->id);
 
         // Hand the body to the per-session transport. If it was a
         // request, we'll get a future for the response; otherwise
         // we reply 202.
-        auto reply = ctx->transport->deliver_request_or_notification(req.body);
+        auto reply =
+            ctx->transport->deliver_request_or_notification(std::move(body));
         if (!reply.has_value()) {
-            res.status = 202;
-            return;
-        }
-        try {
-            // 30s budget — matches the Session's default request
-            // timeout. Beyond that the handler is misbehaving.
-            const auto status = reply->wait_for(std::chrono::seconds{30});
-            if (status != std::future_status::ready) {
-                res.status = 504;
-                res.set_content("handler timed out", "text/plain");
-                return;
-            }
-            const auto body = reply->get();
-            res.set_content(body, "application/json");
-        } catch (const std::exception& e) {
-            res.status = 500;
-            res.set_content(std::string{"handler error: "} + e.what(),
-                            "text/plain");
-        }
-    });
-
-    // GET: open a long-lived SSE stream for server-initiated
-    // traffic. The handler holds the connection open and emits one
-    // SSE event per frame the per-session transport produces while
-    // a request is pending or a notification fires.
-    srv.Get(opts_.path, [host](const httplib::Request& req,
-                                httplib::Response&     res) {
-        if (!origin_allowed(req, host->opts_.allowed_origins)) {
-            res.status = 403;
-            res.set_content("Origin not allowed", "text/plain");
-            return;
-        }
-        if (!authorize(req, res, host->opts_)) return;
-        // Resolve the session by Mcp-Session-Id. Without one we have
-        // no business holding open a stream — return 405 per spec
-        // ("server does not offer an SSE stream").
-        auto sid_it = req.headers.find("Mcp-Session-Id");
-        if (sid_it == req.headers.end() || sid_it->second.empty()) {
-            res.status = 405;
-            return;
-        }
-        std::shared_ptr<SessionContext> ctx;
-        {
-            std::lock_guard<std::mutex> lk(host->impl_->sessions_mu);
-            auto sit = host->impl_->sessions.find(sid_it->second);
-            if (sit != host->impl_->sessions.end()) ctx = sit->second;
-        }
-        if (!ctx) {
-            res.status = 404;
+            std::vector<std::pair<QByteArray, QByteArray>> h{
+                {QByteArrayLiteral("Mcp-Session-Id"),
+                 QByteArray::fromStdString(ctx->id)}};
+            send({202, QByteArrayLiteral("application/json"), {}, std::move(h)});
             return;
         }
 
-        auto transport = ctx->transport;
-        transport->enter_get_stream();
+        // Async: park the reply future and poll it from a QTimer that
+        // lives on this (server) thread, so the response is delivered
+        // without ever blocking a worker. This also lets the handler
+        // issue server-initiated requests (sampling/roots/...) whose
+        // answers arrive as additional POSTs on other connections.
+        auto reply_shared =
+            std::make_shared<std::future<std::string>>(std::move(*reply));
+        auto budget = std::make_shared<std::chrono::steady_clock::time_point>(
+            std::chrono::steady_clock::now() + std::chrono::seconds{30});
+        const std::string session_id = ctx->id;
+        QPointer<QTcpSocket> sock = socket;
 
-        res.set_chunked_content_provider(
-            "text/event-stream",
-            [transport](std::size_t /*offset*/,
-                        httplib::DataSink& sink) -> bool {
-                if (transport->is_closed() || !sink.is_writable()) {
-                    sink.done();
-                    return false;
+        auto* timer = new QTimer(impl_->http);
+        timer->setInterval(10);
+        QObject::connect(timer, &QTimer::timeout, timer,
+            [reply_shared, budget, session_id, sock, timer]() {
+                std::vector<std::pair<QByteArray, QByteArray>> h{
+                    {QByteArrayLiteral("Mcp-Session-Id"),
+                     QByteArray::fromStdString(session_id)}};
+                if (!sock
+                    || sock->state() != QAbstractSocket::ConnectedState) {
+                    timer->stop();
+                    timer->deleteLater();
+                    return;
                 }
-                auto frame = transport->wait_get_frame(std::chrono::seconds{15});
-                if (!frame.has_value()) {
-                    if (!sink.write(":\n\n", 3)) {
-                        sink.done();
-                        return false;
+                if (reply_shared->wait_for(std::chrono::milliseconds{0})
+                        == std::future_status::ready) {
+                    timer->stop();
+                    timer->deleteLater();
+                    try {
+                        std::string rbody = reply_shared->get();
+                        write_raw_http_response(
+                            sock,
+                            {200, QByteArrayLiteral("application/json"),
+                             QByteArray::fromStdString(rbody), std::move(h)});
+                    } catch (const std::exception& e) {
+                        write_raw_http_response(
+                            sock,
+                            {500, QByteArrayLiteral("text/plain"),
+                             QByteArray::fromStdString(
+                                 std::string{"handler error: "} + e.what()),
+                             std::move(h)});
+                    } catch (...) {
+                        write_raw_http_response(
+                            sock,
+                            {500, QByteArrayLiteral("text/plain"),
+                             QByteArrayLiteral("handler error"), std::move(h)});
                     }
-                    return true;
+                    return;
                 }
-                std::string sse = "data: ";
-                sse.append(*frame);
-                sse.append("\n\n");
-                if (!sink.write(sse.data(), sse.size())) {
-                    sink.done();
-                    return false;
+                if (std::chrono::steady_clock::now() >= *budget) {
+                    timer->stop();
+                    timer->deleteLater();
+                    write_raw_http_response(
+                        sock,
+                        {504, QByteArrayLiteral("text/plain"),
+                         QByteArrayLiteral("handler timed out"), std::move(h)});
                 }
-                return true;
-            },
-            [transport](bool /*success*/) {
-                transport->leave_get_stream();
             });
-    });
+        QObject::connect(socket, &QAbstractSocket::disconnected, timer,
+            [timer]() {
+                timer->stop();
+                timer->deleteLater();
+            });
+        timer->start();
+    }));
 
-    // DELETE: terminate session.
-    srv.Delete(opts_.path, [host](const httplib::Request& req,
-                                    httplib::Response& res) {
-        if (!origin_allowed(req, host->opts_.allowed_origins)) {
-            res.status = 403;
-            res.set_content("Origin not allowed", "text/plain");
-            return;
+    // ---- GET: long-lived SSE stream for server-initiated traffic ----
+    // Registered as a raw router rule because Qt 6.4 has no public
+    // streaming API; we write HTTP/1.1 chunked framing directly.
+    http->router()->addRule<std::function<void()>>(
+        std::make_unique<QHttpServerRouterRule>(
+            QString::fromStdString(opts_.path),
+            QHttpServerRequest::Method::Get,
+            [this](const QRegularExpressionMatch&,
+                   const QHttpServerRequest& req,
+                   QTcpSocket*              socket) {
+                if (!origin_allowed(req, opts_.allowed_origins)) {
+                    write_raw_http_error(socket, 403, "Origin not allowed");
+                    return;
+                }
+                const auto auth = authorize(req, opts_);
+                if (!auth.allowed) {
+                    write_raw_http_error(socket, auth.status, auth.body,
+                                         auth.challenge);
+                    return;
+                }
+                const auto sid = header_value(req, "Mcp-Session-Id");
+                if (!sid || sid->empty()) {
+                    // No session -> we have no business holding a stream.
+                    write_raw_http_error(socket, 405, "");
+                    return;
+                }
+                std::shared_ptr<SessionContext> ctx;
+                {
+                    std::lock_guard<std::mutex> lk(impl_->sessions_mu);
+                    auto sit = impl_->sessions.find(*sid);
+                    if (sit != impl_->sessions.end()) ctx = sit->second;
+                }
+                if (!ctx) {
+                    write_raw_http_error(socket, 404, "");
+                    return;
+                }
+
+                auto transport = ctx->transport;
+                transport->enter_get_stream();
+
+                QByteArray head = QByteArrayLiteral("HTTP/1.1 200 OK\r\n");
+                head += QByteArrayLiteral("Content-Type: text/event-stream\r\n");
+                head += QByteArrayLiteral("Cache-Control: no-cache\r\n");
+                head += QByteArrayLiteral("Connection: keep-alive\r\n");
+                head += QByteArrayLiteral("Transfer-Encoding: chunked\r\n");
+                head += QByteArrayLiteral("\r\n");
+                socket->write(head);
+
+                QPointer<QTcpSocket> sock = socket;
+                auto* timer = new QTimer(impl_->http);
+                timer->setInterval(10);
+                auto last_beat = std::make_shared<
+                    std::chrono::steady_clock::time_point>(
+                        std::chrono::steady_clock::now());
+
+                QObject::connect(timer, &QTimer::timeout, timer,
+                    [transport, sock, timer, last_beat]() {
+                        if (!sock
+                            || transport->is_closed()
+                            || sock->state() != QAbstractSocket::ConnectedState) {
+                            transport->leave_get_stream();
+                            // Close the TCP connection so the client's GET
+                            // reply observes EOF and its read loop returns.
+                            // Without this the peer can hang forever waiting
+                            // on a stream the server has already abandoned.
+                            if (QTcpSocket* s = sock.data()) s->disconnectFromHost();
+                            timer->stop();
+                            timer->deleteLater();
+                            return;
+                        }
+                        while (auto frame = transport->try_get_frame()) {
+                            write_sse_chunk(sock, QByteArray::fromStdString(*frame));
+                        }
+                        const auto now = std::chrono::steady_clock::now();
+                        if (now - *last_beat >= std::chrono::seconds{15}) {
+                            *last_beat = now;
+                            write_sse_comment(sock);
+                        }
+                    });
+                QObject::connect(socket, &QAbstractSocket::disconnected, timer,
+                    [transport, timer]() {
+                        transport->leave_get_stream();
+                        timer->stop();
+                        timer->deleteLater();
+                    });
+                timer->start();
+            }));
+
+    // ---- DELETE: terminate session ----
+    http->route(QString::fromStdString(opts_.path),
+                QHttpServerRequest::Method::Delete,
+                [this](const QHttpServerRequest& req) -> QHttpServerResponse {
+        if (!origin_allowed(req, opts_.allowed_origins)) {
+            return text_response("Origin not allowed",
+                                 QHttpServerResponder::StatusCode::Forbidden);
         }
-        if (!authorize(req, res, host->opts_)) return;
-        auto it = req.headers.find("Mcp-Session-Id");
-        if (it == req.headers.end()) {
-            res.status = 400;
-            return;
+        const auto auth = authorize(req, opts_);
+        if (!auth.allowed) {
+            auto r = text_response(auth.body, status_from_int(auth.status));
+            if (!auth.challenge.empty()) {
+                r.setHeader(QByteArrayLiteral("WWW-Authenticate"),
+                            QByteArray::fromStdString(auth.challenge));
+            }
+            return r;
+        }
+        const auto it = header_value(req, "Mcp-Session-Id");
+        if (!it) {
+            return QHttpServerResponse(QHttpServerResponder::StatusCode::BadRequest);
         }
         std::shared_ptr<SessionContext> ctx;
         {
-            std::lock_guard<std::mutex> lk(host->impl_->sessions_mu);
-            auto sit = host->impl_->sessions.find(it->second);
-            if (sit != host->impl_->sessions.end()) {
+            std::lock_guard<std::mutex> lk(impl_->sessions_mu);
+            auto sit = impl_->sessions.find(*it);
+            if (sit != impl_->sessions.end()) {
                 ctx = sit->second;
-                host->impl_->sessions.erase(sit);
+                impl_->sessions.erase(sit);
             }
         }
         if (ctx) {
             // Notify the embedder while the Server is still fully alive
             // (before close/join/destruction) so it can drop any raw
             // Server* it holds. The sessions_mu is already released.
-            invoke_session_closed(host->opts_, *ctx->server);
-            // Same TSan-race rationale as in stop(): close the
-            // transport first, let its on_close cascade unblock the
-            // server's run loop, then join.
+            invoke_session_closed(opts_, *ctx->server);
+            // Close the transport first, let its on_close cascade
+            // unblock the server's run loop, then join.
             ctx->transport->close();
             if (ctx->run_thread.joinable()) ctx->run_thread.join();
         }
-        res.status = 204;
+        return QHttpServerResponse(QHttpServerResponder::StatusCode::NoContent);
     });
 
-    // OPTIONS preflight on the MCP path so browser-based clients
-    // can send Authorization, Mcp-Session-Id, MCP-Protocol-Version,
-    // etc. cross-origin. The handler runs the same origin check as
-    // the real verbs; if origin doesn't pass, we 403 — which the
-    // browser surfaces to the JS client as a CORS failure (same as
-    // any other denied preflight).
+    // ---- OPTIONS preflight ----
     if (opts_.enable_cors_preflight) {
-        srv.Options(opts_.path, [host](const httplib::Request& req,
-                                         httplib::Response&     res) {
-            const auto acao = resolve_cors_origin(
-                req, host->opts_.allowed_origins);
+        http->route(QString::fromStdString(opts_.path),
+                    QHttpServerRequest::Method::Options,
+                    [this](const QHttpServerRequest& req) -> QHttpServerResponse {
+            const auto acao = resolve_cors_origin(req, opts_.allowed_origins);
             if (acao.empty()) {
-                res.status = 403;
-                return;
+                return QHttpServerResponse(
+                    QHttpServerResponder::StatusCode::Forbidden);
             }
-            res.set_header("Access-Control-Allow-Origin",  acao);
-            res.set_header("Access-Control-Allow-Methods",
-                           "GET, POST, DELETE, OPTIONS");
-            res.set_header("Access-Control-Allow-Headers",
-                           "Authorization, Content-Type, Mcp-Session-Id, "
-                           "MCP-Protocol-Version, Last-Event-ID, Accept");
-            res.set_header("Access-Control-Expose-Headers",
-                           "Mcp-Session-Id, WWW-Authenticate");
-            res.set_header("Access-Control-Max-Age", "600");
-            res.status = 204;
+            auto r = QHttpServerResponse(
+                QHttpServerResponder::StatusCode::NoContent);
+            r.setHeader(QByteArrayLiteral("Access-Control-Allow-Origin"),
+                        QByteArray::fromStdString(acao));
+            r.setHeader(QByteArrayLiteral("Access-Control-Allow-Methods"),
+                        QByteArrayLiteral("GET, POST, DELETE, OPTIONS"));
+            r.setHeader(QByteArrayLiteral("Access-Control-Allow-Headers"),
+                        QByteArrayLiteral("Authorization, Content-Type, "
+                                          "Mcp-Session-Id, "
+                                          "MCP-Protocol-Version, "
+                                          "Last-Event-ID, Accept"));
+            r.setHeader(QByteArrayLiteral("Access-Control-Expose-Headers"),
+                        QByteArrayLiteral("Mcp-Session-Id, WWW-Authenticate"));
+            r.setHeader(QByteArrayLiteral("Access-Control-Max-Age"),
+                        QByteArrayLiteral("600"));
+            return r;
         });
     }
 
-    // RFC 9728 Protected Resource Metadata. We expose the same
-    // document at the canonical root well-known URI and at the
-    // path-prefixed variant when path is non-trivial. NOT gated by
-    // origin / Bearer — discovery is meant to be public, including
-    // cross-origin (browser MCP clients run discovery from a foreign
-    // origin), so we set the permissive CORS header per RFC 9728 §3.1.
+    // ---- RFC 9728 Protected Resource Metadata ----
     if (opts_.resource_metadata.has_value()) {
-        const std::string body = opts_.resource_metadata->dump();
-        const auto handler = [body](const httplib::Request&,
-                                     httplib::Response& res) {
-            res.set_header("Access-Control-Allow-Origin", "*");
-            res.set_header("Cache-Control", "public, max-age=3600");
-            res.set_content(body, "application/json");
+        const QByteArray body =
+            QByteArray::fromStdString(dump(*opts_.resource_metadata));
+        const auto handler = [body](const QHttpServerRequest&)
+                -> QHttpServerResponse {
+            auto r = QHttpServerResponse(
+                QByteArrayLiteral("application/json"), body,
+                QHttpServerResponder::StatusCode::Ok);
+            r.setHeader(QByteArrayLiteral("Access-Control-Allow-Origin"),
+                        QByteArrayLiteral("*"));
+            r.setHeader(QByteArrayLiteral("Cache-Control"),
+                        QByteArrayLiteral("public, max-age=3600"));
+            return r;
         };
-        srv.Get("/.well-known/oauth-protected-resource", handler);
-        // Only register the path-prefixed variant when path is more
-        // than a bare "/"; otherwise the route would collide with
-        // the canonical one above.
+        http->route(QStringLiteral("/.well-known/oauth-protected-resource"),
+                    QHttpServerRequest::Method::Get, handler);
         if (opts_.path.size() > 1) {
-            srv.Get("/.well-known/oauth-protected-resource" + opts_.path,
-                    handler);
+            http->route(QStringLiteral("/.well-known/oauth-protected-resource") +
+                            QString::fromStdString(opts_.path),
+                        QHttpServerRequest::Method::Get, handler);
         }
     }
 
-    if (opts_.port != 0) {
-        if (!impl_->http.bind_to_port(opts_.host, opts_.port)) {
-            started_.store(false, std::memory_order_release);
-            throw std::runtime_error(
-                "HttpServerHost: bind failed for " + opts_.host + ":" +
-                std::to_string(opts_.port));
-        }
-        impl_->port = opts_.port;
-    } else {
-        impl_->port = impl_->http.bind_to_any_port(opts_.host);
-        if (impl_->port < 0) {
-            started_.store(false, std::memory_order_release);
-            throw std::runtime_error("HttpServerHost: bind failed for " +
-                                     opts_.host + " (OS-assigned port)");
-        }
+    // ---- Bind + run on the dedicated thread ----
+    http->moveToThread(impl_->thread);
+    QObject::connect(impl_->thread, &QThread::finished, http,
+                     &QObject::deleteLater);
+
+    auto bound = std::make_shared<std::promise<int>>();
+    auto bound_fut = bound->get_future();
+    QObject::connect(impl_->thread, &QThread::started, http,
+        [this, bound]() {
+            QHostAddress addr;
+            if (opts_.host == "localhost") {
+                addr = QHostAddress::LocalHost;
+            } else {
+                addr = QHostAddress(QString::fromStdString(opts_.host));
+            }
+            const quint16 requested = static_cast<quint16>(opts_.port);
+            const quint16 actual = impl_->http->listen(addr, requested);
+            const int result = actual != 0 ? static_cast<int>(actual) : -1;
+            impl_->port.store(result, std::memory_order_release);
+            bound->set_value(result);
+        });
+
+    impl_->thread->start();
+    const int actual_port = bound_fut.get();
+    if (actual_port <= 0) {
+        started_.store(false, std::memory_order_release);
+        // Tear the half-started thread down before throwing.
+        impl_->thread->quit();
+        impl_->thread->wait();
+        impl_->http   = nullptr;  // deleted via the finished->deleteLater link
+        delete impl_->thread;
+        impl_->thread = nullptr;
+        throw std::runtime_error(
+            "HttpServerHost: bind failed for " + opts_.host + ":" +
+            std::to_string(opts_.port));
     }
-    impl_->listener = std::thread([this] { impl_->http.listen_after_bind(); });
-    while (!impl_->http.is_running()) std::this_thread::sleep_for(std::chrono::milliseconds{1});
 }
 
 void HttpServerHost::stop() {
@@ -930,22 +1225,18 @@ void HttpServerHost::stop() {
     if (!started_.load(std::memory_order_acquire)) return;
 
     if (impl_) {
-        // Close transports first so any in-flight handler (a GET
-        // SSE stream parked in wait_get_frame, a POST awaiting a
-        // sampling reply that will never arrive) can return. If we
-        // joined the listener before this, those in-flight handlers
-        // would block forever and the join would deadlock.
+        // Close transports first so any in-flight handler (a POST
+        // awaiting a sampling reply that will never arrive) can
+        // return. If we stopped the server before this, those
+        // handlers would be left waiting on their timers.
         //
-        // We deliberately do NOT call ctx->server->stop() here even
-        // though it would also unblock the run_thread's stop_cv:
-        // both stop() and transport->close() race to wake T14, but
-        // transport->close() also runs the Session's on_close hook
-        // (which touches Session members). If stop() wakes T14 first
-        // it will destroy the Session out from under that on_close
-        // hook — TSan caught exactly that race in CI. Letting the
-        // transport's on_close → user-on_closed cascade be the
-        // sole wake-up path keeps "Session destruction" properly
-        // happens-after "on_close finished".
+        // We deliberately do NOT call ctx->server->stop() here: both
+        // stop() and transport->close() race to wake the run thread,
+        // but transport->close() also runs the Session's on_close hook
+        // (which touches Session members). Letting the transport's
+        // on_close -> user-on_closed cascade be the sole wake-up path
+        // keeps "Session destruction" properly happens-after
+        // "on_close finished".
         std::unordered_map<std::string, std::shared_ptr<SessionContext>> drained;
         {
             std::lock_guard<std::mutex> lk(impl_->sessions_mu);
@@ -960,8 +1251,17 @@ void HttpServerHost::stop() {
             ctx->transport->close();
         }
 
-        impl_->http.stop();
-        if (impl_->listener.joinable()) impl_->listener.join();
+        // Drain the server's event loop on its own thread and join it.
+        // QHttpServer (Qt 6.4) has no stop(); tearing the thread down
+        // and letting the finished->deleteLater link destroy the
+        // server closes its listening sockets.
+        if (impl_->thread) {
+            impl_->thread->quit();
+            impl_->thread->wait();
+        }
+        impl_->http   = nullptr;
+        delete impl_->thread;
+        impl_->thread = nullptr;
 
         for (auto& [id, ctx] : drained) {
             if (ctx->run_thread.joinable()) ctx->run_thread.join();

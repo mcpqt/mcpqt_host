@@ -3,7 +3,7 @@
 //
 // Phase 4c tests: OAuth 2.1 authorization on the HTTP transport.
 //
-// We use a raw httplib::Client for the negative paths (sending a
+// We use a raw QTcpSocket client for the negative paths (sending a
 // raw POST without — or with the wrong — Authorization header), and
 // the regular HttpClientTransport + Client stack for the positive
 // path (Bearer-attached requests pass through end-to-end).
@@ -12,29 +12,61 @@
 #error "MCP_ENABLE_HTTP must be defined for http_oauth_test"
 #endif
 
+// QVERIFY_EXCEPTION_THROWN is deprecated (but still functional) in Qt 6.4.
+#define QT_NO_DEPRECATED_WARNINGS
+
 #include "mcp/client.hpp"
 #include "mcp/http_client_transport.hpp"
 #include "mcp/http_server_host.hpp"
 #include "mcp/protocol.hpp"
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
+#include "raw_http_client.hpp"
 
-#include <httplib.h>
+#include <QtTest/QtTest>
 
-#include <nlohmann/json.hpp>
+#include <QByteArray>
+#include <QJsonArray>
+#include <QJsonObject>
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <future>
 #include <memory>
 #include <string>
 
 namespace {
-
-using nlohmann::json;
 using namespace std::chrono_literals;
+}  // namespace
 
-TEST(HttpOAuth, MissingAuthorizationProduces401) {
+class HttpOAuth : public QObject {
+    Q_OBJECT
+private slots:
+    void MissingAuthorizationProduces401();
+    void InvalidBearerProduces401();
+    void NonBearerSchemeRejected();
+    void ValidBearerEndToEnd();
+    void ClientReceives401Callback();
+    void ResourceMetadataDocumentIsServed();
+    void MetadataDocumentNotServedWhenAbsent();
+    void CaseInsensitiveBearerScheme();
+    void MultipleAuthorizationHeadersRejected();
+    void InsufficientScopeProduces403();
+    void ChallengeIncludesInvalidTokenError();
+    void EmptyBearerTokenRejected();
+    void MetadataDocumentHasCors();
+    void RealmInjectionRejectedAtStart();
+    void MetadataUrlInjectionRejectedAtStart();
+    void ClientSetAccessTokenRotates();
+    void BindToNonLoopbackRequiresAllowInsecureHttp();
+    void BindToNonLoopbackWithAllowInsecureHttpStartsCleanly();
+    void OptionsPreflightAllowsAllowedOrigin();
+    void OptionsPreflightRejectsDisallowedOrigin();
+    void NoValidatorMeansNoAuth();
+};
+
+void HttpOAuth::MissingAuthorizationProduces401() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -53,24 +85,22 @@ TEST(HttpOAuth, MissingAuthorizationProduces401) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    auto res = cli.Post("/mcp",
+    auto res = mcp::test::raw_request(
+        host.port(), "POST", "/mcp",
         {{"Content-Type", "application/json"}},
-        R"({"jsonrpc":"2.0","method":"initialize","id":1})",
-        "application/json");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 401);
-    auto it = res->headers.find("WWW-Authenticate");
-    ASSERT_NE(it, res->headers.end());
-    EXPECT_NE(it->second.find("Bearer"),                  std::string::npos);
-    EXPECT_NE(it->second.find("realm=\"test-realm\""),    std::string::npos);
-    EXPECT_NE(it->second.find("resource_metadata=\"https://example.com"),
-              std::string::npos);
+        R"({"jsonrpc":"2.0","method":"initialize","id":1})");
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 401);
+    const QByteArray www = res.header("WWW-Authenticate");
+    QVERIFY(!www.isEmpty());
+    QVERIFY(www.contains("Bearer"));
+    QVERIFY(www.contains("realm=\"test-realm\""));
+    QVERIFY(www.contains("resource_metadata=\"https://example.com"));
 
     host.stop();
 }
 
-TEST(HttpOAuth, InvalidBearerProduces401) {
+void HttpOAuth::InvalidBearerProduces401() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -89,19 +119,17 @@ TEST(HttpOAuth, InvalidBearerProduces401) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    auto res = cli.Post("/mcp",
-        {{"Content-Type",  "application/json"},
-         {"Authorization", "Bearer wrong-token"}},
-        R"({"jsonrpc":"2.0","method":"initialize","id":1})",
-        "application/json");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 401);
+    auto res = mcp::test::raw_request(
+        host.port(), "POST", "/mcp",
+        {{"Content-Type", "application/json"}, {"Authorization", "Bearer wrong-token"}},
+        R"({"jsonrpc":"2.0","method":"initialize","id":1})");
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 401);
 
     host.stop();
 }
 
-TEST(HttpOAuth, NonBearerSchemeRejected) {
+void HttpOAuth::NonBearerSchemeRejected() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -117,19 +145,17 @@ TEST(HttpOAuth, NonBearerSchemeRejected) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    auto res = cli.Post("/mcp",
-        {{"Content-Type",  "application/json"},
-         {"Authorization", "Basic dXNlcjpwYXNz"}},
-        R"({"jsonrpc":"2.0","method":"initialize","id":1})",
-        "application/json");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 401);
+    auto res = mcp::test::raw_request(
+        host.port(), "POST", "/mcp",
+        {{"Content-Type", "application/json"}, {"Authorization", "Basic dXNlcjpwYXNz"}},
+        R"({"jsonrpc":"2.0","method":"initialize","id":1})");
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 401);
 
     host.stop();
 }
 
-TEST(HttpOAuth, ValidBearerEndToEnd) {
+void HttpOAuth::ValidBearerEndToEnd() {
     std::atomic<int> validations{0};
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "calc", .version = "1.0"},
@@ -147,8 +173,8 @@ TEST(HttpOAuth, ValidBearerEndToEnd) {
                 },
         },
         [](mcp::Server& s) {
-            s.tool("ping", json{{"type", "object"}},
-                   [](const json&) -> mcp::CallToolResult {
+            s.tool("ping", QJsonObject{{"type", "object"}},
+                   [](const mcp::Json&) -> mcp::CallToolResult {
                        return {.content = { mcp::TextContent{.text = "pong"} }};
                    });
         },
@@ -166,18 +192,18 @@ TEST(HttpOAuth, ValidBearerEndToEnd) {
 
     (void)client.initialize().get();
     auto out = client.call_tool("ping").get();
-    ASSERT_FALSE(out.is_error.value_or(false));
-    EXPECT_EQ(std::get<mcp::TextContent>(out.content[0]).text, "pong");
+    QVERIFY(!out.is_error.value_or(false));
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string{"pong"});
 
     // At least one validation per inbound POST. We sent at least
     // initialize + tools/call.
-    EXPECT_GE(validations.load(), 2);
+    QVERIFY(validations.load() >= 2);
 
     client.disconnect();
     host.stop();
 }
 
-TEST(HttpOAuth, ClientReceives401Callback) {
+void HttpOAuth::ClientReceives401Callback() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -209,25 +235,25 @@ TEST(HttpOAuth, ClientReceives401Callback) {
 
     auto transport = std::make_unique<mcp::HttpClientTransport>(topts);
     transport->start();
-    EXPECT_FALSE(transport->send(
+    QVERIFY(!transport->send(
         R"({"jsonrpc":"2.0","method":"initialize","id":1})"));
 
-    ASSERT_EQ(challenge_f.wait_for(2s), std::future_status::ready);
+    QCOMPARE(challenge_f.wait_for(2s), std::future_status::ready);
     const auto challenge = challenge_f.get();
-    EXPECT_NE(challenge.find("Bearer"),         std::string::npos);
-    EXPECT_NE(challenge.find("resource_metadata=\"https://idp.example"),
-              std::string::npos);
+    QVERIFY(challenge.find("Bearer") != std::string::npos);
+    QVERIFY(challenge.find("resource_metadata=\"https://idp.example")
+            != std::string::npos);
 
     transport->close();
     host.stop();
 }
 
-TEST(HttpOAuth, ResourceMetadataDocumentIsServed) {
-    json metadata = {
-        {"resource",                "https://example.com/mcp"},
-        {"authorization_servers",   json::array({"https://idp.example"})},
-        {"scopes_supported",        json::array({"mcp:read", "mcp:write"})},
-        {"bearer_methods_supported", json::array({"header"})},
+void HttpOAuth::ResourceMetadataDocumentIsServed() {
+    QJsonObject metadata{
+        {"resource", "https://example.com/mcp"},
+        {"authorization_servers", QJsonArray{"https://idp.example"}},
+        {"scopes_supported", QJsonArray{"mcp:read", "mcp:write"}},
+        {"bearer_methods_supported", QJsonArray{"header"}},
     };
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
@@ -240,27 +266,30 @@ TEST(HttpOAuth, ResourceMetadataDocumentIsServed) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
     // Root well-known URI.
     {
-        auto res = cli.Get("/.well-known/oauth-protected-resource");
-        ASSERT_TRUE(res);
-        EXPECT_EQ(res->status, 200);
-        auto body = json::parse(res->body);
-        EXPECT_EQ(body["resource"], "https://example.com/mcp");
-        EXPECT_EQ(body["authorization_servers"][0], "https://idp.example");
+        auto res = mcp::test::raw_request(
+            host.port(), "GET", "/.well-known/oauth-protected-resource", {});
+        QVERIFY(res.connected);
+        QCOMPARE(res.status, 200);
+        const mcp::Json body = mcp::parse_json(res.body.toStdString());
+        QCOMPARE(body.toObject().value("resource").toString(),
+                 QStringLiteral("https://example.com/mcp"));
+        QCOMPARE(body.toObject().value("authorization_servers").toArray()[0].toString(),
+                 QStringLiteral("https://idp.example"));
     }
     // Path-prefixed variant.
     {
-        auto res = cli.Get("/.well-known/oauth-protected-resource/mcp");
-        ASSERT_TRUE(res);
-        EXPECT_EQ(res->status, 200);
+        auto res = mcp::test::raw_request(
+            host.port(), "GET", "/.well-known/oauth-protected-resource/mcp", {});
+        QVERIFY(res.connected);
+        QCOMPARE(res.status, 200);
     }
 
     host.stop();
 }
 
-TEST(HttpOAuth, MetadataDocumentNotServedWhenAbsent) {
+void HttpOAuth::MetadataDocumentNotServedWhenAbsent() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -271,15 +300,15 @@ TEST(HttpOAuth, MetadataDocumentNotServedWhenAbsent) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    auto res = cli.Get("/.well-known/oauth-protected-resource");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 404);
+    auto res = mcp::test::raw_request(
+        host.port(), "GET", "/.well-known/oauth-protected-resource", {});
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 404);
 
     host.stop();
 }
 
-TEST(HttpOAuth, CaseInsensitiveBearerScheme) {
+void HttpOAuth::CaseInsensitiveBearerScheme() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -297,24 +326,22 @@ TEST(HttpOAuth, CaseInsensitiveBearerScheme) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
     // RFC 7235 §2.1: scheme is case-insensitive. Try lowercase + uppercase.
     for (const char* hdr : {"bearer tok", "BEARER tok", "BeArEr tok"}) {
-        auto res = cli.Post("/mcp",
-            {{"Content-Type", "application/json"},
-             {"Authorization", hdr}},
-            R"({"jsonrpc":"2.0","method":"initialize","id":1})",
-            "application/json");
-        ASSERT_TRUE(res);
+        auto res = mcp::test::raw_request(
+            host.port(), "POST", "/mcp",
+            {{"Content-Type", "application/json"}, {"Authorization", hdr}},
+            R"({"jsonrpc":"2.0","method":"initialize","id":1})");
+        QVERIFY(res.connected);
         // We expect 400/401 only if the body fails session lookup, NOT 401
         // for scheme parsing.
-        EXPECT_NE(res->status, 401) << "rejected scheme: " << hdr;
+        QVERIFY2(res.status != 401, hdr);
     }
 
     host.stop();
 }
 
-TEST(HttpOAuth, MultipleAuthorizationHeadersRejected) {
+void HttpOAuth::MultipleAuthorizationHeadersRejected() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -330,22 +357,21 @@ TEST(HttpOAuth, MultipleAuthorizationHeadersRejected) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    httplib::Headers hdrs = {
-        {"Content-Type",  "application/json"},
+    QList<QPair<QByteArray, QByteArray>> hdrs = {
+        {"Content-Type", "application/json"},
         {"Authorization", "Bearer one"},
         {"Authorization", "Bearer two"},
     };
-    auto res = cli.Post("/mcp", hdrs,
-        R"({"jsonrpc":"2.0","method":"initialize","id":1})",
-        "application/json");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 400);
+    auto res = mcp::test::raw_request(
+        host.port(), "POST", "/mcp", hdrs,
+        R"({"jsonrpc":"2.0","method":"initialize","id":1})");
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 400);
 
     host.stop();
 }
 
-TEST(HttpOAuth, InsufficientScopeProduces403) {
+void HttpOAuth::InsufficientScopeProduces403() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -363,23 +389,21 @@ TEST(HttpOAuth, InsufficientScopeProduces403) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    auto res = cli.Post("/mcp",
-        {{"Content-Type",  "application/json"},
-         {"Authorization", "Bearer tok"}},
-        R"({"jsonrpc":"2.0","method":"initialize","id":1})",
-        "application/json");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 403);
-    auto it = res->headers.find("WWW-Authenticate");
-    ASSERT_NE(it, res->headers.end());
-    EXPECT_NE(it->second.find("error=\"insufficient_scope\""),  std::string::npos);
-    EXPECT_NE(it->second.find("scope=\"mcp:read mcp:tools\""),  std::string::npos);
+    auto res = mcp::test::raw_request(
+        host.port(), "POST", "/mcp",
+        {{"Content-Type", "application/json"}, {"Authorization", "Bearer tok"}},
+        R"({"jsonrpc":"2.0","method":"initialize","id":1})");
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 403);
+    const QByteArray www = res.header("WWW-Authenticate");
+    QVERIFY(!www.isEmpty());
+    QVERIFY(www.contains("error=\"insufficient_scope\""));
+    QVERIFY(www.contains("scope=\"mcp:read mcp:tools\""));
 
     host.stop();
 }
 
-TEST(HttpOAuth, ChallengeIncludesInvalidTokenError) {
+void HttpOAuth::ChallengeIncludesInvalidTokenError() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -395,22 +419,20 @@ TEST(HttpOAuth, ChallengeIncludesInvalidTokenError) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    auto res = cli.Post("/mcp",
-        {{"Content-Type",  "application/json"},
-         {"Authorization", "Bearer junk"}},
-        R"({"jsonrpc":"2.0","method":"initialize","id":1})",
-        "application/json");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 401);
-    auto it = res->headers.find("WWW-Authenticate");
-    ASSERT_NE(it, res->headers.end());
-    EXPECT_NE(it->second.find("error=\"invalid_token\""), std::string::npos);
+    auto res = mcp::test::raw_request(
+        host.port(), "POST", "/mcp",
+        {{"Content-Type", "application/json"}, {"Authorization", "Bearer junk"}},
+        R"({"jsonrpc":"2.0","method":"initialize","id":1})");
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 401);
+    const QByteArray www = res.header("WWW-Authenticate");
+    QVERIFY(!www.isEmpty());
+    QVERIFY(www.contains("error=\"invalid_token\""));
 
     host.stop();
 }
 
-TEST(HttpOAuth, EmptyBearerTokenRejected) {
+void HttpOAuth::EmptyBearerTokenRejected() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -426,45 +448,41 @@ TEST(HttpOAuth, EmptyBearerTokenRejected) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
     // Trailing whitespace after "Bearer" is the only token68 — empty.
     for (const char* hdr : {"Bearer ", "Bearer  ", "Bearer \t"}) {
-        auto res = cli.Post("/mcp",
-            {{"Content-Type",  "application/json"},
-             {"Authorization", hdr}},
-            R"({"jsonrpc":"2.0","method":"initialize","id":1})",
-            "application/json");
-        ASSERT_TRUE(res);
-        EXPECT_EQ(res->status, 401) << "header was: '" << hdr << "'";
+        auto res = mcp::test::raw_request(
+            host.port(), "POST", "/mcp",
+            {{"Content-Type", "application/json"}, {"Authorization", hdr}},
+            R"({"jsonrpc":"2.0","method":"initialize","id":1})");
+        QVERIFY(res.connected);
+        QVERIFY2(res.status == 401, hdr);
     }
 
     host.stop();
 }
 
-TEST(HttpOAuth, MetadataDocumentHasCors) {
+void HttpOAuth::MetadataDocumentHasCors() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
             .host = "127.0.0.1",
             .path = "/mcp",
-            .resource_metadata = json{{"resource", "https://x"}},
+            .resource_metadata = QJsonObject{{"resource", "https://x"}},
         },
         [](mcp::Server&) {},
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    auto res = cli.Get("/.well-known/oauth-protected-resource");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 200);
-    auto cors = res->headers.find("Access-Control-Allow-Origin");
-    ASSERT_NE(cors, res->headers.end());
-    EXPECT_EQ(cors->second, "*");
+    auto res = mcp::test::raw_request(
+        host.port(), "GET", "/.well-known/oauth-protected-resource", {});
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 200);
+    QCOMPARE(res.header("Access-Control-Allow-Origin"), QByteArray("*"));
 
     host.stop();
 }
 
-TEST(HttpOAuth, RealmInjectionRejectedAtStart) {
+void HttpOAuth::RealmInjectionRejectedAtStart() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -480,10 +498,10 @@ TEST(HttpOAuth, RealmInjectionRejectedAtStart) {
         },
         [](mcp::Server&) {},
     };
-    EXPECT_THROW(host.start(), std::invalid_argument);
+    QVERIFY_EXCEPTION_THROWN(host.start(), std::invalid_argument);
 }
 
-TEST(HttpOAuth, MetadataUrlInjectionRejectedAtStart) {
+void HttpOAuth::MetadataUrlInjectionRejectedAtStart() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -498,10 +516,10 @@ TEST(HttpOAuth, MetadataUrlInjectionRejectedAtStart) {
         },
         [](mcp::Server&) {},
     };
-    EXPECT_THROW(host.start(), std::invalid_argument);
+    QVERIFY_EXCEPTION_THROWN(host.start(), std::invalid_argument);
 }
 
-TEST(HttpOAuth, ClientSetAccessTokenRotates) {
+void HttpOAuth::ClientSetAccessTokenRotates() {
     std::atomic<int> valid_count{0};
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
@@ -518,8 +536,8 @@ TEST(HttpOAuth, ClientSetAccessTokenRotates) {
             },
         },
         [](mcp::Server& s) {
-            s.tool("noop", json{{"type", "object"}},
-                   [](const json&) -> mcp::CallToolResult {
+            s.tool("noop", QJsonObject{{"type", "object"}},
+                   [](const mcp::Json&) -> mcp::CallToolResult {
                        return {.content = { mcp::TextContent{.text = "ok"} }};
                    });
         },
@@ -534,22 +552,24 @@ TEST(HttpOAuth, ClientSetAccessTokenRotates) {
     auto* transport_raw   = new mcp::HttpClientTransport{topts};
     std::unique_ptr<mcp::HttpClientTransport> transport{transport_raw};
 
-    EXPECT_EQ(transport_raw->access_token(), "v1");
+    QCOMPARE(QString::fromStdString(transport_raw->access_token()),
+             QStringLiteral("v1"));
     transport_raw->set_access_token("v2");
-    EXPECT_EQ(transport_raw->access_token(), "v2");
+    QCOMPARE(QString::fromStdString(transport_raw->access_token()),
+             QStringLiteral("v2"));
 
     mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
     client.connect(std::move(transport));
     (void)client.initialize().get();
     auto out = client.call_tool("noop").get();
-    EXPECT_EQ(std::get<mcp::TextContent>(out.content[0]).text, "ok");
-    EXPECT_GE(valid_count.load(), 2);
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string{"ok"});
+    QVERIFY(valid_count.load() >= 2);
 
     client.disconnect();
     host.stop();
 }
 
-TEST(HttpOAuth, BindToNonLoopbackRequiresAllowInsecureHttp) {
+void HttpOAuth::BindToNonLoopbackRequiresAllowInsecureHttp() {
     // Bearer auth + non-loopback host + plain HTTP without the
     // explicit acknowledgement throws at start().
     mcp::HttpServerHost host{
@@ -565,10 +585,10 @@ TEST(HttpOAuth, BindToNonLoopbackRequiresAllowInsecureHttp) {
         },
         [](mcp::Server&) {},
     };
-    EXPECT_THROW(host.start(), std::invalid_argument);
+    QVERIFY_EXCEPTION_THROWN(host.start(), std::invalid_argument);
 }
 
-TEST(HttpOAuth, BindToNonLoopbackWithAllowInsecureHttpStartsCleanly) {
+void HttpOAuth::BindToNonLoopbackWithAllowInsecureHttpStartsCleanly() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -585,11 +605,15 @@ TEST(HttpOAuth, BindToNonLoopbackWithAllowInsecureHttpStartsCleanly) {
         },
         [](mcp::Server&) {},
     };
-    EXPECT_NO_THROW(host.start());
+    try {
+        host.start();
+    } catch (...) {
+        QFAIL("host.start() threw unexpectedly");
+    }
     host.stop();
 }
 
-TEST(HttpOAuth, OptionsPreflightAllowsAllowedOrigin) {
+void HttpOAuth::OptionsPreflightAllowsAllowedOrigin() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -601,31 +625,29 @@ TEST(HttpOAuth, OptionsPreflightAllowsAllowedOrigin) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    cli.set_default_headers({
-        {"Origin", "https://allowed.example"},
-        {"Access-Control-Request-Method", "POST"},
-        {"Access-Control-Request-Headers", "Authorization, Content-Type"},
-    });
-    auto res = cli.Options("/mcp");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 204);
-    auto acao = res->headers.find("Access-Control-Allow-Origin");
-    ASSERT_NE(acao, res->headers.end());
-    EXPECT_EQ(acao->second, "https://allowed.example");
-    auto acam = res->headers.find("Access-Control-Allow-Methods");
-    ASSERT_NE(acam, res->headers.end());
-    EXPECT_NE(acam->second.find("POST"),    std::string::npos);
-    EXPECT_NE(acam->second.find("DELETE"),  std::string::npos);
-    auto acah = res->headers.find("Access-Control-Allow-Headers");
-    ASSERT_NE(acah, res->headers.end());
-    EXPECT_NE(acah->second.find("Authorization"), std::string::npos);
-    EXPECT_NE(acah->second.find("Mcp-Session-Id"), std::string::npos);
+    auto res = mcp::test::raw_request(
+        host.port(), "OPTIONS", "/mcp",
+        {{"Origin", "https://allowed.example"},
+         {"Access-Control-Request-Method", "POST"},
+         {"Access-Control-Request-Headers", "Authorization, Content-Type"}},
+        {});
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 204);
+    QCOMPARE(res.header("Access-Control-Allow-Origin"),
+             QByteArray("https://allowed.example"));
+    const QByteArray acam = res.header("Access-Control-Allow-Methods");
+    QVERIFY(!acam.isEmpty());
+    QVERIFY(acam.contains("POST"));
+    QVERIFY(acam.contains("DELETE"));
+    const QByteArray acah = res.header("Access-Control-Allow-Headers");
+    QVERIFY(!acah.isEmpty());
+    QVERIFY(acah.contains("Authorization"));
+    QVERIFY(acah.contains("Mcp-Session-Id"));
 
     host.stop();
 }
 
-TEST(HttpOAuth, OptionsPreflightRejectsDisallowedOrigin) {
+void HttpOAuth::OptionsPreflightRejectsDisallowedOrigin() {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -637,16 +659,16 @@ TEST(HttpOAuth, OptionsPreflightRejectsDisallowedOrigin) {
     };
     host.start();
 
-    httplib::Client cli{"http://127.0.0.1:" + std::to_string(host.port())};
-    cli.set_default_headers({{"Origin", "https://evil.example"}});
-    auto res = cli.Options("/mcp");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(res->status, 403);
+    auto res = mcp::test::raw_request(
+        host.port(), "OPTIONS", "/mcp",
+        {{"Origin", "https://evil.example"}}, {});
+    QVERIFY(res.connected);
+    QCOMPARE(res.status, 403);
 
     host.stop();
 }
 
-TEST(HttpOAuth, NoValidatorMeansNoAuth) {
+void HttpOAuth::NoValidatorMeansNoAuth() {
     // Sanity check: existing code paths (no validator configured)
     // are unaffected — no Authorization header required.
     mcp::HttpServerHost host{
@@ -656,8 +678,8 @@ TEST(HttpOAuth, NoValidatorMeansNoAuth) {
             .path = "/mcp",
         },
         [](mcp::Server& s) {
-            s.tool("noop", json{{"type", "object"}},
-                   [](const json&) -> mcp::CallToolResult {
+            s.tool("noop", QJsonObject{{"type", "object"}},
+                   [](const mcp::Json&) -> mcp::CallToolResult {
                        return {.content = { mcp::TextContent{.text = "ok"} }};
                    });
         },
@@ -673,10 +695,11 @@ TEST(HttpOAuth, NoValidatorMeansNoAuth) {
     client.connect(std::make_unique<mcp::HttpClientTransport>(topts));
     (void)client.initialize().get();
     auto out = client.call_tool("noop").get();
-    EXPECT_EQ(std::get<mcp::TextContent>(out.content[0]).text, "ok");
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string{"ok"});
 
     client.disconnect();
     host.stop();
 }
 
-}  // namespace
+QTEST_GUILESS_MAIN(HttpOAuth)
+#include "http_oauth_test.moc"

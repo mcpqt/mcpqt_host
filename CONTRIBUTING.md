@@ -14,7 +14,9 @@ quickest path to a successful contribution is the same as everywhere else:
    integration tests in `tests/`. Round-trip JSON tests for new types,
    end-to-end tests for new request/response pairs, paired with an
    in-memory transport when no real network is needed.
-4. **Build & test under the sanitizer matrix locally** before opening a PR:
+4. **Build & test under the sanitizer matrix locally** before opening a PR.
+   You'll need a C++20 compiler and Qt 6.4+ (`qt6-base-dev` +
+   `qt6-httpserver-dev` on Debian/Ubuntu):
 
    ```bash
    cmake -B build -G Ninja

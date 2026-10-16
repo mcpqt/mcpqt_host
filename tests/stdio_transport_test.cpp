@@ -7,7 +7,11 @@
 
 #include "mcp/stdio_transport.hpp"
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
+
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <fcntl.h>
 #include <poll.h>
@@ -38,8 +42,8 @@ struct PipeHarness {
     PipeHarness() {
         int t2[2];
         int f2[2];
-        EXPECT_EQ(::pipe(t2), 0);
-        EXPECT_EQ(::pipe(f2), 0);
+        QCOMPARE(::pipe(t2), 0);
+        QCOMPARE(::pipe(f2), 0);
         to_transport_r = t2[0];
         to_transport_w = t2[1];
         from_transport_r = f2[0];
@@ -64,7 +68,7 @@ struct PipeHarness {
         std::size_t left = s.size();
         while (left > 0) {
             ssize_t n = ::write(to_transport_w, p, left);
-            ASSERT_GT(n, 0);
+            QVERIFY(n > 0);
             p += n; left -= static_cast<std::size_t>(n);
         }
     }
@@ -122,9 +126,27 @@ struct Sink {
     }
 };
 
-// -------------------------------------------------------------------------
+}  // namespace
 
-TEST(StdioTransport, DeliversWholeFrame) {
+class StdioTransport : public QObject {
+    Q_OBJECT
+private slots:
+    void DeliversWholeFrame();
+    void SplitsMultipleFramesByNewline();
+    void BuffersAcrossReads();
+    void IgnoresEmptyLines();
+    void SendWritesNewlineDelimitedFrames();
+    void RejectsFramesWithEmbeddedNewline();
+    void ConcurrentSendsAreSerialized();
+    void SendBeforeStartFails();
+    void EofTriggersClose();
+    void ExplicitCloseUnblocksReadLoop();
+    void IsOpenReflectsLifecycle();
+    void IdempotentStartAndClose();
+    void OversizedFrameTriggersErrorAndClose();
+};
+
+void StdioTransport::DeliversWholeFrame() {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -136,11 +158,11 @@ TEST(StdioTransport, DeliversWholeFrame) {
 
     h.write_to_transport(std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"} + "\n");
 
-    ASSERT_TRUE(sink.wait_for_messages(1));
-    EXPECT_EQ(sink.messages.front(), R"({"jsonrpc":"2.0","id":1,"method":"x"})");
+    QVERIFY(sink.wait_for_messages(1));
+    QCOMPARE(sink.messages.front(), std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"});
 }
 
-TEST(StdioTransport, SplitsMultipleFramesByNewline) {
+void StdioTransport::SplitsMultipleFramesByNewline() {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -151,13 +173,13 @@ TEST(StdioTransport, SplitsMultipleFramesByNewline) {
 
     h.write_to_transport("a\nb\nc\n");
 
-    ASSERT_TRUE(sink.wait_for_messages(3));
-    EXPECT_EQ(sink.messages[0], "a");
-    EXPECT_EQ(sink.messages[1], "b");
-    EXPECT_EQ(sink.messages[2], "c");
+    QVERIFY(sink.wait_for_messages(3));
+    QCOMPARE(sink.messages[0], std::string{"a"});
+    QCOMPARE(sink.messages[1], std::string{"b"});
+    QCOMPARE(sink.messages[2], std::string{"c"});
 }
 
-TEST(StdioTransport, BuffersAcrossReads) {
+void StdioTransport::BuffersAcrossReads() {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -169,12 +191,12 @@ TEST(StdioTransport, BuffersAcrossReads) {
     h.write_to_transport("part");
     h.write_to_transport("ial\nthen-next\n");
 
-    ASSERT_TRUE(sink.wait_for_messages(2));
-    EXPECT_EQ(sink.messages[0], "partial");
-    EXPECT_EQ(sink.messages[1], "then-next");
+    QVERIFY(sink.wait_for_messages(2));
+    QCOMPARE(sink.messages[0], std::string{"partial"});
+    QCOMPARE(sink.messages[1], std::string{"then-next"});
 }
 
-TEST(StdioTransport, IgnoresEmptyLines) {
+void StdioTransport::IgnoresEmptyLines() {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -185,31 +207,31 @@ TEST(StdioTransport, IgnoresEmptyLines) {
 
     h.write_to_transport("\n\nhi\n\n");
 
-    ASSERT_TRUE(sink.wait_for_messages(1));
-    EXPECT_EQ(sink.messages.size(), 1u);
-    EXPECT_EQ(sink.messages[0], "hi");
+    QVERIFY(sink.wait_for_messages(1));
+    QCOMPARE(sink.messages.size(), std::size_t{1});
+    QCOMPARE(sink.messages[0], std::string{"hi"});
 }
 
-TEST(StdioTransport, SendWritesNewlineDelimitedFrames) {
+void StdioTransport::SendWritesNewlineDelimitedFrames() {
     PipeHarness h;
     h.transport->start();
 
     auto ec = h.transport->send(R"({"jsonrpc":"2.0","id":7,"method":"y"})");
-    ASSERT_FALSE(ec) << ec.message();
+    QVERIFY(!ec);
 
     auto out = h.read_from_transport();
-    EXPECT_EQ(out, std::string{R"({"jsonrpc":"2.0","id":7,"method":"y"})"} + "\n");
+    QCOMPARE(out, std::string{R"({"jsonrpc":"2.0","id":7,"method":"y"})"} + "\n");
 }
 
-TEST(StdioTransport, RejectsFramesWithEmbeddedNewline) {
+void StdioTransport::RejectsFramesWithEmbeddedNewline() {
     PipeHarness h;
     h.transport->start();
     auto ec = h.transport->send("a\nb");
-    EXPECT_TRUE(ec);
-    EXPECT_EQ(ec, std::make_error_code(std::errc::invalid_argument));
+    QVERIFY(ec);
+    QCOMPARE(ec, std::make_error_code(std::errc::invalid_argument));
 }
 
-TEST(StdioTransport, ConcurrentSendsAreSerialized) {
+void StdioTransport::ConcurrentSendsAreSerialized() {
     PipeHarness h;
     h.transport->start();
 
@@ -221,7 +243,7 @@ TEST(StdioTransport, ConcurrentSendsAreSerialized) {
         ts.emplace_back([&, t]() {
             std::string msg = "thread-" + std::to_string(t);
             for (int i = 0; i < kPer; ++i) {
-                ASSERT_FALSE(h.transport->send(msg));
+                QVERIFY(!h.transport->send(msg));
             }
         });
     }
@@ -249,22 +271,22 @@ TEST(StdioTransport, ConcurrentSendsAreSerialized) {
         std::size_t nl = accumulated.find('\n', pos);
         if (nl == std::string::npos) break;
         const std::string frame = accumulated.substr(pos, nl - pos);
-        EXPECT_TRUE(frame.starts_with("thread-"));
-        EXPECT_EQ(frame.find('\n'), std::string::npos);
+        QVERIFY(frame.starts_with("thread-"));
+        QCOMPARE(frame.find('\n'), std::string::npos);
         pos = nl + 1;
         ++frame_count;
     }
-    EXPECT_EQ(frame_count, kThreads * kPer);
+    QCOMPARE(frame_count, kThreads * kPer);
 }
 
-TEST(StdioTransport, SendBeforeStartFails) {
+void StdioTransport::SendBeforeStartFails() {
     PipeHarness h;
     auto ec = h.transport->send("x");
-    EXPECT_TRUE(ec);
-    EXPECT_EQ(ec, std::make_error_code(std::errc::not_connected));
+    QVERIFY(ec);
+    QCOMPARE(ec, std::make_error_code(std::errc::not_connected));
 }
 
-TEST(StdioTransport, EofTriggersClose) {
+void StdioTransport::EofTriggersClose() {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -274,10 +296,10 @@ TEST(StdioTransport, EofTriggersClose) {
     h.transport->start();
 
     h.close_transport_input();  // EOF on the transport's read end.
-    EXPECT_TRUE(sink.wait_for_close());
+    QVERIFY(sink.wait_for_close());
 }
 
-TEST(StdioTransport, ExplicitCloseUnblocksReadLoop) {
+void StdioTransport::ExplicitCloseUnblocksReadLoop() {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -289,32 +311,31 @@ TEST(StdioTransport, ExplicitCloseUnblocksReadLoop) {
     // Read loop is parked in poll() with no input. close() must
     // wake it up via the self-pipe.
     h.transport->close();
-    EXPECT_TRUE(sink.wait_for_close());
+    QVERIFY(sink.wait_for_close());
 }
 
-TEST(StdioTransport, IsOpenReflectsLifecycle) {
+void StdioTransport::IsOpenReflectsLifecycle() {
     PipeHarness h;
-    EXPECT_FALSE(h.transport->is_open());
+    QVERIFY(!h.transport->is_open());
     h.transport->start();
-    EXPECT_TRUE(h.transport->is_open());
+    QVERIFY(h.transport->is_open());
     h.transport->close();
-    EXPECT_FALSE(h.transport->is_open());
+    QVERIFY(!h.transport->is_open());
 }
 
-TEST(StdioTransport, IdempotentStartAndClose) {
+void StdioTransport::IdempotentStartAndClose() {
     PipeHarness h;
     h.transport->start();
     h.transport->start();   // second start() is a no-op
     h.transport->close();
     h.transport->close();   // second close() is a no-op
-    SUCCEED();
 }
 
-TEST(StdioTransport, OversizedFrameTriggersErrorAndClose) {
+void StdioTransport::OversizedFrameTriggersErrorAndClose() {
     int t2[2];
     int f2[2];
-    ASSERT_EQ(::pipe(t2), 0);
-    ASSERT_EQ(::pipe(f2), 0);
+    QCOMPARE(::pipe(t2), 0);
+    QCOMPARE(::pipe(f2), 0);
 
     mcp::StdioTransport::Options opts{};
     opts.read_fd         = t2[0];
@@ -330,18 +351,28 @@ TEST(StdioTransport, OversizedFrameTriggersErrorAndClose) {
 
     std::string oversized(64, 'x');  // no newline; exceeds max_frame_bytes=16
     ssize_t n = ::write(t2[1], oversized.data(), oversized.size());
-    ASSERT_EQ(static_cast<std::size_t>(n), oversized.size());
+    QCOMPARE(static_cast<std::size_t>(n), oversized.size());
 
     {
         std::unique_lock<std::mutex> lk(sink.mu);
         sink.cv.wait_for(lk, 2s, [&] { return !sink.errors.empty() || sink.closed; });
     }
-    ASSERT_FALSE(sink.errors.empty());
-    EXPECT_EQ(sink.errors.front(), std::make_error_code(std::errc::message_size));
+    QVERIFY(!sink.errors.empty());
+    QCOMPARE(sink.errors.front(), std::make_error_code(std::errc::message_size));
 
     transport->close();
     ::close(t2[1]);
     ::close(f2[0]);
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        StdioTransport suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "stdio_transport_test.moc"

@@ -10,9 +10,11 @@
 #include "mcp/protocol.hpp"
 #include "mcp/server.hpp"
 
-#include <gtest/gtest.h>
+#include "qt_test_support.hpp"
 
-#include <nlohmann/json.hpp>
+#include <QtTest/QtTest>
+
+#include <QCoreApplication>
 
 #include <chrono>
 #include <future>
@@ -23,7 +25,7 @@
 
 namespace {
 
-using nlohmann::json;
+using mcp::Json;
 using namespace std::chrono_literals;
 
 struct ServerThread {
@@ -46,116 +48,145 @@ struct ServerThread {
     }
 };
 
+}  // namespace
+
 // -------------------------------------------------------------------------
 // Wire-shape round trips
 // -------------------------------------------------------------------------
 
-TEST(Elicitation, FormParamsRoundTrip) {
+class Elicitation : public QObject {
+    Q_OBJECT
+private slots:
+    void FormParamsRoundTrip();
+    void UrlParamsRoundTrip();
+    void VariantTagDispatch();
+    void ResultRoundTrip();
+    void CompleteNotificationParamsRoundTrip();
+    void ModeNullRejected();
+    void RequestedSchemaMustBeObject();
+};
+
+void Elicitation::FormParamsRoundTrip() {
     mcp::ElicitFormRequestParams p{
         .message          = "what's your name?",
-        .requested_schema = json{{"type", "object"},
-                                 {"properties", {{"name", {{"type", "string"}}}}},
-                                 {"required",   json::array({"name"})}},
+        .requested_schema = QJsonObject{
+            {"type", "object"},
+            {"properties", QJsonObject{{"name", QJsonObject{{"type", "string"}}}}},
+            {"required",   QJsonArray{"name"}},
+        },
     };
-    json j = p;
-    EXPECT_EQ(j["message"], "what's your name?");
-    EXPECT_FALSE(j.contains("mode"));   // form is the omitted-default
-    auto back = j.get<mcp::ElicitFormRequestParams>();
-    EXPECT_EQ(back.message, p.message);
-    EXPECT_EQ(back.requested_schema["properties"]["name"]["type"], "string");
+    Json j = mcp::to_json(p);
+    QCOMPARE(j["message"], mcp::test::jv("what's your name?"));
+    QVERIFY(!j.toObject().contains(QString::fromUtf8("mode")));   // form is the omitted-default
+    auto back = mcp::from_json<mcp::ElicitFormRequestParams>(j);
+    QCOMPARE(back.message, p.message);
+    QCOMPARE(back.requested_schema["properties"]["name"]["type"], mcp::test::jv("string"));
 }
 
-TEST(Elicitation, UrlParamsRoundTrip) {
+void Elicitation::UrlParamsRoundTrip() {
     mcp::ElicitUrlRequestParams p{
         .message        = "please authorise",
         .url            = "https://example.com/auth?session=xyz",
         .elicitation_id = "abc-123",
     };
-    json j = p;
-    EXPECT_EQ(j["mode"], "url");
-    EXPECT_EQ(j["url"], "https://example.com/auth?session=xyz");
-    auto back = j.get<mcp::ElicitUrlRequestParams>();
-    EXPECT_EQ(back.elicitation_id, "abc-123");
+    Json j = mcp::to_json(p);
+    QCOMPARE(j["mode"], mcp::test::jv("url"));
+    QCOMPARE(j["url"], mcp::test::jv("https://example.com/auth?session=xyz"));
+    auto back = mcp::from_json<mcp::ElicitUrlRequestParams>(j);
+    QCOMPARE(back.elicitation_id, std::string{"abc-123"});
 }
 
-TEST(Elicitation, VariantTagDispatch) {
+void Elicitation::VariantTagDispatch() {
     // Form mode: omitted "mode"
-    json form_wire = json{
+    Json form_wire = QJsonObject{
         {"message",         "msg"},
-        {"requestedSchema", json{{"type", "object"}}},
+        {"requestedSchema", QJsonObject{{"type", "object"}}},
     };
-    auto v = form_wire.get<mcp::ElicitRequestParams>();
-    ASSERT_TRUE(std::holds_alternative<mcp::ElicitFormRequestParams>(v));
+    auto v = mcp::from_json<mcp::ElicitRequestParams>(form_wire);
+    QVERIFY(std::holds_alternative<mcp::ElicitFormRequestParams>(v));
 
     // URL mode
-    json url_wire = json{
+    Json url_wire = QJsonObject{
         {"mode",          "url"},
         {"message",       "go"},
         {"url",           "https://example.com"},
         {"elicitationId", "id-1"},
     };
-    auto v2 = url_wire.get<mcp::ElicitRequestParams>();
-    ASSERT_TRUE(std::holds_alternative<mcp::ElicitUrlRequestParams>(v2));
+    auto v2 = mcp::from_json<mcp::ElicitRequestParams>(url_wire);
+    QVERIFY(std::holds_alternative<mcp::ElicitUrlRequestParams>(v2));
 
     // Unknown mode is rejected (so a future "mode": "voice" doesn't
     // get silently parsed as a form).
-    json bad = json{{"mode", "voice"}, {"message", "?"}};
-    EXPECT_THROW((void)bad.get<mcp::ElicitRequestParams>(), mcp::Error);
+    Json bad = QJsonObject{{"mode", "voice"}, {"message", "?"}};
+    QVERIFY_EXCEPTION_THROWN((void)mcp::from_json<mcp::ElicitRequestParams>(bad), mcp::Error);
 }
 
-TEST(Elicitation, ResultRoundTrip) {
+void Elicitation::ResultRoundTrip() {
     mcp::ElicitResult r{
         .action  = mcp::ElicitAction::accept,
-        .content = json{{"name", "Alice"}, {"age", 30}},
+        .content = QJsonObject{{"name", "Alice"}, {"age", 30}},
     };
-    json j = r;
-    EXPECT_EQ(j["action"], "accept");
-    EXPECT_EQ(j["content"]["name"], "Alice");
-    auto back = j.get<mcp::ElicitResult>();
-    EXPECT_EQ(back.action, mcp::ElicitAction::accept);
-    ASSERT_TRUE(back.content.has_value());
-    EXPECT_EQ((*back.content)["age"], 30);
+    Json j = mcp::to_json(r);
+    QCOMPARE(j["action"], mcp::test::jv("accept"));
+    QCOMPARE(j["content"]["name"], mcp::test::jv("Alice"));
+    auto back = mcp::from_json<mcp::ElicitResult>(j);
+    QCOMPARE(back.action, mcp::ElicitAction::accept);
+    QVERIFY(back.content.has_value());
+    QCOMPARE((*back.content)["age"], mcp::test::jv(30));
 
     // Decline / cancel: content omitted on the wire.
     mcp::ElicitResult r2{.action = mcp::ElicitAction::decline};
-    json j2 = r2;
-    EXPECT_FALSE(j2.contains("content"));
-    EXPECT_EQ(j2["action"], "decline");
-    auto back2 = j2.get<mcp::ElicitResult>();
-    EXPECT_EQ(back2.action, mcp::ElicitAction::decline);
-    EXPECT_FALSE(back2.content.has_value());
+    Json j2 = mcp::to_json(r2);
+    QVERIFY(!j2.toObject().contains(QString::fromUtf8("content")));
+    QCOMPARE(j2["action"], mcp::test::jv("decline"));
+    auto back2 = mcp::from_json<mcp::ElicitResult>(j2);
+    QCOMPARE(back2.action, mcp::ElicitAction::decline);
+    QVERIFY(!back2.content.has_value());
 
     // Unknown action string ⇒ Error.
-    json bad = json{{"action", "nope"}};
-    EXPECT_THROW((void)bad.get<mcp::ElicitResult>(), mcp::Error);
+    Json bad = QJsonObject{{"action", "nope"}};
+    QVERIFY_EXCEPTION_THROWN((void)mcp::from_json<mcp::ElicitResult>(bad), mcp::Error);
 }
 
-TEST(Elicitation, CompleteNotificationParamsRoundTrip) {
+void Elicitation::CompleteNotificationParamsRoundTrip() {
     mcp::ElicitationCompleteNotificationParams p{
         .elicitation_id = "abc",
     };
-    json j = p;
-    EXPECT_EQ(j["elicitationId"], "abc");
-    EXPECT_EQ(j.get<mcp::ElicitationCompleteNotificationParams>().elicitation_id,
-              "abc");
+    Json j = mcp::to_json(p);
+    QCOMPARE(j["elicitationId"], mcp::test::jv("abc"));
+    QCOMPARE(mcp::from_json<mcp::ElicitationCompleteNotificationParams>(j).elicitation_id,
+             std::string{"abc"});
 }
 
 // -------------------------------------------------------------------------
 // Integration: tool handler issues an elicitation, client responds
 // -------------------------------------------------------------------------
 
-TEST(ElicitationIntegration, FormModeRoundTripThroughClient) {
+class ElicitationIntegration : public QObject {
+    Q_OBJECT
+private slots:
+    void FormModeRoundTripThroughClient();
+    void DeclineCarriesThrough();
+    void MissingHandlerYieldsError();
+    void UrlModeNotificationDeliversToClient();
+    void UrlModeFullRoundTripWithCompletion();
+    void ServerReceivesElicitationComplete();
+    void CapabilityActuallyAdvertisedOnInitialize();
+    void NarrowedCapabilityOverrideKeepsOtherDerivedCaps();
+};
+
+void ElicitationIntegration::FormModeRoundTripThroughClient() {
     auto p = mcp::test::make_in_memory_pair();
 
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.tool("ask_name", json{{"type", "object"}},
-               [&s](const json&) -> mcp::CallToolResult {
+        s.tool("ask_name", QJsonObject{{"type", "object"}},
+               [&s](const Json&) -> mcp::CallToolResult {
                    auto fut = s.elicit(mcp::ElicitFormRequestParams{
                        .message = "name?",
-                       .requested_schema = json{
+                       .requested_schema = QJsonObject{
                            {"type", "object"},
                            {"properties",
-                            {{"name", {{"type", "string"}}}}},
+                            QJsonObject{{"name", QJsonObject{{"type", "string"}}}}},
                        },
                    });
                    auto er = fut.get();
@@ -166,8 +197,10 @@ TEST(ElicitationIntegration, FormModeRoundTripThroughClient) {
                            .is_error = true,
                        };
                    }
+                   const QJsonObject co = er.content->toObject();
+                   const QJsonValue  nv = co.value(QStringLiteral("name"));
                    const std::string nm =
-                       er.content->value("name", std::string{"<none>"});
+                       nv.isString() ? nv.toString().toStdString() : std::string{"<none>"};
                    return mcp::CallToolResult{
                        .content = { mcp::TextContent{.text = "hi " + nm} },
                    };
@@ -175,42 +208,47 @@ TEST(ElicitationIntegration, FormModeRoundTripThroughClient) {
     });
 
     mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    bool        held_form = false;
+    std::string got_message;
     client.connect(std::move(p.a));
     client.set_elicitation_handler(
-        [](const mcp::ElicitRequestParams& req) -> mcp::ElicitResult {
+        [&](const mcp::ElicitRequestParams& req) -> mcp::ElicitResult {
             // Should be form mode in this test.
-            EXPECT_TRUE(std::holds_alternative<mcp::ElicitFormRequestParams>(req));
-            const auto& f = std::get<mcp::ElicitFormRequestParams>(req);
-            EXPECT_EQ(f.message, "name?");
+            held_form = std::holds_alternative<mcp::ElicitFormRequestParams>(req);
+            if (held_form) {
+                got_message = std::get<mcp::ElicitFormRequestParams>(req).message;
+            }
             return mcp::ElicitResult{
                 .action  = mcp::ElicitAction::accept,
-                .content = json{{"name", "Ada"}},
+                .content = QJsonObject{{"name", "Ada"}},
             };
         });
     auto info = client.initialize().get();
-    ASSERT_TRUE(info.capabilities.tools.has_value());
+    QVERIFY(info.capabilities.tools.has_value());
     // The capability we declared should propagate through initialize.
     // (The server reflects ours back to us via... no, it doesn't —
     //  but our local advertise was set under handlers_mu_, so the
     //  initialize payload included `elicitation: {form:{}, url:{}}`.)
 
     auto out = client.call_tool("ask_name").get();
-    ASSERT_FALSE(out.is_error.value_or(false));
-    ASSERT_EQ(out.content.size(), 1u);
-    EXPECT_EQ(std::get<mcp::TextContent>(out.content[0]).text, "hi Ada");
+    QVERIFY(!out.is_error.value_or(false));
+    QCOMPARE(out.content.size(), std::size_t{1});
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string{"hi Ada"});
+    QVERIFY(held_form);
+    QCOMPARE(got_message, std::string{"name?"});
 
     client.disconnect();
 }
 
-TEST(ElicitationIntegration, DeclineCarriesThrough) {
+void ElicitationIntegration::DeclineCarriesThrough() {
     auto p = mcp::test::make_in_memory_pair();
 
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.tool("touch", json{{"type", "object"}},
-               [&s](const json&) -> mcp::CallToolResult {
+        s.tool("touch", QJsonObject{{"type", "object"}},
+               [&s](const Json&) -> mcp::CallToolResult {
                    auto er = s.elicit(mcp::ElicitFormRequestParams{
                        .message = "?",
-                       .requested_schema = json{{"type", "object"}},
+                       .requested_schema = QJsonObject{{"type", "object"}},
                    }).get();
                    return mcp::CallToolResult{
                        .content = { mcp::TextContent{
@@ -230,21 +268,21 @@ TEST(ElicitationIntegration, DeclineCarriesThrough) {
     (void)client.initialize().get();
 
     auto out = client.call_tool("touch").get();
-    EXPECT_EQ(std::get<mcp::TextContent>(out.content[0]).text, "declined");
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string{"declined"});
 
     client.disconnect();
 }
 
-TEST(ElicitationIntegration, MissingHandlerYieldsError) {
+void ElicitationIntegration::MissingHandlerYieldsError() {
     auto p = mcp::test::make_in_memory_pair();
 
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.tool("touch", json{{"type", "object"}},
-               [&s](const json&) -> mcp::CallToolResult {
+        s.tool("touch", QJsonObject{{"type", "object"}},
+               [&s](const Json&) -> mcp::CallToolResult {
                    try {
                        (void)s.elicit(mcp::ElicitFormRequestParams{
                            .message = "?",
-                           .requested_schema = json{{"type", "object"}},
+                           .requested_schema = QJsonObject{{"type", "object"}},
                        }).get();
                    } catch (const mcp::Error&) {
                        return mcp::CallToolResult{
@@ -263,18 +301,18 @@ TEST(ElicitationIntegration, MissingHandlerYieldsError) {
     (void)client.initialize().get();
 
     auto out = client.call_tool("touch").get();
-    ASSERT_TRUE(out.is_error.value_or(false));
-    EXPECT_EQ(std::get<mcp::TextContent>(out.content[0]).text, "no-elicit");
+    QVERIFY(out.is_error.value_or(false));
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string{"no-elicit"});
 
     client.disconnect();
 }
 
-TEST(ElicitationIntegration, UrlModeNotificationDeliversToClient) {
+void ElicitationIntegration::UrlModeNotificationDeliversToClient() {
     auto p = mcp::test::make_in_memory_pair();
 
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.tool("kick", json{{"type", "object"}},
-               [&s](const json&) -> mcp::CallToolResult {
+        s.tool("kick", QJsonObject{{"type", "object"}},
+               [&s](const Json&) -> mcp::CallToolResult {
                    const auto ec = s.notify_elicitation_complete("eid-77");
                    if (ec) {
                        return mcp::CallToolResult{
@@ -301,16 +339,16 @@ TEST(ElicitationIntegration, UrlModeNotificationDeliversToClient) {
     (void)client.initialize().get();
 
     auto out = client.call_tool("kick").get();
-    ASSERT_FALSE(out.is_error.value_or(false));
-    EXPECT_EQ(std::get<mcp::TextContent>(out.content[0]).text, "kicked");
+    QVERIFY(!out.is_error.value_or(false));
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string{"kicked"});
 
-    ASSERT_EQ(fut.wait_for(2s), std::future_status::ready);
-    EXPECT_EQ(fut.get(), "eid-77");
+    QCOMPARE(fut.wait_for(2s), std::future_status::ready);
+    QCOMPARE(fut.get(), std::string{"eid-77"});
 
     client.disconnect();
 }
 
-TEST(ElicitationIntegration, UrlModeFullRoundTripWithCompletion) {
+void ElicitationIntegration::UrlModeFullRoundTripWithCompletion() {
     // Audit fix: the previous URL-mode test only fired a stand-alone
     // notification; it never issued an actual URL-mode elicitation
     // through Server::elicit. This test does the real thing:
@@ -320,8 +358,8 @@ TEST(ElicitationIntegration, UrlModeFullRoundTripWithCompletion) {
     auto p = mcp::test::make_in_memory_pair();
 
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.tool("oauth_kickoff", json{{"type", "object"}},
-               [&s](const json&) -> mcp::CallToolResult {
+        s.tool("oauth_kickoff", QJsonObject{{"type", "object"}},
+               [&s](const Json&) -> mcp::CallToolResult {
                    auto er = s.elicit(mcp::ElicitUrlRequestParams{
                        .message        = "Authorise via the linked URL",
                        .url            = "https://idp.example/auth?code=xyz",
@@ -343,16 +381,17 @@ TEST(ElicitationIntegration, UrlModeFullRoundTripWithCompletion) {
     std::promise<std::string> completion_p;
     auto completion_fut = completion_p.get_future();
 
-    bool got_url_mode_request = false;
+    bool        got_url_mode_request = false;
+    std::string got_elicitation_id;
+    std::string got_url;
     mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
     client.connect(std::move(p.a));
     client.set_elicitation_handler(
         [&](const mcp::ElicitRequestParams& req) -> mcp::ElicitResult {
-            EXPECT_TRUE(std::holds_alternative<mcp::ElicitUrlRequestParams>(req));
             if (std::holds_alternative<mcp::ElicitUrlRequestParams>(req)) {
                 const auto& u = std::get<mcp::ElicitUrlRequestParams>(req);
-                EXPECT_EQ(u.elicitation_id, "eid-url-1");
-                EXPECT_NE(u.url.find("idp.example"), std::string::npos);
+                got_elicitation_id = u.elicitation_id;
+                got_url            = u.url;
                 got_url_mode_request = true;
             }
             return mcp::ElicitResult{.action = mcp::ElicitAction::accept};
@@ -364,16 +403,18 @@ TEST(ElicitationIntegration, UrlModeFullRoundTripWithCompletion) {
     (void)client.initialize().get();
 
     auto out = client.call_tool("oauth_kickoff").get();
-    ASSERT_FALSE(out.is_error.value_or(false));
-    EXPECT_TRUE(got_url_mode_request);
+    QVERIFY(!out.is_error.value_or(false));
+    QVERIFY(got_url_mode_request);
+    QCOMPARE(got_elicitation_id, std::string{"eid-url-1"});
+    QVERIFY(got_url.find("idp.example") != std::string::npos);
 
-    ASSERT_EQ(completion_fut.wait_for(2s), std::future_status::ready);
-    EXPECT_EQ(completion_fut.get(), "eid-url-1");
+    QCOMPARE(completion_fut.wait_for(2s), std::future_status::ready);
+    QCOMPARE(completion_fut.get(), std::string{"eid-url-1"});
 
     client.disconnect();
 }
 
-TEST(ElicitationIntegration, ServerReceivesElicitationComplete) {
+void ElicitationIntegration::ServerReceivesElicitationComplete() {
     // Audit fix: the spec lets EITHER side emit
     // notifications/elicitation/complete. The server side previously
     // had no API to receive it. Verify the full round-trip:
@@ -396,15 +437,16 @@ TEST(ElicitationIntegration, ServerReceivesElicitationComplete) {
     (void)client.initialize().get();
 
     const auto ec = client.notify_elicitation_complete("eid-from-client");
-    EXPECT_FALSE(ec) << "send_notification failed: " << ec.message();
+    QVERIFY2(!ec, qPrintable(QStringLiteral("send_notification failed: ") +
+                             QString::fromStdString(ec.message())));
 
-    ASSERT_EQ(server_fut.wait_for(2s), std::future_status::ready);
-    EXPECT_EQ(server_fut.get(), "eid-from-client");
+    QCOMPARE(server_fut.wait_for(2s), std::future_status::ready);
+    QCOMPARE(server_fut.get(), std::string{"eid-from-client"});
 
     client.disconnect();
 }
 
-TEST(ElicitationIntegration, CapabilityActuallyAdvertisedOnInitialize) {
+void ElicitationIntegration::CapabilityActuallyAdvertisedOnInitialize() {
     // Audit fix: the FormModeRoundTripThroughClient test admitted
     // it never verified the capability was advertised. This test
     // captures the inbound InitializeRequestParams server-side
@@ -420,16 +462,16 @@ TEST(ElicitationIntegration, CapabilityActuallyAdvertisedOnInitialize) {
     // initialize handler that captures + responds.
     auto b_session = std::make_unique<mcp::Session>(std::move(p.b));
     b_session->set_request_handler("initialize",
-        [&](const nlohmann::json& params) -> nlohmann::json {
-            auto parsed = params.get<mcp::InitializeRequestParams>();
+        [&](const mcp::Json& params) -> mcp::Json {
+            auto parsed = mcp::from_json<mcp::InitializeRequestParams>(params);
             try { caps_p.set_value(parsed.capabilities); } catch (...) {}
-            return mcp::InitializeResult{
+            return mcp::to_json(mcp::InitializeResult{
                 .protocol_version = std::string{mcp::kLatestProtocolVersion},
                 .capabilities     = mcp::ServerCapabilities{},
                 .server_info      = mcp::Implementation{
                     .name = "x", .version = "0",
                 },
-            };
+            });
         });
     b_session->start();
 
@@ -442,17 +484,17 @@ TEST(ElicitationIntegration, CapabilityActuallyAdvertisedOnInitialize) {
 
     (void)client.initialize().get();
 
-    ASSERT_EQ(caps_fut.wait_for(2s), std::future_status::ready);
+    QCOMPARE(caps_fut.wait_for(2s), std::future_status::ready);
     auto caps = caps_fut.get();
-    ASSERT_TRUE(caps.elicitation.has_value());
-    EXPECT_TRUE(caps.elicitation->form.has_value());
-    EXPECT_TRUE(caps.elicitation->url.has_value());
+    QVERIFY(caps.elicitation.has_value());
+    QVERIFY(caps.elicitation->form.has_value());
+    QVERIFY(caps.elicitation->url.has_value());
 
     client.disconnect();
     b_session->close();
 }
 
-TEST(ElicitationIntegration, NarrowedCapabilityOverrideKeepsOtherDerivedCaps) {
+void ElicitationIntegration::NarrowedCapabilityOverrideKeepsOtherDerivedCaps() {
     // Audit fix: set_client_capabilities() was a *full replacement*,
     // dropping handler-derived sampling/roots/elicitation. Now it's
     // a per-field override — engaged fields replace, unset fields
@@ -464,16 +506,16 @@ TEST(ElicitationIntegration, NarrowedCapabilityOverrideKeepsOtherDerivedCaps) {
 
     auto b_session = std::make_unique<mcp::Session>(std::move(p.b));
     b_session->set_request_handler("initialize",
-        [&](const nlohmann::json& params) -> nlohmann::json {
-            auto parsed = params.get<mcp::InitializeRequestParams>();
+        [&](const mcp::Json& params) -> mcp::Json {
+            auto parsed = mcp::from_json<mcp::InitializeRequestParams>(params);
             try { caps_p.set_value(parsed.capabilities); } catch (...) {}
-            return mcp::InitializeResult{
+            return mcp::to_json(mcp::InitializeResult{
                 .protocol_version = std::string{mcp::kLatestProtocolVersion},
                 .capabilities     = mcp::ServerCapabilities{},
                 .server_info      = mcp::Implementation{
                     .name = "x", .version = "0",
                 },
-            };
+            });
         });
     b_session->start();
 
@@ -491,41 +533,55 @@ TEST(ElicitationIntegration, NarrowedCapabilityOverrideKeepsOtherDerivedCaps) {
     // not set — should keep the handler-derived value.
     mcp::ClientCapabilities override_caps;
     mcp::ElicitationCapability ec;
-    ec.form = nlohmann::json::object();
+    ec.form = QJsonObject{};
     // ec.url left absent ⇒ form-only.
     override_caps.elicitation = std::move(ec);
     client.set_client_capabilities(std::move(override_caps));
 
     (void)client.initialize().get();
-    ASSERT_EQ(caps_fut.wait_for(2s), std::future_status::ready);
+    QCOMPARE(caps_fut.wait_for(2s), std::future_status::ready);
     auto caps = caps_fut.get();
-    ASSERT_TRUE(caps.elicitation.has_value());
-    EXPECT_TRUE(caps.elicitation->form.has_value());
-    EXPECT_FALSE(caps.elicitation->url.has_value());
+    QVERIFY(caps.elicitation.has_value());
+    QVERIFY(caps.elicitation->form.has_value());
+    QVERIFY(!caps.elicitation->url.has_value());
     // The sampling capability survived because we didn't override it.
-    EXPECT_TRUE(caps.sampling.has_value());
+    QVERIFY(caps.sampling.has_value());
 
     client.disconnect();
     b_session->close();
 }
 
-TEST(Elicitation, ModeNullRejected) {
-    json j = json{{"mode", nullptr}, {"message", "?"}};
-    EXPECT_THROW((void)j.get<mcp::ElicitRequestParams>(), mcp::Error);
+void Elicitation::ModeNullRejected() {
+    Json j = QJsonObject{{"mode", QJsonValue(QJsonValue::Null)}, {"message", "?"}};
+    QVERIFY_EXCEPTION_THROWN((void)mcp::from_json<mcp::ElicitRequestParams>(j), mcp::Error);
 }
 
-TEST(Elicitation, RequestedSchemaMustBeObject) {
-    json j = json{
+void Elicitation::RequestedSchemaMustBeObject() {
+    Json j = QJsonObject{
         {"message",         "?"},
         {"requestedSchema", "not-an-object"},
     };
-    EXPECT_THROW((void)j.get<mcp::ElicitFormRequestParams>(), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN((void)mcp::from_json<mcp::ElicitFormRequestParams>(j), mcp::Error);
 
-    json j2 = json{
+    Json j2 = QJsonObject{
         {"message",         "?"},
-        {"requestedSchema", nullptr},
+        {"requestedSchema", QJsonValue(QJsonValue::Null)},
     };
-    EXPECT_THROW((void)j2.get<mcp::ElicitFormRequestParams>(), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN((void)mcp::from_json<mcp::ElicitFormRequestParams>(j2), mcp::Error);
 }
 
-}  // namespace
+int main(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    int status = 0;
+    {
+        Elicitation suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    {
+        ElicitationIntegration suite;
+        status |= QTest::qExec(&suite, argc, argv);
+    }
+    return status;
+}
+
+#include "elicitation_test.moc"

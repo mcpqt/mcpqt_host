@@ -26,7 +26,6 @@
 #include "mcp/server.hpp"
 #include "mcp/transport.hpp"
 
-#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -39,7 +38,7 @@
 #include <utility>
 #include <vector>
 
-using nlohmann::json;
+using mcp::Json;
 using clk = std::chrono::steady_clock;
 
 namespace {
@@ -97,13 +96,16 @@ struct ServerThread {
         server = std::make_shared<mcp::Server>(mcp::Implementation{
             .name = "bench", .version = "1.0.0"});
         server->tool("add",
-            json{{"type", "object"},
-                 {"properties", {{"a", {{"type", "number"}}},
-                                 {"b", {{"type", "number"}}}}},
-                 {"required", json::array({"a", "b"})}},
-            [](const json& args) -> mcp::CallToolResult {
-                const double a = args.at("a").get<double>();
-                const double b = args.at("b").get<double>();
+            QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{
+                    {"a", QJsonObject{{"type", "number"}}},
+                    {"b", QJsonObject{{"type", "number"}}}}},
+                {"required", QJsonArray{"a", "b"}}},
+            [](const Json& args) -> mcp::CallToolResult {
+                const QJsonObject o = args.toObject();
+                const double a = mcp::require<double>(o, "a");
+                const double b = mcp::require<double>(o, "b");
                 return mcp::CallToolResult{
                     .content = {mcp::TextContent{.text = std::to_string(a + b)}}};
             });
@@ -136,14 +138,14 @@ int main(int argc, char** argv) {
     // ---- 1. tools/call round-trip ----------------------------------------
     {
         for (std::size_t i = 0; i < WARMUP; ++i)
-            (void)client.call_tool("add", {{"a", 1}, {"b", 2}}).get();
+            (void)client.call_tool("add", QJsonObject{{"a", 1}, {"b", 2}}).get();
 
         std::vector<double> samples;
         samples.reserve(N);
         auto wall0 = clk::now();
         for (std::size_t i = 0; i < N; ++i) {
             auto t0  = clk::now();
-            auto fut = client.call_tool("add", {{"a", 1.5}, {"b", 2.5}});
+            auto fut = client.call_tool("add", QJsonObject{{"a", 1.5}, {"b", 2.5}});
             auto res = fut.get();
             auto t1  = clk::now();
             samples.push_back(ns(t1 - t0));
@@ -179,15 +181,17 @@ int main(int argc, char** argv) {
         mcp::JsonRpcRequest req;
         req.id     = mcp::RequestId{42};
         req.method = "tools/call";
-        req.params = json{{"name", "add"}, {"arguments", {{"a", 1.5}, {"b", 2.5}}}};
+        req.params = QJsonObject{{"name", "add"},
+                                  {"arguments",
+                                   QJsonObject{{"a", 1.5}, {"b", 2.5}}}};
         mcp::JsonRpcMessage req_msg = req;
-        std::string req_wire = mcp::serialize_message(req_msg).dump();
+        std::string req_wire = mcp::dump(mcp::serialize_message(req_msg));
 
         // Serialize: typed -> json -> string.
         std::uint64_t sink = 0;
         auto s0 = clk::now();
         for (std::size_t i = 0; i < M; ++i) {
-            std::string out = mcp::serialize_message(req_msg).dump();
+            std::string out = mcp::dump(mcp::serialize_message(req_msg));
             sink += out.size();
         }
         double ser_ns = ns(clk::now() - s0) / static_cast<double>(M);
@@ -195,7 +199,7 @@ int main(int argc, char** argv) {
         // Parse: string -> json -> typed.
         auto p0 = clk::now();
         for (std::size_t i = 0; i < M; ++i) {
-            auto msg = mcp::parse_message(json::parse(req_wire));
+            auto msg = mcp::parse_message(mcp::parse_json(req_wire));
             sink += msg.index();
         }
         double par_ns = ns(clk::now() - p0) / static_cast<double>(M);
