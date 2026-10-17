@@ -8,9 +8,9 @@
 
 #include "in_memory_transport.hpp"
 
-#include "mcp/error.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/session.hpp"
+#include "error.hpp"
+#include "protocol.hpp"
+#include "session.hpp"
 
 #include "qt_test_support.hpp"
 

@@ -13,9 +13,9 @@
 // origin allowlist; the example refuses to bind to non-loopback
 // without an --origin flag (TODO).
 
-#include "mcp/http_server_host.hpp"
-#include "mcp/log.hpp"
-#include "mcp/mcp.hpp"
+#include "http_server_host.hpp"
+#include "log.hpp"
+#include "mcp.hpp"
 
 #include <QCoreApplication>
 

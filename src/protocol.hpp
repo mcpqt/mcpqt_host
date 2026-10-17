@@ -6,7 +6,7 @@
 // The C++ struct fields are snake_case; the JSON wire format uses the spec's
 // camelCase names. JSON serialization is implemented via ADL `to_json` /
 // `from_json` free functions defined alongside each type so they can be
-// reached through the generic codec in <mcp/json.hpp>.
+// reached through the generic codec in <json.hpp>.
 //
 // Encoding:  QJsonValue to_json(const T&);
 // Decoding:  void from_json(const QJsonValue&, T&);
@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include "mcp/error.hpp"
-#include "mcp/json.hpp"
+#include "error.hpp"
+#include "json.hpp"
 
 #include <cstdint>
 #include <optional>

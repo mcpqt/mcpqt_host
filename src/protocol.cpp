@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
-#include "mcp/protocol.hpp"
+#include "protocol.hpp"
 
-#include "mcp/error.hpp"
-#include "mcp/json.hpp"
+#include "error.hpp"
+#include "json.hpp"
 
 #include <QJsonArray>
 #include <QJsonObject>

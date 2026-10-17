@@ -5,7 +5,7 @@
 // pipes as if we were sitting between two processes, then drives the
 // transport directly without ever touching the test binary's real stdio.
 
-#include "mcp/stdio_transport.hpp"
+#include "stdio_transport.hpp"
 
 #include "qt_test_support.hpp"
 

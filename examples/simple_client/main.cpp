@@ -8,7 +8,7 @@
 //     ./examples/simple_client/simple_client \
 //         ./examples/calculator_server/calculator_server
 
-#include "mcp/mcp.hpp"
+#include "mcp.hpp"
 
 #include <fcntl.h>
 #include <signal.h>

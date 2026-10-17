@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "mcp/error.hpp"
+#include "error.hpp"
 
 #include <QByteArray>
 #include <QJsonArray>

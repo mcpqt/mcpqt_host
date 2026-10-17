@@ -10,11 +10,11 @@
 #error "MCP_ENABLE_HTTP must be defined for http_e2e_test"
 #endif
 
-#include "mcp/client.hpp"
-#include "mcp/http_client_transport.hpp"
-#include "mcp/http_server_host.hpp"
-#include "mcp/log.hpp"
-#include "mcp/protocol.hpp"
+#include "client.hpp"
+#include "http_client_transport.hpp"
+#include "http_server_host.hpp"
+#include "log.hpp"
+#include "protocol.hpp"
 
 #include "qt_test_support.hpp"
 #include "raw_http_client.hpp"

@@ -7,10 +7,10 @@
 
 #include "in_memory_transport.hpp"
 
-#include "mcp/client.hpp"
-#include "mcp/error.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/server.hpp"
+#include "client.hpp"
+#include "error.hpp"
+#include "protocol.hpp"
+#include "server.hpp"
 
 #include "qt_test_support.hpp"
 
@@ -19,7 +19,7 @@
 #include <QCoreApplication>
 
 #if !defined(_WIN32)
-#include "mcp/stdio_transport.hpp"
+#include "stdio_transport.hpp"
 #include <unistd.h>
 #endif
 

@@ -9,9 +9,9 @@
 #include "qt_test_support.hpp"
 #include "test_binary_paths.hpp"
 
-#include "mcp/client.hpp"
-#include "mcp/plugin_manager.hpp"
-#include "mcp/server.hpp"
+#include "client.hpp"
+#include "plugin_manager.hpp"
+#include "server.hpp"
 
 #include <QScopeGuard>
 #include <QtTest/QtTest>

@@ -6,7 +6,7 @@
 //
 // The plugin links only mcp::mcp and Qt Core — it never sees the host binary.
 
-#include "mcp/plugin.hpp"
+#include "plugin.hpp"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -17,7 +17,7 @@
 
 class HelloPlugin : public QObject, public mcp::PluginInterface {
     Q_OBJECT
-    // The IID string must match MCP_PLUGIN_IID in <mcp/plugin.hpp>.
+    // The IID string must match MCP_PLUGIN_IID in <plugin.hpp>.
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/1.0" FILE "hello_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 

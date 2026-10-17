@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
-#include "mcp/server.hpp"
+#include "server.hpp"
 
-#include "mcp/error.hpp"
-#include "mcp/log.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/session.hpp"
-#include "mcp/transport.hpp"
+#include "error.hpp"
+#include "log.hpp"
+#include "protocol.hpp"
+#include "session.hpp"
+#include "transport.hpp"
 
 #include <algorithm>
 #include <atomic>

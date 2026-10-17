@@ -7,10 +7,10 @@
 // path is plumbed in via the `MCP_CALCULATOR_SERVER` env var that
 // CMakeLists.txt sets when registering this test.
 
-#include "mcp/client.hpp"
-#include "mcp/error.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/stdio_transport.hpp"
+#include "client.hpp"
+#include "error.hpp"
+#include "protocol.hpp"
+#include "stdio_transport.hpp"
 
 #if __has_include("test_binary_paths.hpp")
 #include "test_binary_paths.hpp"

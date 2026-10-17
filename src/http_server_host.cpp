@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
-#include "mcp/http_server_host.hpp"
+#include "http_server_host.hpp"
 
-#include "mcp/error.hpp"
-#include "mcp/json.hpp"
-#include "mcp/log.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/session.hpp"
-#include "mcp/server.hpp"
-#include "mcp/transport.hpp"
+#include "error.hpp"
+#include "json.hpp"
+#include "log.hpp"
+#include "protocol.hpp"
+#include "session.hpp"
+#include "server.hpp"
+#include "transport.hpp"
 
 #include <QAbstractSocket>
 #include <QByteArray>

@@ -7,9 +7,9 @@
 
 #define QT_NO_DEPRECATED_WARNINGS
 
-#include "mcp/protocol.hpp"
+#include "protocol.hpp"
 
-#include "mcp/error.hpp"
+#include "error.hpp"
 
 #include "qt_test_support.hpp"
 

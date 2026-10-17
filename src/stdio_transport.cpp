@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
-#include "mcp/stdio_transport.hpp"
+#include "stdio_transport.hpp"
 
-#include "mcp/log.hpp"
+#include "log.hpp"
 
 #include <fcntl.h>
 #include <poll.h>

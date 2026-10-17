@@ -34,7 +34,7 @@ subprocess.
 
 ```sh
 c++ -std=c++20 -O2 -DNDEBUG -fPIC \
-  -I include -I tests $(pkg-config --cflags Qt6Core Qt6Network) \
+  -I src -I tests $(pkg-config --cflags Qt6Core Qt6Network) \
   bench/mcp_bench.cpp tests/in_memory_transport.cpp \
   build-rel/libmcp.a $(pkg-config --libs Qt6Core Qt6Network) -o /tmp/mcp_bench
 /tmp/mcp_bench 100000      # iterations (default 100000)

@@ -6,10 +6,10 @@
 // but exercises the SQLite/FTS5 demo: write → read → list → search →
 // delete (no elicitation prompt for non-glob keys).
 
-#include "mcp/client.hpp"
-#include "mcp/error.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/stdio_transport.hpp"
+#include "client.hpp"
+#include "error.hpp"
+#include "protocol.hpp"
+#include "stdio_transport.hpp"
 
 #if __has_include("test_binary_paths.hpp")
 #include "test_binary_paths.hpp"

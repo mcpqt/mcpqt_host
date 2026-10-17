@@ -34,9 +34,9 @@
 #error "mcp::HttpServerHost requires MCP_ENABLE_HTTP=1 (CMake option MCP_ENABLE_HTTP=ON)"
 #endif
 
-#include "mcp/json.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/server.hpp"
+#include "json.hpp"
+#include "protocol.hpp"
+#include "server.hpp"
 
 #include <atomic>
 #include <chrono>

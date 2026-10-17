@@ -26,10 +26,10 @@
 
 #pragma once
 
-#include "mcp/error.hpp"
-#include "mcp/json.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/transport.hpp"
+#include "error.hpp"
+#include "json.hpp"
+#include "protocol.hpp"
+#include "transport.hpp"
 
 #include <atomic>
 #include <chrono>

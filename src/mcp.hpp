@@ -3,19 +3,19 @@
 //
 // Umbrella header for the mcp-cpp library. Including this is fine for
 // applications that want everything; performance-sensitive headers may
-// include the focused headers (e.g. `mcp/protocol.hpp`) directly.
+// include the focused headers (e.g. `protocol.hpp`) directly.
 
 #pragma once
 
-#include "mcp/client.hpp"
-#include "mcp/error.hpp"
-#include "mcp/log.hpp"
-#include "mcp/plugin.hpp"
-#include "mcp/plugin_manager.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/server.hpp"
-#include "mcp/session.hpp"
+#include "client.hpp"
+#include "error.hpp"
+#include "log.hpp"
+#include "plugin.hpp"
+#include "plugin_manager.hpp"
+#include "protocol.hpp"
+#include "server.hpp"
+#include "session.hpp"
 #if !defined(_WIN32)
-#include "mcp/stdio_transport.hpp"  // POSIX-only; see that header's guard
+#include "stdio_transport.hpp"  // POSIX-only; see that header's guard
 #endif
-#include "mcp/transport.hpp"
+#include "transport.hpp"

@@ -4,11 +4,11 @@
 // PluginManager implementation: QPluginLoader discovery + command → tool
 // registration.
 
-#include "mcp/plugin_manager.hpp"
+#include "plugin_manager.hpp"
 
-#include "mcp/error.hpp"
-#include "mcp/log.hpp"
-#include "mcp/server.hpp"
+#include "error.hpp"
+#include "log.hpp"
+#include "server.hpp"
 
 #include <QDir>
 #include <QFileInfo>

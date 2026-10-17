@@ -33,7 +33,7 @@
 #error "mcp::HttpClientTransport requires MCP_ENABLE_HTTP=1 (CMake option MCP_ENABLE_HTTP=ON)"
 #endif
 
-#include "mcp/transport.hpp"
+#include "transport.hpp"
 
 #include <atomic>
 #include <chrono>

@@ -5,7 +5,7 @@
 // runtime. It deliberately declares a duplicate command name so the manager's
 // de-duplication can be asserted.
 
-#include "mcp/plugin.hpp"
+#include "plugin.hpp"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -17,7 +17,7 @@
 
 class TestPlugin : public QObject, public mcp::PluginInterface {
     Q_OBJECT
-    // IID must match MCP_PLUGIN_IID in <mcp/plugin.hpp>.
+    // IID must match MCP_PLUGIN_IID in <plugin.hpp>.
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/1.0" FILE "test_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 

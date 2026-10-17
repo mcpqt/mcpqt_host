@@ -103,9 +103,23 @@ add_library(mcp::mcp ALIAS mcp)
 
 target_compile_features(mcp PUBLIC cxx_std_20)
 
+# The headers live flat in src/ for the build. Expose them under an `mcp/`
+# prefix from a generated include dir so the public spelling `<mcp/...>` works
+# identically for build-tree consumers (add_subdirectory / FetchContent) and
+# installed consumers.
+set(MCP_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated-include")
+file(GLOB _mcp_public_headers CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp")
+foreach(_header IN LISTS _mcp_public_headers)
+    get_filename_component(_header_name "${_header}" NAME)
+    file(GENERATE
+        OUTPUT  "${MCP_GENERATED_INCLUDE_DIR}/mcp/${_header_name}"
+        CONTENT "#pragma once\n#include \"${_header}\"\n")
+endforeach()
+
 target_include_directories(mcp
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${MCP_GENERATED_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:include>
 )
 
@@ -147,7 +161,10 @@ install(TARGETS ${_mcp_install_targets}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY src/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mcp
+    FILES_MATCHING PATTERN "*.hpp"
+)
 
 install(EXPORT mcp-targets
     FILE        mcp-targets.cmake

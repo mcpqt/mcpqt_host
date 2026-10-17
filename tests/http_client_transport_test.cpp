@@ -12,7 +12,7 @@
 #error "MCP_ENABLE_HTTP must be defined for http_client_transport_test"
 #endif
 
-#include "mcp/http_client_transport.hpp"
+#include "http_client_transport.hpp"
 
 #include "fake_http_server.hpp"
 #include "qt_test_support.hpp"

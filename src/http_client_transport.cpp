@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
-#include "mcp/http_client_transport.hpp"
+#include "http_client_transport.hpp"
 
-#include "mcp/log.hpp"
+#include "log.hpp"
 
 #include <QByteArray>
 #include <QEventLoop>

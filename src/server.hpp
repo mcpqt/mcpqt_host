@@ -19,11 +19,11 @@
 
 #pragma once
 
-#include "mcp/protocol.hpp"
-#include "mcp/session.hpp"
-#include "mcp/transport.hpp"
+#include "protocol.hpp"
+#include "session.hpp"
+#include "transport.hpp"
 
-#include "mcp/json.hpp"
+#include "json.hpp"
 
 #include <atomic>
 #include <condition_variable>

@@ -21,10 +21,10 @@
 
 #include "in_memory_transport.hpp"
 
-#include "mcp/client.hpp"
-#include "mcp/protocol.hpp"
-#include "mcp/server.hpp"
-#include "mcp/transport.hpp"
+#include "client.hpp"
+#include "protocol.hpp"
+#include "server.hpp"
+#include "transport.hpp"
 
 
 #include <algorithm>

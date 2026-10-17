@@ -15,10 +15,10 @@
 // QVERIFY_EXCEPTION_THROWN is deprecated (but still functional) in Qt 6.4.
 #define QT_NO_DEPRECATED_WARNINGS
 
-#include "mcp/client.hpp"
-#include "mcp/http_client_transport.hpp"
-#include "mcp/http_server_host.hpp"
-#include "mcp/protocol.hpp"
+#include "client.hpp"
+#include "http_client_transport.hpp"
+#include "http_server_host.hpp"
+#include "protocol.hpp"
 
 #include "qt_test_support.hpp"
 #include "raw_http_client.hpp"
