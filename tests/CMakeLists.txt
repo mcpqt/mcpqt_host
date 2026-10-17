@@ -11,6 +11,19 @@ target_include_directories(mcp_test_support PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_BINARY_DIR}")
 
+# The plugin_test suite loads a plugin at runtime. Build it here as its own
+# MODULE target (independent of any example) so the test is self-contained.
+add_library(mcp_test_plugin MODULE test_plugin.cpp)
+set_target_properties(mcp_test_plugin PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "mcp_test_plugin"
+)
+target_link_libraries(mcp_test_plugin PRIVATE mcp::mcp)
+target_compile_options(mcp_test_plugin PRIVATE
+    $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
+        -Wall -Wextra -Wpedantic>
+)
+
 # Subprocess tests need the absolute path of the example binary they spawn.
 # Bake the path into a generated header rather than relying on CTest
 # ENVIRONMENT plumbing, which different CMake versions split inconsistently.
@@ -23,6 +36,7 @@ file(GENERATE OUTPUT "${_test_paths_h}" CONTENT
 
 $<$<TARGET_EXISTS:calculator_server>:#define MCP_TEST_CALCULATOR_SERVER \"$<TARGET_FILE:calculator_server>\">
 $<$<TARGET_EXISTS:mcp_notes_server>:#define MCP_TEST_NOTES_SERVER \"$<TARGET_FILE:mcp_notes_server>\">
+$<$<TARGET_EXISTS:mcp_test_plugin>:#define MCP_TEST_PLUGIN \"$<TARGET_FILE:mcp_test_plugin>\">
 ")
 
 # mcp_add_test(<name> <sources...>): build <name> as a QtTest executable and
@@ -57,6 +71,9 @@ mcp_add_test(elicitation_test               elicitation_test.cpp)
 mcp_add_test(tasks_test                     tasks_test.cpp)
 mcp_add_test(pagination_test                pagination_test.cpp)
 mcp_add_test(audit_regression_test          audit_regression_test.cpp)
+mcp_add_test(plugin_test                    plugin_test.cpp)
+# plugin_test loads the module at runtime; make sure it is built first.
+add_dependencies(plugin_test mcp_test_plugin)
 
 # StdioTransport is POSIX-only; so is its test.
 if(NOT WIN32)

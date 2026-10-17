@@ -50,6 +50,7 @@ agents, native applications, and high-throughput servers.
 | Tasks (`tasks/get`/`result`/`list`/`cancel`, status notifications) | ✅ | ✅ | augment `tools/call` via `task` field; spec 2025-11-25 |
 | Elicitation (`elicitation/create`, form + url modes) | ✅ initiator | ✅ responder | spec 2025-11-25 |
 | OAuth 2.1 authorization (HTTP) | ✅ | ✅ | bearer + RFC 9728 protected resource metadata |
+| Plugins (tools from loadable modules) | ✅ host | — | `mcp::PluginManager` + `QPluginLoader`; commands auto-registered as tools |
 
 ## Quick start
 
@@ -222,6 +223,70 @@ The Session dispatches inbound requests on a worker thread, so calling
 `server.sample(...).get()` from inside a tool handler is safe — it does not
 deadlock.
 
+### Plugins: tools from dynamically loaded modules
+
+A server can extend itself at runtime by loading Qt plugins that advertise
+named commands; `mcp::PluginManager` registers one MCP tool per command. Each
+plugin is an ordinary Qt plugin (`QObject` + `mcp::PluginInterface`) built as
+its own `MODULE` library — it never links against the host binary.
+
+```cpp
+#include <mcp/mcp.hpp>   // brings in PluginManager + PluginInterface
+
+mcp::Server server{ mcp::Implementation{ .name = "my-host", .version = "1.0" } };
+
+mcp::PluginManager plugins(server);          // must outlive `server`'s use
+plugins.load_directory("/opt/my-host/plugins"); // or plugins.load_file("foo.so")
+
+server.run(std::make_unique<mcp::StdioTransport>());
+```
+
+A plugin declares its commands:
+
+```cpp
+#include <mcp/plugin.hpp>
+#include <QObject>
+
+class MyPlugin : public QObject, public mcp::PluginInterface {
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/1.0" FILE "myplugin.json")
+    Q_INTERFACES(mcp::PluginInterface)
+public:
+    std::string id() const override { return "myplugin"; }
+    std::vector<mcp::PluginCommand> commands() const override {
+        return {{
+            .name         = "reverse",
+            .description  = "Reverse a string.",
+            .input_schema = QJsonObject{
+                {"type", "object"},
+                {"properties", QJsonObject{{"text", QJsonObject{{"type", "string"}}}}},
+                {"required", QJsonArray{"text"}},
+            },
+            .handler = [](const mcp::Json& args) -> mcp::CallToolResult {
+                auto s = args.toObject().value("text").toString();
+                std::reverse(s.begin(), s.end());
+                return { .content = { mcp::TextContent{ .text = s.toStdString() } } };
+            },
+        }};
+    }
+};
+```
+
+Build it as a separate target:
+
+```cmake
+add_library(myplugin MODULE myplugin.cpp)
+set_target_properties(myplugin PROPERTIES PREFIX "")
+target_link_libraries(myplugin PRIVATE mcp::mcp)
+```
+
+See `examples/hello_plugin` (the plugin) and `examples/plugin_host` (a stdio
+host that loads a directory of plugins) for a complete, runnable pair. The
+`Q_PLUGIN_METADATA` IID must be the literal `"ai.mcp.qt.mcp-plugin/1.0"` (it
+matches `MCP_PLUGIN_IID`). Commands whose name collides with an already
+registered tool are skipped with a warning. Load plugins before serving;
+unloading while tool calls are in flight is not supported.
+
 ## Building
 
 Requires a C++20 compiler and Qt 6.4+ (development packages for `Core`,
@@ -315,6 +380,9 @@ target_link_libraries(my_app PRIVATE mcp::mcp)   # or mcp::http for HTTP
 - **Server / Client** are thin façades: they translate typed C++ values into
   JSON-RPC frames and back, expose `tool()` / `resource()` / `prompt()` /
   `sample()` / `list_tools()` / etc., and own one Session each.
+- **PluginManager** sits beside a Server: it loads `PluginInterface` modules
+  via `QPluginLoader` and calls `Server::tool()` once per plugin command, so
+  plugins become ordinary tools with no special-casing in the Session.
 
 ## Threading
 

@@ -1,0 +1,6 @@
+{
+    "id": "test-plugin",
+    "version": "9.9.9",
+    "name": "Test Plugin",
+    "description": "Plugin used by mcp-qt plugin_test."
+}

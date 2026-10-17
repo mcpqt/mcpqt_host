@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Plugin support (`mcp::PluginManager`).** Servers can load Qt plugins that
+  implement `mcp::PluginInterface` (new header `<mcp/plugin.hpp>`) and register
+  one MCP tool per advertised `PluginCommand` at load time. `PluginManager`
+  discovers plugins with `QPluginLoader` (single files or a directory),
+  registers them on a `Server`, warns on duplicate tool names, and unloads
+  cleanly. Plugins are separate `MODULE` libraries that link only `mcp::mcp`.
+  See `examples/hello_plugin` and `examples/plugin_host`, plus the new
+  `plugin_test` suite.
+
 ### Changed (Qt 6 migration)
 
 - **Qt 6 is now the only third-party dependency.** `nlohmann_json`,

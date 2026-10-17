@@ -31,6 +31,9 @@ Testing/
 *.gch
 *.pch
 
+# Qt Creator / IDE user settings
+*.user
+
 # Compiled Dynamic libraries
 *.so
 *.dylib

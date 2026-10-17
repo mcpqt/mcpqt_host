@@ -10,6 +10,8 @@
 #include "mcp/client.hpp"
 #include "mcp/error.hpp"
 #include "mcp/log.hpp"
+#include "mcp/plugin.hpp"
+#include "mcp/plugin_manager.hpp"
 #include "mcp/protocol.hpp"
 #include "mcp/server.hpp"
 #include "mcp/session.hpp"

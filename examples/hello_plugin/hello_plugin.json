@@ -1,0 +1,6 @@
+{
+    "id": "hello",
+    "version": "1.0.0",
+    "name": "Hello Plugin",
+    "description": "Demo MCP plugin contributing a greeting and a sum tool."
+}

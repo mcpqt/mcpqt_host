@@ -1,6 +1,7 @@
 target_sources(mcp PRIVATE
     client.cpp
     log.cpp
+    plugin_manager.cpp
     protocol.cpp
     server.cpp
     session.cpp
