@@ -10,13 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Plugin support (`mcp::PluginManager`).** Servers can load Qt plugins that
-  implement `mcp::PluginInterface` (new header `<mcp/plugin.hpp>`) and register
-  one MCP tool per advertised `PluginCommand` at load time. `PluginManager`
-  discovers plugins with `QPluginLoader` (single files or a directory),
-  registers them on a `Server`, warns on duplicate tool names, and unloads
-  cleanly. Plugins are separate `MODULE` libraries that link only `mcp::mcp`.
-  See `examples/hello_plugin` and `examples/plugin_host`, plus the new
-  `plugin_test` suite.
+  implement `mcp::PluginInterface` (header `<mcp/plugin.hpp>`) and register
+  one MCP tool per published function at load time. `PluginManager` discovers
+  plugins with `QPluginLoader` (single files or a directory), warns on
+  duplicate tool names, and unloads cleanly. Plugins are separate `MODULE`
+  libraries that link only `mcp::mcp`.
+  - **Functions, not commands.** A plugin publishes functions by declaring
+    public slots following `QVariant name(const QVariant& args)`; the host
+    reflects them from the plugin's `QMetaObject` and registers one tool per
+    function (`<pluginId>.<slotName>`).
+  - **Cross-plugin calls.** Each plugin receives a `HostInterface` at
+    `initialize()`; through it a plugin enumerates every function the host
+    knows (`getFuncs`) and invokes any of them — including functions owned by
+    *other* plugins — via `callFunc`. Plugins never see each other's classes.
+  - **Declared dependencies.** A plugin's metadata JSON may list the plugins
+    (or function signatures) it requires before initializing; `PluginManager`
+    defers such a plugin until the dependency is satisfied, and
+    `load_directory()` retries across passes so order doesn't matter.
+  - See `examples/hello_plugin` + `examples/cross_caller` (two plugins, one
+    calling the other) and `examples/plugin_host`, plus the `plugin_test`
+    suite.
 
 ### Changed (Qt 6 migration)
 

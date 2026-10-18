@@ -4,12 +4,17 @@
 // Example plugin host: an MCP server whose tools come from plugins.
 //
 // It loads every plugin in a directory (argv[1], or $MCP_PLUGIN_DIR, or
-// ./plugins), registers each plugin command as a tool, then serves over stdio.
+// ./plugins), reflects each plugin's public slots into the cross-plugin
+// function registry, registers one MCP tool per function, then serves over
+// stdio.
 //
 //   ./plugin_host /path/to/plugins
 //
-// Building examples/hello_plugin produces hello_plugin.so; point the host at
-// the directory containing it to try it out.
+// Building examples/hello_plugin and examples/cross_caller produces
+// hello_plugin.so and cross_caller.so; point the host at the directory
+// containing them to try it out. Loading both demonstrates cross-plugin
+// calls: the `caller.greet_via_host` tool forwards to hello_plugin's
+// `hello.greet` function through the host.
 
 #include "mcp.hpp"
 

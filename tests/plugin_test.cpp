@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
 //
-// Tests for PluginManager: loading the test plugin, command → tool
-// registration (including duplicate de-duplication), unloading, and an
-// end-to-end tools/call through Server + Client.
+// Tests for PluginManager: loading the test plugins, slot → tool publication
+// via meta-object reflection (including duplicate rejection), cross-plugin
+// function forwarding through the host, unloading, and an end-to-end
+// tools/call through Server + Client.
 
 #include "in_memory_transport.hpp"
 #include "qt_test_support.hpp"
@@ -25,6 +26,9 @@
 #if !defined(MCP_TEST_PLUGIN)
 #error "MCP_TEST_PLUGIN path was not generated; the test plugin target is missing"
 #endif
+#if !defined(MCP_TEST_PLUGIN_PAIR)
+#error "MCP_TEST_PLUGIN_PAIR path was not generated; the pair plugin target is missing"
+#endif
 
 namespace {
 
@@ -39,15 +43,17 @@ mcp::Implementation host_impl() {
 class PluginManagerTest : public QObject {
     Q_OBJECT
 private slots:
-    void LoadRegistersUniqueTools();
+    void LoadRegistersSlotsAsTools();
     void MissingFileFails();
     void MissingDirectoryLoadsNothing();
     void UnloadClearsState();
+    void DependencyGatesLoad();
     void EndToEndToolCalls();
+    void CrossPluginForwarding();
 };
 
-void PluginManagerTest::LoadRegistersUniqueTools() {
-    mcp::Server       server{ host_impl() };
+void PluginManagerTest::LoadRegistersSlotsAsTools() {
+    mcp::Server        server{ host_impl() };
     mcp::PluginManager plugins{ server };
 
     QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
@@ -57,14 +63,16 @@ void PluginManagerTest::LoadRegistersUniqueTools() {
     std::vector<std::string> tools = plugins.registered_tools();
     std::sort(tools.begin(), tools.end());
     QCOMPARE(tools, (std::vector<std::string>{
-                        "plugin_add", "plugin_boom", "plugin_dup", "plugin_echo" }));
+                        "test-plugin.add", "test-plugin.boom",
+                        "test-plugin.dup", "test-plugin.echo" }));
 
-    QVERIFY(plugins.has_tool("plugin_echo"));
-    QVERIFY(!plugins.has_tool("does_not_exist"));
+    QVERIFY(plugins.has_tool("test-plugin.echo"));
+    QVERIFY(!plugins.has_tool("test-plugin.nope"));
+    QVERIFY(!plugins.has_tool("echo"));
 }
 
 void PluginManagerTest::MissingFileFails() {
-    mcp::Server       server{ host_impl() };
+    mcp::Server        server{ host_impl() };
     mcp::PluginManager plugins{ server };
 
     QVERIFY(!plugins.load_file(QStringLiteral("/no/such/plugin.so")));
@@ -73,7 +81,7 @@ void PluginManagerTest::MissingFileFails() {
 }
 
 void PluginManagerTest::MissingDirectoryLoadsNothing() {
-    mcp::Server       server{ host_impl() };
+    mcp::Server        server{ host_impl() };
     mcp::PluginManager plugins{ server };
 
     QCOMPARE(plugins.load_directory(QStringLiteral("/no/such/directory")), std::size_t{0});
@@ -81,7 +89,7 @@ void PluginManagerTest::MissingDirectoryLoadsNothing() {
 }
 
 void PluginManagerTest::UnloadClearsState() {
-    mcp::Server       server{ host_impl() };
+    mcp::Server        server{ host_impl() };
     mcp::PluginManager plugins{ server };
 
     QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
@@ -94,6 +102,21 @@ void PluginManagerTest::UnloadClearsState() {
     // Idempotent.
     plugins.unload_all();
     QCOMPARE(plugins.plugin_count(), std::size_t{0});
+}
+
+void PluginManagerTest::DependencyGatesLoad() {
+    mcp::Server        server{ host_impl() };
+    mcp::PluginManager plugins{ server };
+
+    // test_plugin_pair declares a dependency on test-plugin, so loading it
+    // first must fail (the dependency is not yet satisfiable)...
+    QVERIFY(!plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
+    QCOMPARE(plugins.plugin_count(), std::size_t{0});
+
+    // ...and loading the dependency first allows the dependent to load.
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
+    QCOMPARE(plugins.plugin_count(), std::size_t{2});
 }
 
 void PluginManagerTest::EndToEndToolCalls() {
@@ -123,22 +146,60 @@ void PluginManagerTest::EndToEndToolCalls() {
     const auto list = client.list_tools().get();
     bool       has_add = false;
     for (const auto& tool : list.tools) {
-        if (tool.name == "plugin_add") has_add = true;
+        if (tool.name == "test-plugin.add") has_add = true;
     }
     QVERIFY(has_add);
 
-    const auto sum = client.call_tool("plugin_add", QJsonObject{ { "a", 2.0 }, { "b", 40.0 } }).get();
+    const auto sum = client.call_tool("test-plugin.add",
+                                      QJsonObject{ { "a", 2.0 }, { "b", 40.0 } }).get();
     QCOMPARE(sum.content.size(), std::size_t{1});
     QCOMPARE(QString::fromStdString(std::get<mcp::TextContent>(sum.content[0]).text),
              QString("42"));
 
-    const auto echo = client.call_tool("plugin_echo", QJsonObject{ { "message", "hi" } }).get();
+    const auto echo = client.call_tool("test-plugin.echo",
+                                       QJsonObject{ { "message", "hi" } }).get();
     QCOMPARE(QString::fromStdString(std::get<mcp::TextContent>(echo.content[0]).text),
              QString("hi"));
 
-    const auto boom = client.call_tool("plugin_boom", QJsonObject{}).get();
+    const auto boom = client.call_tool("test-plugin.boom", QJsonObject{}).get();
     QVERIFY(boom.is_error.value_or(false));
     QVERIFY(std::get<mcp::TextContent>(boom.content[0]).text.find("boom") != std::string::npos);
+}
+
+void PluginManagerTest::CrossPluginForwarding() {
+    auto pair   = mcp::test::make_in_memory_pair();
+    auto server = std::make_shared<mcp::Server>(host_impl());
+
+    mcp::PluginManager plugins{ *server };
+    // Order matters: the pair plugin records test-plugin.echo at load time,
+    // so test_plugin must load first.
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
+    QCOMPARE(plugins.plugin_count(), std::size_t{2});
+    QCOMPARE(plugins.plugin_ids(), (QStringList{ "test-plugin", "test-pair" }));
+    QVERIFY(plugins.has_tool("test-pair.forward"));
+    QVERIFY(plugins.has_tool("test-plugin.echo"));
+
+    std::thread runner([server, t = std::move(pair.b)]() mutable {
+        server->run(std::move(t));
+    });
+
+    mcp::Client client{ mcp::Implementation{ .name = "tester", .version = "0.1.0" } };
+    auto shutdown = qScopeGuard([&] {
+        client.disconnect();
+        server->stop();
+        if (runner.joinable()) runner.join();
+    });
+
+    client.connect(std::move(pair.a));
+    (void)client.initialize().get();
+
+    const auto fwd = client.call_tool("test-pair.forward",
+                                      QJsonObject{ { "message", "cross" } }).get();
+    QVERIFY(!fwd.is_error.value_or(false));
+    QCOMPARE(fwd.content.size(), std::size_t{1});
+    QCOMPARE(QString::fromStdString(std::get<mcp::TextContent>(fwd.content[0]).text),
+             QString("cross"));
 }
 
 int main(int argc, char** argv) {
