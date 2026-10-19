@@ -115,17 +115,17 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
 class Integration : public QObject {
     Q_OBJECT
 private slots:
-    void InitializeReturnsExpectedShape();
-    void ListToolsReturnsRegisteredTools();
-    void CallToolReturnsTextContent();
-    void ToolErrorIsReportedViaIsError();
-    void MissingToolMapsToMethodNotFound();
-    void RequestsBeforeInitializeAreRejected();
-    void ConcurrentToolCallsAllResolve();
-    void ServerInfoCachedOnInitialize();
+    void InitializeReturnsExpectedShape(void);
+    void ListToolsReturnsRegisteredTools(void);
+    void CallToolReturnsTextContent(void);
+    void ToolErrorIsReportedViaIsError(void);
+    void MissingToolMapsToMethodNotFound(void);
+    void RequestsBeforeInitializeAreRejected(void);
+    void ConcurrentToolCallsAllResolve(void);
+    void ServerInfoCachedOnInitialize(void);
 };
 
-void Integration::InitializeReturnsExpectedShape() {
+void Integration::InitializeReturnsExpectedShape(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -142,7 +142,7 @@ void Integration::InitializeReturnsExpectedShape() {
     client.disconnect();
 }
 
-void Integration::ListToolsReturnsRegisteredTools() {
+void Integration::ListToolsReturnsRegisteredTools(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -160,7 +160,7 @@ void Integration::ListToolsReturnsRegisteredTools() {
     client.disconnect();
 }
 
-void Integration::CallToolReturnsTextContent() {
+void Integration::CallToolReturnsTextContent(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -178,7 +178,7 @@ void Integration::CallToolReturnsTextContent() {
     client.disconnect();
 }
 
-void Integration::ToolErrorIsReportedViaIsError() {
+void Integration::ToolErrorIsReportedViaIsError(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -196,7 +196,7 @@ void Integration::ToolErrorIsReportedViaIsError() {
     client.disconnect();
 }
 
-void Integration::MissingToolMapsToMethodNotFound() {
+void Integration::MissingToolMapsToMethodNotFound(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -215,7 +215,7 @@ void Integration::MissingToolMapsToMethodNotFound() {
     client.disconnect();
 }
 
-void Integration::RequestsBeforeInitializeAreRejected() {
+void Integration::RequestsBeforeInitializeAreRejected(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -233,7 +233,7 @@ void Integration::RequestsBeforeInitializeAreRejected() {
     client.disconnect();
 }
 
-void Integration::ConcurrentToolCallsAllResolve() {
+void Integration::ConcurrentToolCallsAllResolve(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 
@@ -255,7 +255,7 @@ void Integration::ConcurrentToolCallsAllResolve() {
     client.disconnect();
 }
 
-void Integration::ServerInfoCachedOnInitialize() {
+void Integration::ServerInfoCachedOnInitialize(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto srv = calc_server(std::move(p.b));
 

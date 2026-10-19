@@ -113,20 +113,20 @@ public:
     void on_error(ErrorCallback cb)     override;
     void on_close(CloseCallback cb)     override;
 
-    void start() override;
-    void close() override;
+    void start(void) override;
+    void close(void) override;
 
     [[nodiscard]] std::error_code send(std::string_view frame) override;
-    [[nodiscard]] bool is_open() const noexcept override {
-        return started_.load(std::memory_order_acquire) &&
-               !closed_.load(std::memory_order_acquire);
+    [[nodiscard]] bool is_open(void) const noexcept override {
+        return m_started.load(std::memory_order_acquire) &&
+               !m_closed.load(std::memory_order_acquire);
     }
 
     // HTTP-specific ---------------------------------------------------------
 
     /// The negotiated `Mcp-Session-Id`, or empty if none has been
     /// established yet (the server may opt out).
-    [[nodiscard]] std::optional<std::string> session_id() const;
+    [[nodiscard]] std::optional<std::string> session_id(void) const;
 
     /// Update the `Authorization: Bearer` token used on every
     /// subsequent request — the obvious recovery path from an
@@ -135,21 +135,21 @@ public:
     void set_access_token(std::string token);
 
     /// Read the current access token. Thread-safe.
-    [[nodiscard]] std::string access_token() const;
+    [[nodiscard]] std::string access_token(void) const;
 
 private:
-    void worker_loop();
+    void worker_loop(void);
     void process_send(std::string frame);
     void deliver_frame(std::string raw);
     void deliver_error(std::error_code ec) noexcept;
-    void fire_close() noexcept;
-    void run_get_stream() noexcept;
+    void fire_close(void) noexcept;
+    void run_get_stream(void) noexcept;
 
-    Options opts_;
+    Options m_opts;
 
-    std::atomic<bool> started_{false};
-    std::atomic<bool> closed_{false};
-    std::atomic<bool> close_fired_{false};
+    std::atomic<bool> m_started{false};
+    std::atomic<bool> m_closed{false};
+    std::atomic<bool> m_close_fired{false};
 
     // Outbound queue: frames the application has handed us that are
     // waiting to go out as POSTs. The worker thread drains, then
@@ -157,57 +157,57 @@ private:
     // many POSTs can be in flight simultaneously without serialising
     // (a long-blocked POST awaiting a server-initiated sampling
     // round-trip would otherwise wedge later sends).
-    std::mutex                    out_mu_;
-    std::condition_variable       out_cv_;
-    std::deque<std::string>       out_;
-    std::thread                   worker_;
+    std::mutex                    m_out_mu;
+    std::condition_variable       m_out_cv;
+    std::deque<std::string>       m_out;
+    std::thread                   m_worker;
 
     // Track in-flight per-send threads so close() can drain.
-    std::mutex                    inflight_mu_;
-    std::condition_variable       inflight_cv_;
-    int                           inflight_ = 0;
+    std::mutex                    m_inflight_mu;
+    std::condition_variable       m_inflight_cv;
+    int                           m_inflight = 0;
 
     // GET-stream worker (optional).
-    std::thread                   get_thread_;
+    std::thread                   m_get_thread;
 
     // Negotiated session id, captured from any inbound
     // `Mcp-Session-Id` response header. The GET worker waits on this
     // cv until a session id has been negotiated (or close fires).
-    mutable std::mutex            session_id_mu_;
-    std::condition_variable       session_id_cv_;
-    std::optional<std::string>    session_id_;
+    mutable std::mutex            m_session_id_mu;
+    std::condition_variable       m_session_id_cv;
+    std::optional<std::string>    m_session_id;
 
     // SSE resumability state (spec: server emits `id:` lines, client
     // sends `Last-Event-ID` on reconnect and honours `retry:` for
     // backoff). Updated by drain_sse on every event; read by the GET
     // worker on reconnect.
-    mutable std::mutex            get_mu_state_;
-    std::string                   last_event_id_;
-    std::optional<int>            next_retry_ms_;
+    mutable std::mutex            m_get_mu_state;
+    std::string                   m_last_event_id;
+    std::optional<int>            m_next_retry_ms;
 
     // Mutable access token. The constructor seeds this from
     // Options::access_token; set_access_token() rotates it. Reads are
     // taken on every outbound request, so this is hot-ish — but
     // contention is bounded by the number of in-flight POSTs.
-    mutable std::mutex            auth_mu_;
-    std::string                   access_token_;
+    mutable std::mutex            m_auth_mu;
+    std::string                   m_access_token;
 
     // on_unauthorized firing-flag. Multiple in-flight POSTs that all
     // hit a 401/403 would otherwise each fire the callback,
     // racing the application's token-refresh logic. Fire ONCE per
     // "auth-fail batch" — re-arm on the next successful 2xx. Reads
-    // are atomic-CAS so dedup decisions don't need the auth_mu_.
-    std::atomic<bool>             auth_callback_armed_{true};
+    // are atomic-CAS so dedup decisions don't need the m_auth_mu.
+    std::atomic<bool>             m_auth_callback_armed{true};
 
-    MessageCallback               on_message_;
-    ErrorCallback                 on_error_;
-    CloseCallback                 on_close_;
+    MessageCallback               m_on_message;
+    ErrorCallback                 m_on_error;
+    CloseCallback                 m_on_close;
 
     // pImpl-style holder for the Qt network state (parsed QUrl, etc.),
     // kept opaque from the public header so consumers don't need
     // QtNetwork's include path on their own translation units.
     struct ClientImpl;
-    std::unique_ptr<ClientImpl>   impl_;
+    std::unique_ptr<ClientImpl>   m_impl;
 };
 
 }  // namespace mcp

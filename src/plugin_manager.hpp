@@ -53,7 +53,7 @@ namespace mcp {
 
 class PluginManager {
 public:
-    PluginManager();
+    PluginManager(void);
     ~PluginManager();
 
     PluginManager(const PluginManager&)            = delete;
@@ -93,19 +93,19 @@ public:
     /// library. Pinned plugins (those that own the log sink) are kept loaded.
     /// Safe to call more than once. Must not be called while calls are in
     /// flight.
-    void unload_all();
+    void unload_all(void);
 
     /// Number of currently loaded plugins.
-    [[nodiscard]] std::size_t plugin_count() const;
+    [[nodiscard]] std::size_t plugin_count(void) const;
 
     /// Identifiers of the loaded plugins (their Q_CLASSINFO("id")).
-    [[nodiscard]] QStringList plugin_ids() const;
+    [[nodiscard]] QStringList plugin_ids(void) const;
 
     /// The QObject of the loaded plugin with `id`, or nullptr.
     [[nodiscard]] QObject* plugin_object(const std::string& id) const;
 
     /// Every published function signature, across all loaded plugins.
-    [[nodiscard]] QStringList functions() const;
+    [[nodiscard]] QStringList functions(void) const;
 
     /// True when `signature` is currently published.
     [[nodiscard]] bool has_function(const QString& signature) const;
@@ -141,7 +141,7 @@ private:
                                                 const QVariantList& args);
 
     // Host-side callbacks bound into the HostInterface handed to plugins.
-    QStringList host_get_funcs() const;
+    QStringList host_get_funcs(void) const;
     QVariant    host_call_func(const QString& signature, const QVariantList& args) const;
     bool        host_reg_func(const std::shared_ptr<Instance>& inst,
                               const QString& signature);
@@ -151,8 +151,8 @@ private:
     /// Unload a single plugin (shutdown + detach + erase from the registry).
     void unload_instance(const std::shared_ptr<Instance>& inst);
 
-    QHash<QString, FunctionEntry>          registry_;   // signature -> entry
-    std::vector<std::shared_ptr<Instance>> plugins_;
+    QHash<QString, FunctionEntry>          m_registry;   // signature -> entry
+    std::vector<std::shared_ptr<Instance>> m_plugins;
 };
 
 }  // namespace mcp

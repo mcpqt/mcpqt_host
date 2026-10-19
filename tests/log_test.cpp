@@ -25,47 +25,47 @@ struct CapturedLine {
 class LogTest : public QObject {
     Q_OBJECT
 private slots:
-    void init();
-    void cleanup();
+    void init(void);
+    void cleanup(void);
 
-    void EmitsAtAllLevels();
-    void LevelFilterDropsBelowThreshold();
-    void OffSilencesEverything();
-    void ConcurrentEmittersAreSerialized();
-    void ResettingSinkRestoresDefault();
+    void EmitsAtAllLevels(void);
+    void LevelFilterDropsBelowThreshold(void);
+    void OffSilencesEverything(void);
+    void ConcurrentEmittersAreSerialized(void);
+    void ResettingSinkRestoresDefault(void);
 
 private:
-    std::vector<CapturedLine> drain() {
-        std::lock_guard<std::mutex> lk(mu_);
-        return std::move(captured_);
+    std::vector<CapturedLine> drain(void) {
+        std::lock_guard<std::mutex> lk(m_mu);
+        return std::move(m_captured);
     }
 
-    std::mutex                mu_;
-    std::vector<CapturedLine> captured_;
-    mcp::LogLevel             prev_level_{mcp::LogLevel::info};
+    std::mutex                m_mu;
+    std::vector<CapturedLine> m_captured;
+    mcp::LogLevel             m_prev_level{mcp::LogLevel::info};
 };
 
 class LogLevelStrings : public QObject {
     Q_OBJECT
 private slots:
-    void MapsAllValues();
+    void MapsAllValues(void);
 };
 
-void LogTest::init() {
-    prev_level_ = mcp::log_level();
+void LogTest::init(void) {
+    m_prev_level = mcp::log_level();
     mcp::set_log_level(mcp::LogLevel::trace);
     (void)mcp::set_log_sink([this](mcp::LogLevel lvl, std::string_view msg) {
-        std::lock_guard<std::mutex> lk(mu_);
-        captured_.push_back({lvl, std::string(msg)});
+        std::lock_guard<std::mutex> lk(m_mu);
+        m_captured.push_back({lvl, std::string(msg)});
     });
 }
 
-void LogTest::cleanup() {
+void LogTest::cleanup(void) {
     (void)mcp::set_log_sink(nullptr);  // reset to default sink
-    mcp::set_log_level(prev_level_);
+    mcp::set_log_level(m_prev_level);
 }
 
-void LogTest::EmitsAtAllLevels() {
+void LogTest::EmitsAtAllLevels(void) {
     MCP_LOG_TRACE("t");
     MCP_LOG_DEBUG("d");
     MCP_LOG_INFO("i");
@@ -79,7 +79,7 @@ void LogTest::EmitsAtAllLevels() {
     QCOMPARE(lines[4].level, mcp::LogLevel::error);
 }
 
-void LogTest::LevelFilterDropsBelowThreshold() {
+void LogTest::LevelFilterDropsBelowThreshold(void) {
     mcp::set_log_level(mcp::LogLevel::warn);
     MCP_LOG_TRACE("t");
     MCP_LOG_DEBUG("d");
@@ -93,13 +93,13 @@ void LogTest::LevelFilterDropsBelowThreshold() {
     QCOMPARE(lines[1].level, mcp::LogLevel::error);
 }
 
-void LogTest::OffSilencesEverything() {
+void LogTest::OffSilencesEverything(void) {
     mcp::set_log_level(mcp::LogLevel::off);
     MCP_LOG_ERROR("nope");
     QVERIFY(drain().empty());
 }
 
-void LogTest::ConcurrentEmittersAreSerialized() {
+void LogTest::ConcurrentEmittersAreSerialized(void) {
     constexpr int kThreads = 8;
     constexpr int kPer     = 200;
 
@@ -117,13 +117,13 @@ void LogTest::ConcurrentEmittersAreSerialized() {
     QCOMPARE(drain().size(), static_cast<std::size_t>(kThreads * kPer));
 }
 
-void LogTest::ResettingSinkRestoresDefault() {
+void LogTest::ResettingSinkRestoresDefault(void) {
     (void)mcp::set_log_sink(nullptr);  // restore default
     // Default writes to stderr; just verify the call doesn't crash.
     MCP_LOG_INFO("after-reset");
 }
 
-void LogLevelStrings::MapsAllValues() {
+void LogLevelStrings::MapsAllValues(void) {
     QCOMPARE(mcp::to_string(mcp::LogLevel::trace), "TRACE");
     QCOMPARE(mcp::to_string(mcp::LogLevel::debug), "DEBUG");
     QCOMPARE(mcp::to_string(mcp::LogLevel::info),  "INFO");

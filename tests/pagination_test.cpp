@@ -50,13 +50,13 @@ struct ServerThread {
 class Pagination : public QObject {
     Q_OBJECT
 private slots:
-    void ToolsListReturnsPagesWithCursor();
-    void NoPaginationByDefault();
-    void ResourcesPaginate();
-    void MalformedCursorRejected();
+    void ToolsListReturnsPagesWithCursor(void);
+    void NoPaginationByDefault(void);
+    void ResourcesPaginate(void);
+    void MalformedCursorRejected(void);
 };
 
-void Pagination::ToolsListReturnsPagesWithCursor() {
+void Pagination::ToolsListReturnsPagesWithCursor(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(3);
@@ -90,7 +90,7 @@ void Pagination::ToolsListReturnsPagesWithCursor() {
     client.disconnect();
 }
 
-void Pagination::NoPaginationByDefault() {
+void Pagination::NoPaginationByDefault(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         for (int i = 0; i < 5; ++i) {
@@ -112,7 +112,7 @@ void Pagination::NoPaginationByDefault() {
     client.disconnect();
 }
 
-void Pagination::ResourcesPaginate() {
+void Pagination::ResourcesPaginate(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);
@@ -148,7 +148,7 @@ void Pagination::ResourcesPaginate() {
     client.disconnect();
 }
 
-void Pagination::MalformedCursorRejected() {
+void Pagination::MalformedCursorRejected(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);

@@ -28,15 +28,15 @@ Session::Session(std::unique_ptr<Transport> transport)
     : Session(std::move(transport), Options{}) {}
 
 Session::Session(std::unique_ptr<Transport> transport, Options opts)
-    : transport_(std::move(transport)), opts_(opts) {
-    if (!transport_) {
+    : m_transport(std::move(transport)), m_opts(opts) {
+    if (!m_transport) {
         throw Error{error_code::internal_error, "Session: transport is null"};
     }
-    transport_->on_message([this](std::string raw) { this->handle_frame(std::move(raw)); });
-    transport_->on_error([](std::error_code ec) {
+    m_transport->on_message([this](std::string raw) { this->handle_frame(std::move(raw)); });
+    m_transport->on_error([](std::error_code ec) {
         MCP_LOG_WARN(std::string{"transport error: "} + ec.message());
     });
-    transport_->on_close([this]() {
+    m_transport->on_close([this]() {
         ErrorObject reason{
             error_code::internal_error,
             "transport closed",
@@ -45,12 +45,12 @@ Session::Session(std::unique_ptr<Transport> transport, Options opts)
         cancel_all_pending(reason);
         // Mark the session closed so is_open() flips, and notify any
         // user code waiting on the close hook (e.g. Server::run).
-        closed_.store(true, std::memory_order_release);
+        m_closed.store(true, std::memory_order_release);
         ClosedCallback cb;
         {
-            std::lock_guard<std::mutex> lk(closed_cb_mu_);
-            if (!closed_cb_fired_.exchange(true, std::memory_order_acq_rel)) {
-                cb = on_closed_;
+            std::lock_guard<std::mutex> lk(m_closed_cb_mu);
+            if (!m_closed_cb_fired.exchange(true, std::memory_order_acq_rel)) {
+                cb = m_on_closed;
             }
         }
         if (cb) {
@@ -71,63 +71,63 @@ Session::~Session() {
 // =====================================================================
 
 void Session::set_request_handler(std::string method, RequestHandler h) {
-    std::lock_guard<std::mutex> lk(handlers_mu_);
-    req_handlers_[std::move(method)] = std::move(h);
+    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    m_req_handlers[std::move(method)] = std::move(h);
 }
 
 void Session::set_notification_handler(std::string method, NotificationHandler h) {
-    std::lock_guard<std::mutex> lk(handlers_mu_);
-    note_handlers_[std::move(method)] = std::move(h);
+    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    m_note_handlers[std::move(method)] = std::move(h);
 }
 
 void Session::clear_request_handler(const std::string& method) {
-    std::lock_guard<std::mutex> lk(handlers_mu_);
-    req_handlers_.erase(method);
+    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    m_req_handlers.erase(method);
 }
 
 void Session::clear_notification_handler(const std::string& method) {
-    std::lock_guard<std::mutex> lk(handlers_mu_);
-    note_handlers_.erase(method);
+    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    m_note_handlers.erase(method);
 }
 
 void Session::set_fallback_request_handler(RequestHandler h) {
-    std::lock_guard<std::mutex> lk(handlers_mu_);
-    fallback_req_ = std::move(h);
+    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    m_fallback_req = std::move(h);
 }
 
 void Session::set_fallback_notification_handler(NotificationHandler h) {
-    std::lock_guard<std::mutex> lk(handlers_mu_);
-    fallback_note_ = std::move(h);
+    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    m_fallback_note = std::move(h);
 }
 
 void Session::set_on_closed(ClosedCallback cb) {
-    std::lock_guard<std::mutex> lk(closed_cb_mu_);
-    on_closed_ = std::move(cb);
+    std::lock_guard<std::mutex> lk(m_closed_cb_mu);
+    m_on_closed = std::move(cb);
 }
 
 // =====================================================================
 // Lifecycle
 // =====================================================================
 
-void Session::start() {
+void Session::start(void) {
     bool expected = false;
-    if (!started_.compare_exchange_strong(expected, true,
+    if (!m_started.compare_exchange_strong(expected, true,
                                           std::memory_order_acq_rel)) {
         return;
     }
-    closed_.store(false, std::memory_order_release);
-    timeout_thread_ = std::thread([this] { this->timeout_loop(); });
-    transport_->start();
+    m_closed.store(false, std::memory_order_release);
+    m_timeout_thread = std::thread([this] { this->timeout_loop(); });
+    m_transport->start();
 }
 
-void Session::close() {
+void Session::close(void) {
     // Two callers can land here: (1) the application calling close()
     // directly, (2) the Session destructor. Whichever arrives first
     // tears down the transport; both must run the rest so that
     // double-destruction can't leave the timeout thread joinable
     // (which would call std::terminate from ~thread).
     bool expected = false;
-    const bool first = closed_.compare_exchange_strong(expected, true,
+    const bool first = m_closed.compare_exchange_strong(expected, true,
                                                        std::memory_order_acq_rel);
 
     // Cancel pending request promises so any worker awaiting a future
@@ -141,28 +141,28 @@ void Session::close() {
     // responses to stdout, and closing the transport here would turn
     // those writes into "not_connected" errors.
     {
-        std::unique_lock<std::mutex> lk(workers_mu_);
-        workers_cv_.wait(lk, [this] { return workers_running_ == 0; });
+        std::unique_lock<std::mutex> lk(m_workers_mu);
+        m_workers_cv.wait(lk, [this] { return m_workers_running == 0; });
     }
 
     // Now actually shut down the transport. Only the first close()
     // does this; subsequent calls (e.g. from ~Session) ride through
     // the join-and-fire path the transport already provides.
-    if (first && transport_) transport_->close();
+    if (first && m_transport) m_transport->close();
 
     {
-        std::lock_guard<std::mutex> lk(pending_mu_);
-        timeout_cv_.notify_all();
+        std::lock_guard<std::mutex> lk(m_pending_mu);
+        m_timeout_cv.notify_all();
     }
-    if (timeout_thread_.joinable()) timeout_thread_.join();
+    if (m_timeout_thread.joinable()) m_timeout_thread.join();
 }
 
 // =====================================================================
 // Send paths
 // =====================================================================
 
-RequestId Session::next_id() noexcept {
-    return RequestId{next_id_.fetch_add(1, std::memory_order_relaxed)};
+RequestId Session::next_id(void) noexcept {
+    return RequestId{m_next_id.fetch_add(1, std::memory_order_relaxed)};
 }
 
 std::future<Json>
@@ -200,29 +200,29 @@ void Session::register_pending(std::string    method,
     if (!params.isNull()) req.params = std::move(params);
 
     const auto effective_timeout =
-        timeout == std::chrono::milliseconds{0} ? opts_.default_request_timeout : timeout;
+        timeout == std::chrono::milliseconds{0} ? m_opts.default_request_timeout : timeout;
     pending.deadline = steady_clock::now() + effective_timeout;
 
     // Keep a copy of the reject callback for the error paths below, which
-    // must fire *after* releasing pending_mu_ (resolving the caller's
+    // must fire *after* releasing m_pending_mu (resolving the caller's
     // future can wake a waiter that re-enters the Session).
     auto reject = pending.reject;
 
     enum class Parked { kOk, kClosed, kDuplicate };
     Parked state;
     {
-        std::lock_guard<std::mutex> lk(pending_mu_);
-        if (closed_.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> lk(m_pending_mu);
+        if (m_closed.load(std::memory_order_acquire)) {
             // Don't park a new entry on a closed session — its future
             // would never resolve, since cancel_all_pending already
             // drained the map.
             state = Parked::kClosed;
         } else {
-            auto [it, inserted] = pending_.try_emplace(id, std::move(pending));
+            auto [it, inserted] = m_pending.try_emplace(id, std::move(pending));
             (void)it;
             if (inserted) {
                 state = Parked::kOk;
-                timeout_cv_.notify_all();
+                m_timeout_cv.notify_all();
             } else {
                 // The id space is monotonic per Session, so this is a
                 // sign of corruption (e.g. a Session reused across
@@ -253,11 +253,11 @@ void Session::register_pending(std::string    method,
         Pending parked;
         bool found = false;
         {
-            std::lock_guard<std::mutex> lk(pending_mu_);
-            auto it = pending_.find(id);
-            if (it != pending_.end()) {
+            std::lock_guard<std::mutex> lk(m_pending_mu);
+            auto it = m_pending.find(id);
+            if (it != m_pending.end()) {
                 parked = std::move(it->second);
-                pending_.erase(it);
+                m_pending.erase(it);
                 found = true;
             }
         }
@@ -283,7 +283,7 @@ Session::send_notification(std::string method, Json params) {
 void Session::send_message(const JsonRpcMessage& msg) {
     const auto j   = serialize_message(msg);
     const auto str = dump(j);
-    auto ec = transport_->send(str);
+    auto ec = m_transport->send(str);
     if (ec) {
         throw std::system_error{ec, "Session::send_message: transport->send failed"};
     }
@@ -325,23 +325,23 @@ void Session::handle_frame(std::string raw) {
             // (e.g. server.sample() inside a tool handler) without
             // deadlocking the read thread.
             //
-            // close() waits for `workers_running_` to drain before
+            // close() waits for `m_workers_running` to drain before
             // returning so the dispatched worker can never outlive
-            // members it touches (transport_, handlers).
+            // members it touches (m_transport, handlers).
             {
-                std::lock_guard<std::mutex> lk(workers_mu_);
-                ++workers_running_;
+                std::lock_guard<std::mutex> lk(m_workers_mu);
+                ++m_workers_running;
             }
             std::thread([this, req = std::move(m)]() mutable {
                 handle_request(std::move(req));
                 // Decrement and notify under the same lock. If the
                 // unlock happened first, close() could observe
-                // workers_running_==0, return, and destroy the cv
+                // m_workers_running==0, return, and destroy the cv
                 // before this thread reaches notify_all — TSan
                 // catches that race against pthread_cond_destroy.
-                std::lock_guard<std::mutex> lk(workers_mu_);
-                --workers_running_;
-                workers_cv_.notify_all();
+                std::lock_guard<std::mutex> lk(m_workers_mu);
+                --m_workers_running;
+                m_workers_cv.notify_all();
             }).detach();
         } else if constexpr (std::is_same_v<T, JsonRpcNotification>) {
             handle_notification(std::move(m));
@@ -354,10 +354,10 @@ void Session::handle_frame(std::string raw) {
 void Session::handle_request(JsonRpcRequest req) {
     RequestHandler handler;
     {
-        std::lock_guard<std::mutex> lk(handlers_mu_);
-        auto it = req_handlers_.find(req.method);
-        if (it != req_handlers_.end()) handler = it->second;
-        else                            handler = fallback_req_;
+        std::lock_guard<std::mutex> lk(m_handlers_mu);
+        auto it = m_req_handlers.find(req.method);
+        if (it != m_req_handlers.end()) handler = it->second;
+        else                            handler = m_fallback_req;
     }
 
     JsonRpcResponse resp;
@@ -412,10 +412,10 @@ void Session::handle_request(JsonRpcRequest req) {
 void Session::handle_notification(JsonRpcNotification note) {
     NotificationHandler handler;
     {
-        std::lock_guard<std::mutex> lk(handlers_mu_);
-        auto it = note_handlers_.find(note.method);
-        if (it != note_handlers_.end()) handler = it->second;
-        else                             handler = fallback_note_;
+        std::lock_guard<std::mutex> lk(m_handlers_mu);
+        auto it = m_note_handlers.find(note.method);
+        if (it != m_note_handlers.end()) handler = it->second;
+        else                             handler = m_fallback_note;
     }
     if (!handler) return;
     try {
@@ -440,18 +440,18 @@ void Session::handle_response(JsonRpcResponse resp) {
 
     Pending pending;
     {
-        std::lock_guard<std::mutex> lk(pending_mu_);
-        auto it = pending_.find(*resp.id);
-        if (it == pending_.end()) {
+        std::lock_guard<std::mutex> lk(m_pending_mu);
+        auto it = m_pending.find(*resp.id);
+        if (it == m_pending.end()) {
             MCP_LOG_WARN("received response for unknown id: " + resp.id->canonical());
             return;
         }
         pending = std::move(it->second);
-        pending_.erase(it);
-        timeout_cv_.notify_all();
+        m_pending.erase(it);
+        m_timeout_cv.notify_all();
     }
 
-    // Resolve outside pending_mu_ (released above): the conversion +
+    // Resolve outside m_pending_mu (released above): the conversion +
     // promise resolution can wake a waiter that re-enters the Session.
     if (resp.is_success()) {
         if (pending.resolve) pending.resolve(std::move(resp).result());
@@ -465,19 +465,19 @@ void Session::handle_response(JsonRpcResponse resp) {
 // Timeout
 // =====================================================================
 
-void Session::timeout_loop() {
-    std::unique_lock<std::mutex> lk(pending_mu_);
-    while (!closed_.load(std::memory_order_acquire)) {
-        if (pending_.empty()) {
-            timeout_cv_.wait(lk);
+void Session::timeout_loop(void) {
+    std::unique_lock<std::mutex> lk(m_pending_mu);
+    while (!m_closed.load(std::memory_order_acquire)) {
+        if (m_pending.empty()) {
+            m_timeout_cv.wait(lk);
             continue;
         }
 
         auto soonest = steady_clock::time_point::max();
-        for (const auto& [id, p] : pending_) {
+        for (const auto& [id, p] : m_pending) {
             if (p.deadline < soonest) soonest = p.deadline;
         }
-        if (timeout_cv_.wait_until(lk, soonest) == std::cv_status::timeout) {
+        if (m_timeout_cv.wait_until(lk, soonest) == std::cv_status::timeout) {
             const auto now = steady_clock::now();
             // Snapshot the expired entries under the lock, drop them
             // out of the pending map, then release the lock before
@@ -487,11 +487,11 @@ void Session::timeout_loop() {
             // to keep an iterator valid across cancel_all_pending
             // swapping the map under us.
             std::vector<std::function<void(std::exception_ptr)>> expired;
-            for (auto it = pending_.begin(); it != pending_.end(); ) {
+            for (auto it = m_pending.begin(); it != m_pending.end(); ) {
                 if (it->second.deadline <= now) {
                     if (it->second.reject)
                         expired.push_back(std::move(it->second.reject));
-                    it = pending_.erase(it);
+                    it = m_pending.erase(it);
                 } else {
                     ++it;
                 }
@@ -509,9 +509,9 @@ void Session::timeout_loop() {
 void Session::cancel_all_pending(const ErrorObject& reason) {
     std::unordered_map<RequestId, Pending> drained;
     {
-        std::lock_guard<std::mutex> lk(pending_mu_);
-        drained.swap(pending_);
-        timeout_cv_.notify_all();
+        std::lock_guard<std::mutex> lk(m_pending_mu);
+        drained.swap(m_pending);
+        m_timeout_cv.notify_all();
     }
     for (auto& [id, p] : drained) {
         (void)id;

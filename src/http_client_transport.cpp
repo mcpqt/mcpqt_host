@@ -152,58 +152,58 @@ void set_common_headers(QNetworkRequest&                             req,
 // Construction / destruction
 // =====================================================================
 
-HttpClientTransport::HttpClientTransport(Options opts) : opts_(std::move(opts)) {
-    QUrl url{QString::fromStdString(opts_.url)};
+HttpClientTransport::HttpClientTransport(Options opts) : m_opts(std::move(opts)) {
+    QUrl url{QString::fromStdString(m_opts.url)};
     if (!url.isValid() || url.scheme().isEmpty()) {
         throw std::invalid_argument(
             "HttpClientTransport: URL must contain a scheme "
             "(http:// or https://)");
     }
-    impl_ = std::make_unique<ClientImpl>(std::move(url));
-    if (opts_.session_id.has_value()) {
-        session_id_ = *opts_.session_id;
+    m_impl = std::make_unique<ClientImpl>(std::move(url));
+    if (m_opts.session_id.has_value()) {
+        m_session_id = *m_opts.session_id;
     }
-    // Seed the mutable access_token_ from Options. The Options copy
+    // Seed the mutable m_access_token from Options. The Options copy
     // is no longer the source of truth; set_access_token rotates this
     // member so on_unauthorized callbacks can drive a token refresh.
-    if (opts_.access_token.has_value()) {
-        access_token_ = *opts_.access_token;
+    if (m_opts.access_token.has_value()) {
+        m_access_token = *m_opts.access_token;
     }
 }
 
 HttpClientTransport::~HttpClientTransport() { close(); }
 
-void HttpClientTransport::on_message(MessageCallback cb) { on_message_ = std::move(cb); }
-void HttpClientTransport::on_error(ErrorCallback cb)     { on_error_   = std::move(cb); }
-void HttpClientTransport::on_close(CloseCallback cb)     { on_close_   = std::move(cb); }
+void HttpClientTransport::on_message(MessageCallback cb) { m_on_message = std::move(cb); }
+void HttpClientTransport::on_error(ErrorCallback cb)     { m_on_error   = std::move(cb); }
+void HttpClientTransport::on_close(CloseCallback cb)     { m_on_close   = std::move(cb); }
 
-std::optional<std::string> HttpClientTransport::session_id() const {
-    std::lock_guard<std::mutex> lk(session_id_mu_);
-    return session_id_;
+std::optional<std::string> HttpClientTransport::session_id(void) const {
+    std::lock_guard<std::mutex> lk(m_session_id_mu);
+    return m_session_id;
 }
 
 // =====================================================================
 // Lifecycle
 // =====================================================================
 
-void HttpClientTransport::start() {
+void HttpClientTransport::start(void) {
     bool expected = false;
-    if (!started_.compare_exchange_strong(expected, true,
+    if (!m_started.compare_exchange_strong(expected, true,
                                           std::memory_order_acq_rel)) {
         return;
     }
-    closed_.store(false, std::memory_order_release);
-    close_fired_.store(false, std::memory_order_release);
-    worker_ = std::thread([this] { worker_loop(); });
-    if (opts_.open_get_stream) {
-        get_thread_ = std::thread([this] { run_get_stream(); });
+    m_closed.store(false, std::memory_order_release);
+    m_close_fired.store(false, std::memory_order_release);
+    m_worker = std::thread([this] { worker_loop(); });
+    if (m_opts.open_get_stream) {
+        m_get_thread = std::thread([this] { run_get_stream(); });
     }
 }
 
-void HttpClientTransport::close() {
-    if (closed_.exchange(true, std::memory_order_acq_rel)) {
-        if (worker_.joinable()) worker_.join();
-        if (get_thread_.joinable()) get_thread_.join();
+void HttpClientTransport::close(void) {
+    if (m_closed.exchange(true, std::memory_order_acq_rel)) {
+        if (m_worker.joinable()) m_worker.join();
+        if (m_get_thread.joinable()) m_get_thread.join();
         return;
     }
 
@@ -213,19 +213,19 @@ void HttpClientTransport::close() {
     // always proceeds.
     std::optional<std::string> sid;
     {
-        std::lock_guard<std::mutex> lk(session_id_mu_);
-        sid = session_id_;
+        std::lock_guard<std::mutex> lk(m_session_id_mu);
+        sid = m_session_id;
     }
-    if (sid.has_value() && !sid->empty() && impl_) {
+    if (sid.has_value() && !sid->empty() && m_impl) {
         try {
             std::string token;
             {
-                std::lock_guard<std::mutex> lk(auth_mu_);
-                token = access_token_;
+                std::lock_guard<std::mutex> lk(m_auth_mu);
+                token = m_access_token;
             }
             QNetworkAccessManager nam;
-            QNetworkRequest req(impl_->url);
-            set_common_headers(req, opts_, sid, token, "");
+            QNetworkRequest req(m_impl->url);
+            set_common_headers(req, m_opts, sid, token, "");
             req.setTransferTimeout(2000);
             QNetworkReply* reply = nam.deleteResource(req);
             QEventLoop loop;
@@ -238,28 +238,28 @@ void HttpClientTransport::close() {
     }
 
     {
-        std::lock_guard<std::mutex> lk(out_mu_);
-        out_cv_.notify_all();
+        std::lock_guard<std::mutex> lk(m_out_mu);
+        m_out_cv.notify_all();
     }
     {
-        std::lock_guard<std::mutex> lk(session_id_mu_);
-        session_id_cv_.notify_all();
+        std::lock_guard<std::mutex> lk(m_session_id_mu);
+        m_session_id_cv.notify_all();
     }
 
-    if (worker_.joinable()) worker_.join();
-    if (get_thread_.joinable()) get_thread_.join();
+    if (m_worker.joinable()) m_worker.join();
+    if (m_get_thread.joinable()) m_get_thread.join();
 
     {
-        std::unique_lock<std::mutex> lk(inflight_mu_);
-        inflight_cv_.wait(lk, [this] { return inflight_ == 0; });
+        std::unique_lock<std::mutex> lk(m_inflight_mu);
+        m_inflight_cv.wait(lk, [this] { return m_inflight == 0; });
     }
     fire_close();
 }
 
-void HttpClientTransport::fire_close() noexcept {
-    if (close_fired_.exchange(true, std::memory_order_acq_rel)) return;
-    if (!on_close_) return;
-    try { on_close_(); }
+void HttpClientTransport::fire_close(void) noexcept {
+    if (m_close_fired.exchange(true, std::memory_order_acq_rel)) return;
+    if (!m_on_close) return;
+    try { m_on_close(); }
     catch (const std::exception& e) {
         MCP_LOG_ERROR(std::string{"HttpClientTransport on_close threw: "} + e.what());
     } catch (...) {
@@ -268,8 +268,8 @@ void HttpClientTransport::fire_close() noexcept {
 }
 
 void HttpClientTransport::deliver_error(std::error_code ec) noexcept {
-    if (!on_error_) return;
-    try { on_error_(ec); }
+    if (!m_on_error) return;
+    try { m_on_error(ec); }
     catch (const std::exception& e) {
         MCP_LOG_ERROR(std::string{"HttpClientTransport on_error threw: "} + e.what());
     } catch (...) {
@@ -278,8 +278,8 @@ void HttpClientTransport::deliver_error(std::error_code ec) noexcept {
 }
 
 void HttpClientTransport::deliver_frame(std::string raw) {
-    if (!on_message_) return;
-    try { on_message_(std::move(raw)); }
+    if (!m_on_message) return;
+    try { m_on_message(std::move(raw)); }
     catch (const std::exception& e) {
         MCP_LOG_ERROR(std::string{"HttpClientTransport on_message threw: "} + e.what());
     } catch (...) {
@@ -292,19 +292,19 @@ void HttpClientTransport::deliver_frame(std::string raw) {
 // =====================================================================
 
 std::error_code HttpClientTransport::send(std::string_view frame) {
-    if (!started_.load(std::memory_order_acquire) ||
-         closed_.load(std::memory_order_acquire)) {
+    if (!m_started.load(std::memory_order_acquire) ||
+         m_closed.load(std::memory_order_acquire)) {
         return std::make_error_code(std::errc::not_connected);
     }
     {
-        std::lock_guard<std::mutex> lk(out_mu_);
-        out_.emplace_back(frame);
-        out_cv_.notify_one();
+        std::lock_guard<std::mutex> lk(m_out_mu);
+        m_out.emplace_back(frame);
+        m_out_cv.notify_one();
     }
     return {};
 }
 
-void HttpClientTransport::worker_loop() {
+void HttpClientTransport::worker_loop(void) {
     // Each outbound frame is processed on its own thread so a slow
     // POST (e.g. one held open by the server while it's awaiting a
     // sampling reply that needs to come back through us) doesn't
@@ -316,23 +316,23 @@ void HttpClientTransport::worker_loop() {
     while (true) {
         std::string frame;
         {
-            std::unique_lock<std::mutex> lk(out_mu_);
-            out_cv_.wait(lk, [this] {
-                return closed_.load(std::memory_order_acquire) || !out_.empty();
+            std::unique_lock<std::mutex> lk(m_out_mu);
+            m_out_cv.wait(lk, [this] {
+                return m_closed.load(std::memory_order_acquire) || !m_out.empty();
             });
-            if (closed_.load(std::memory_order_acquire) && out_.empty()) return;
-            frame = std::move(out_.front());
-            out_.pop_front();
+            if (m_closed.load(std::memory_order_acquire) && m_out.empty()) return;
+            frame = std::move(m_out.front());
+            m_out.pop_front();
         }
         {
-            std::lock_guard<std::mutex> lk(inflight_mu_);
-            ++inflight_;
+            std::lock_guard<std::mutex> lk(m_inflight_mu);
+            ++m_inflight;
         }
         std::thread([this, f = std::move(frame)]() mutable {
             process_send(std::move(f));
-            std::lock_guard<std::mutex> lk(inflight_mu_);
-            --inflight_;
-            inflight_cv_.notify_all();
+            std::lock_guard<std::mutex> lk(m_inflight_mu);
+            --m_inflight;
+            m_inflight_cv.notify_all();
         }).detach();
     }
 }
@@ -340,13 +340,13 @@ void HttpClientTransport::worker_loop() {
 void HttpClientTransport::process_send(std::string frame) {
     std::optional<std::string> sid;
     {
-        std::lock_guard<std::mutex> lk(session_id_mu_);
-        sid = session_id_;
+        std::lock_guard<std::mutex> lk(m_session_id_mu);
+        sid = m_session_id;
     }
     std::string token;
     {
-        std::lock_guard<std::mutex> lk(auth_mu_);
-        token = access_token_;
+        std::lock_guard<std::mutex> lk(m_auth_mu);
+        token = m_access_token;
     }
 
     // Each send runs on its own thread (worker_loop dispatches), so
@@ -354,13 +354,13 @@ void HttpClientTransport::process_send(std::string frame) {
     // keeps the "many concurrent POSTs, no serialisation" property
     // the transport relies on.
     QNetworkAccessManager nam;
-    QNetworkRequest req(impl_->url);
+    QNetworkRequest req(m_impl->url);
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   QStringLiteral("application/json"));
     req.setRawHeader("Accept", "application/json, text/event-stream");
-    set_common_headers(req, opts_, sid, token, "");
-    if (opts_.request_timeout.count() > 0) {
-        req.setTransferTimeout(static_cast<int>(opts_.request_timeout.count()));
+    set_common_headers(req, m_opts, sid, token, "");
+    if (m_opts.request_timeout.count() > 0) {
+        req.setTransferTimeout(static_cast<int>(m_opts.request_timeout.count()));
     }
 
     QNetworkReply* reply =
@@ -379,11 +379,11 @@ void HttpClientTransport::process_send(std::string frame) {
     if (!sid_hdr.isEmpty()) {
         bool first_set = false;
         {
-            std::lock_guard<std::mutex> lk(session_id_mu_);
-            first_set = !session_id_.has_value();
-            session_id_ = sid_hdr.toStdString();
+            std::lock_guard<std::mutex> lk(m_session_id_mu);
+            first_set = !m_session_id.has_value();
+            m_session_id = sid_hdr.toStdString();
         }
-        if (first_set) session_id_cv_.notify_all();
+        if (first_set) m_session_id_cv.notify_all();
     }
 
     // A status of 0 means the request never got an HTTP response
@@ -396,7 +396,7 @@ void HttpClientTransport::process_send(std::string frame) {
         // Empty 202 Accepted — server absorbed a notification or response.
         // A successful response also re-arms the on_unauthorized
         // callback so the next 401-batch can fire it again.
-        auth_callback_armed_.store(true, std::memory_order_release);
+        m_auth_callback_armed.store(true, std::memory_order_release);
         return;
     }
     if (status == 401 || status == 403) {
@@ -412,10 +412,10 @@ void HttpClientTransport::process_send(std::string frame) {
         const std::string challenge =
             reply->rawHeader("WWW-Authenticate").toStdString();
         bool expected = true;
-        if (opts_.on_unauthorized &&
-            auth_callback_armed_.compare_exchange_strong(
+        if (m_opts.on_unauthorized &&
+            m_auth_callback_armed.compare_exchange_strong(
                 expected, false, std::memory_order_acq_rel)) {
-            try { opts_.on_unauthorized(status, challenge); }
+            try { m_opts.on_unauthorized(status, challenge); }
             catch (...) {}
         }
         deliver_error(std::make_error_code(std::errc::permission_denied));
@@ -426,7 +426,7 @@ void HttpClientTransport::process_send(std::string frame) {
         return;
     }
     // Any 2xx re-arms the dedup flag.
-    auth_callback_armed_.store(true, std::memory_order_release);
+    m_auth_callback_armed.store(true, std::memory_order_release);
 
     const std::string ct = reply->rawHeader("Content-Type").toStdString();
     std::string body = reply->readAll().toStdString();
@@ -437,8 +437,8 @@ void HttpClientTransport::process_send(std::string frame) {
             // (typically on the GET stream) can resume via
             // Last-Event-ID.
             if (se.id.has_value() && !se.id->empty()) {
-                std::lock_guard<std::mutex> lk(get_mu_state_);
-                last_event_id_ = *se.id;
+                std::lock_guard<std::mutex> lk(m_get_mu_state);
+                m_last_event_id = *se.id;
             }
             if (!se.data.empty()) deliver_frame(std::move(se.data));
         });
@@ -453,7 +453,7 @@ void HttpClientTransport::process_send(std::string frame) {
 // GET stream (server-initiated)
 // =====================================================================
 
-void HttpClientTransport::run_get_stream() noexcept {
+void HttpClientTransport::run_get_stream(void) noexcept {
     // The server's GET handler needs Mcp-Session-Id; it has no way
     // to associate an anonymous GET with the right session. So this
     // worker waits on a cv for the session id to be negotiated by
@@ -461,38 +461,38 @@ void HttpClientTransport::run_get_stream() noexcept {
     // no polling latency between "initialize() returned" and "GET
     // stream is open" (which a tool handler triggering server.sample()
     // would otherwise race).
-    while (started_.load(std::memory_order_acquire) &&
-          !closed_.load(std::memory_order_acquire)) {
+    while (m_started.load(std::memory_order_acquire) &&
+          !m_closed.load(std::memory_order_acquire)) {
         std::optional<std::string> sid;
         {
-            std::unique_lock<std::mutex> lk(session_id_mu_);
-            session_id_cv_.wait(lk, [this] {
-                return session_id_.has_value() ||
-                       closed_.load(std::memory_order_acquire);
+            std::unique_lock<std::mutex> lk(m_session_id_mu);
+            m_session_id_cv.wait(lk, [this] {
+                return m_session_id.has_value() ||
+                       m_closed.load(std::memory_order_acquire);
             });
-            if (closed_.load(std::memory_order_acquire)) return;
-            sid = session_id_;
+            if (m_closed.load(std::memory_order_acquire)) return;
+            sid = m_session_id;
         }
         if (!sid.has_value()) continue;
 
         std::string token;
         {
-            std::lock_guard<std::mutex> lk(auth_mu_);
-            token = access_token_;
+            std::lock_guard<std::mutex> lk(m_auth_mu);
+            token = m_access_token;
         }
         // Resumability: hand back the last event id we saw on this
         // session so the server can replay anything we missed during
         // the disconnect.
         std::string last_event_id;
         {
-            std::lock_guard<std::mutex> lk(get_mu_state_);
-            last_event_id = last_event_id_;
+            std::lock_guard<std::mutex> lk(m_get_mu_state);
+            last_event_id = m_last_event_id;
         }
 
         QNetworkAccessManager nam;
-        QNetworkRequest req(impl_->url);
+        QNetworkRequest req(m_impl->url);
         req.setRawHeader("Accept", "text/event-stream");
-        set_common_headers(req, opts_, sid, token, last_event_id);
+        set_common_headers(req, m_opts, sid, token, last_event_id);
         // The GET stream stays open indefinitely; no transfer timeout.
         // Heartbeats keep it alive.
 
@@ -503,12 +503,12 @@ void HttpClientTransport::run_get_stream() noexcept {
             buf.append(reply->readAll());
             drain_sse(buf, [this](SseEvent se) {
                 if (se.id.has_value() && !se.id->empty()) {
-                    std::lock_guard<std::mutex> lk(get_mu_state_);
-                    last_event_id_ = *se.id;
+                    std::lock_guard<std::mutex> lk(m_get_mu_state);
+                    m_last_event_id = *se.id;
                 }
                 if (se.retry_ms.has_value()) {
-                    std::lock_guard<std::mutex> lk(get_mu_state_);
-                    next_retry_ms_ = se.retry_ms;
+                    std::lock_guard<std::mutex> lk(m_get_mu_state);
+                    m_next_retry_ms = se.retry_ms;
                 }
                 if (!se.data.empty()) deliver_frame(std::move(se.data));
             });
@@ -520,12 +520,12 @@ void HttpClientTransport::run_get_stream() noexcept {
         buf.append(reply->readAll());
         drain_sse(buf, [this](SseEvent se) {
             if (se.id.has_value() && !se.id->empty()) {
-                std::lock_guard<std::mutex> lk(get_mu_state_);
-                last_event_id_ = *se.id;
+                std::lock_guard<std::mutex> lk(m_get_mu_state);
+                m_last_event_id = *se.id;
             }
             if (se.retry_ms.has_value()) {
-                std::lock_guard<std::mutex> lk(get_mu_state_);
-                next_retry_ms_ = se.retry_ms;
+                std::lock_guard<std::mutex> lk(m_get_mu_state);
+                m_next_retry_ms = se.retry_ms;
             }
             if (!se.data.empty()) deliver_frame(std::move(se.data));
         });
@@ -545,10 +545,10 @@ void HttpClientTransport::run_get_stream() noexcept {
         // set_access_token() and start a new transport (or restart
         // this one) to recover.
         if (status == 401 || status == 403) {
-            if (opts_.on_unauthorized) {
+            if (m_opts.on_unauthorized) {
                 const std::string challenge =
                     reply->rawHeader("WWW-Authenticate").toStdString();
-                try { opts_.on_unauthorized(status, challenge); }
+                try { m_opts.on_unauthorized(status, challenge); }
                 catch (...) {}
             }
             return;
@@ -562,13 +562,13 @@ void HttpClientTransport::run_get_stream() noexcept {
         // which point the GET worker re-arms.
         if (status == 404) {
             {
-                std::lock_guard<std::mutex> lk(session_id_mu_);
-                session_id_.reset();
+                std::lock_guard<std::mutex> lk(m_session_id_mu);
+                m_session_id.reset();
             }
             return;
         }
 
-        if (closed_.load(std::memory_order_acquire)) return;
+        if (m_closed.load(std::memory_order_acquire)) return;
 
         // Backoff before reconnecting after EOF/error. Honour the
         // server's `retry:` if it sent one; clamp to a sane band so
@@ -577,9 +577,9 @@ void HttpClientTransport::run_get_stream() noexcept {
         // otherwise.
         std::chrono::milliseconds delay{200};
         {
-            std::lock_guard<std::mutex> lk(get_mu_state_);
-            if (next_retry_ms_.has_value()) {
-                int v = *next_retry_ms_;
+            std::lock_guard<std::mutex> lk(m_get_mu_state);
+            if (m_next_retry_ms.has_value()) {
+                int v = *m_next_retry_ms;
                 if (v < 50) v = 50;
                 if (v > 60'000) v = 60'000;
                 delay = std::chrono::milliseconds{v};
@@ -594,13 +594,13 @@ void HttpClientTransport::run_get_stream() noexcept {
 // =====================================================================
 
 void HttpClientTransport::set_access_token(std::string token) {
-    std::lock_guard<std::mutex> lk(auth_mu_);
-    access_token_ = std::move(token);
+    std::lock_guard<std::mutex> lk(m_auth_mu);
+    m_access_token = std::move(token);
 }
 
-std::string HttpClientTransport::access_token() const {
-    std::lock_guard<std::mutex> lk(auth_mu_);
-    return access_token_;
+std::string HttpClientTransport::access_token(void) const {
+    std::lock_guard<std::mutex> lk(m_auth_mu);
+    return m_access_token;
 }
 
 }  // namespace mcp

@@ -33,10 +33,10 @@ public:
     explicit HelloPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
 
     void initialize(const mcp::HostInterface& host) override {
-        host_ = host;
+        m_host = host;
         registerPublicSlots();
     }
-    void shutdown() override {}
+    void shutdown(void) override {}
 
 public slots:
     // "hello.greet(QString)"

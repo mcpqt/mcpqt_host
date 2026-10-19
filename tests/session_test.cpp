@@ -54,23 +54,23 @@ Pair make_session_pair(mcp::Session::Options opts = {}) {
 class Session : public QObject {
     Q_OBJECT
 private slots:
-    void RequestRoundTripThroughHandler();
-    void NotificationDeliveredToHandler();
-    void MissingHandlerYieldsMethodNotFound();
-    void HandlerThrowingMcpErrorPropagates();
-    void HandlerThrowingStdExceptionMapsToInternal();
-    void FallbackHandlerCatchesUnknownMethods();
-    void ManyConcurrentRequestsAllResolveCorrectly();
-    void RequestTimeoutFiresErrorOnFuture();
-    void ClosingCancelsPendingRequests();
-    void IdsForDifferentRequestsAreDistinct();
-    void IsOpenReflectsLifecycle();
-    void DoubleCloseDoesNotLeaveJoinableThread();
-    void OnClosedHookFiresWhenPeerCloses();
-    void MalformedFrameIsDropped();
+    void RequestRoundTripThroughHandler(void);
+    void NotificationDeliveredToHandler(void);
+    void MissingHandlerYieldsMethodNotFound(void);
+    void HandlerThrowingMcpErrorPropagates(void);
+    void HandlerThrowingStdExceptionMapsToInternal(void);
+    void FallbackHandlerCatchesUnknownMethods(void);
+    void ManyConcurrentRequestsAllResolveCorrectly(void);
+    void RequestTimeoutFiresErrorOnFuture(void);
+    void ClosingCancelsPendingRequests(void);
+    void IdsForDifferentRequestsAreDistinct(void);
+    void IsOpenReflectsLifecycle(void);
+    void DoubleCloseDoesNotLeaveJoinableThread(void);
+    void OnClosedHookFiresWhenPeerCloses(void);
+    void MalformedFrameIsDropped(void);
 };
 
-void Session::RequestRoundTripThroughHandler() {
+void Session::RequestRoundTripThroughHandler(void) {
     auto sp = make_session_pair();
     sp.b->set_request_handler("echo", [](const Json& params) -> Json {
         return QJsonObject{{"echoed", params}};
@@ -84,7 +84,7 @@ void Session::RequestRoundTripThroughHandler() {
     sp.b->close();
 }
 
-void Session::NotificationDeliveredToHandler() {
+void Session::NotificationDeliveredToHandler(void) {
     auto sp = make_session_pair();
 
     std::promise<Json> got;
@@ -103,7 +103,7 @@ void Session::NotificationDeliveredToHandler() {
     sp.b->close();
 }
 
-void Session::MissingHandlerYieldsMethodNotFound() {
+void Session::MissingHandlerYieldsMethodNotFound(void) {
     auto sp = make_session_pair();
     auto fut = sp.a->send_request("nope", Json{}, 2s);
     QVERIFY_EXCEPTION_THROWN(([&] {
@@ -119,7 +119,7 @@ void Session::MissingHandlerYieldsMethodNotFound() {
     sp.b->close();
 }
 
-void Session::HandlerThrowingMcpErrorPropagates() {
+void Session::HandlerThrowingMcpErrorPropagates(void) {
     auto sp = make_session_pair();
     sp.b->set_request_handler("explode", [](const Json&) -> Json {
         throw mcp::Error{mcp::error_code::invalid_params, "bad",
@@ -140,7 +140,7 @@ void Session::HandlerThrowingMcpErrorPropagates() {
     sp.b->close();
 }
 
-void Session::HandlerThrowingStdExceptionMapsToInternal() {
+void Session::HandlerThrowingStdExceptionMapsToInternal(void) {
     auto sp = make_session_pair();
     sp.b->set_request_handler("explode", [](const Json&) -> Json {
         throw std::runtime_error{"boom"};
@@ -158,7 +158,7 @@ void Session::HandlerThrowingStdExceptionMapsToInternal() {
     sp.b->close();
 }
 
-void Session::FallbackHandlerCatchesUnknownMethods() {
+void Session::FallbackHandlerCatchesUnknownMethods(void) {
     auto sp = make_session_pair();
     sp.b->set_fallback_request_handler([](const Json&) -> Json {
         return QJsonObject{{"caught_by", "fallback"}};
@@ -172,7 +172,7 @@ void Session::FallbackHandlerCatchesUnknownMethods() {
     sp.b->close();
 }
 
-void Session::ManyConcurrentRequestsAllResolveCorrectly() {
+void Session::ManyConcurrentRequestsAllResolveCorrectly(void) {
     auto sp = make_session_pair();
     sp.b->set_request_handler("double", [](const Json& p) -> Json {
         return QJsonObject{{"r", mcp::from_json<int>(p["x"]) * 2}};
@@ -193,7 +193,7 @@ void Session::ManyConcurrentRequestsAllResolveCorrectly() {
     sp.b->close();
 }
 
-void Session::RequestTimeoutFiresErrorOnFuture() {
+void Session::RequestTimeoutFiresErrorOnFuture(void) {
     auto sp = make_session_pair();
     sp.b->set_request_handler("slow", [](const Json&) -> Json {
         std::this_thread::sleep_for(2s);
@@ -213,7 +213,7 @@ void Session::RequestTimeoutFiresErrorOnFuture() {
     sp.b->close();
 }
 
-void Session::ClosingCancelsPendingRequests() {
+void Session::ClosingCancelsPendingRequests(void) {
     auto sp = make_session_pair();
     sp.b->set_request_handler("hang", [](const Json&) -> Json {
         std::this_thread::sleep_for(300ms);
@@ -232,7 +232,7 @@ void Session::ClosingCancelsPendingRequests() {
     sp.b->close();
 }
 
-void Session::IdsForDifferentRequestsAreDistinct() {
+void Session::IdsForDifferentRequestsAreDistinct(void) {
     auto sp = make_session_pair();
     // Two requests are dispatched on detached workers, so the handler
     // can run on either thread first — the bookkeeping must be
@@ -257,7 +257,7 @@ void Session::IdsForDifferentRequestsAreDistinct() {
     sp.b->close();
 }
 
-void Session::IsOpenReflectsLifecycle() {
+void Session::IsOpenReflectsLifecycle(void) {
     auto sp = make_session_pair();
     QVERIFY(sp.a->is_open());
     sp.a->close();
@@ -265,8 +265,8 @@ void Session::IsOpenReflectsLifecycle() {
     sp.b->close();
 }
 
-void Session::DoubleCloseDoesNotLeaveJoinableThread() {
-    // Regression: close() short-circuiting once closed_ was true left the
+void Session::DoubleCloseDoesNotLeaveJoinableThread(void) {
+    // Regression: close() short-circuiting once m_closed was true left the
     // timeout thread joinable, so ~Session called std::terminate from
     // ~thread. Both close() callers must run to completion.
     auto sp = make_session_pair();
@@ -276,7 +276,7 @@ void Session::DoubleCloseDoesNotLeaveJoinableThread() {
     sp.b->close();
 }
 
-void Session::OnClosedHookFiresWhenPeerCloses() {
+void Session::OnClosedHookFiresWhenPeerCloses(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto a = std::make_unique<mcp::Session>(std::move(p.a));
     auto b = std::make_unique<mcp::Session>(std::move(p.b));
@@ -292,7 +292,7 @@ void Session::OnClosedHookFiresWhenPeerCloses() {
     a->close();
 }
 
-void Session::MalformedFrameIsDropped() {
+void Session::MalformedFrameIsDropped(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto a = std::make_unique<mcp::Session>(std::move(p.a));
     // Sneak the raw end onto the b-side so we can poke garbage into a's

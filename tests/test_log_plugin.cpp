@@ -27,35 +27,35 @@ public:
         : mcp::PluginInterface(parent) {}
 
     void initialize(const mcp::HostInterface& host) override {
-        host_ = host;
-        claimed_ = host_.claimLogging(
+        m_host = host;
+        m_claimed = m_host.claimLogging(
             [this](mcp::LogLevel, std::string_view msg) {
-                count_.fetch_add(1, std::memory_order_relaxed);
-                std::lock_guard<std::mutex> lk(mu_);
-                last_.assign(msg.data(), msg.size());
+                m_count.fetch_add(1, std::memory_order_relaxed);
+                std::lock_guard<std::mutex> lk(m_mu);
+                m_last.assign(msg.data(), msg.size());
             });
         registerPublicSlots();
     }
-    void shutdown() override {}
+    void shutdown(void) override {}
 
 public slots:
     // Number of log events this plugin has received via its sink.
-    int count() { return count_.load(std::memory_order_relaxed); }
+    int count(void) { return m_count.load(std::memory_order_relaxed); }
 
     // Whether the claim succeeded.
-    bool claimed() { return claimed_; }
+    bool claimed(void) { return m_claimed; }
 
     // The most recent message the sink received.
-    QString last() {
-        std::lock_guard<std::mutex> lk(mu_);
-        return QString::fromStdString(last_);
+    QString last(void) {
+        std::lock_guard<std::mutex> lk(m_mu);
+        return QString::fromStdString(m_last);
     }
 
 private:
-    std::atomic<int> count_{0};
-    bool             claimed_ = false;
-    std::mutex       mu_;
-    std::string      last_;
+    std::atomic<int> m_count{0};
+    bool             m_claimed = false;
+    std::mutex       m_mu;
+    std::string      m_last;
 };
 
 #include "test_log_plugin.moc"

@@ -46,12 +46,12 @@ public:
     void connect(std::unique_ptr<Transport> transport);
 
     /// Tear down: close the session and drop the transport.
-    void disconnect();
+    void disconnect(void);
 
     /// Send `initialize` and (on resolution) the `notifications/initialized`
     /// notification. The future resolves to the InitializeResult or
     /// throws on error.
-    [[nodiscard]] std::future<InitializeResult> initialize();
+    [[nodiscard]] std::future<InitializeResult> initialize(void);
 
     /// `tools/list`. Optional cursor for pagination (Phase 3 will fully
     /// support paginated iteration; for now you get the whole list).
@@ -156,7 +156,7 @@ public:
 
     /// Send `ping` and wait for a response. Returns void on success;
     /// the future throws on timeout / error.
-    [[nodiscard]] std::future<void> ping();
+    [[nodiscard]] std::future<void> ping(void);
 
     /// Send `logging/setLevel` to ask the server to change its
     /// log-message threshold. The server may reject if it does not
@@ -226,36 +226,36 @@ public:
 
     /// Notify the server that the client's roots list changed.
     /// Returns the underlying transport error_code on failure.
-    std::error_code notify_roots_list_changed();
+    std::error_code notify_roots_list_changed(void);
 
     /// True between connect() and disconnect().
-    [[nodiscard]] bool is_connected() const noexcept;
+    [[nodiscard]] bool is_connected(void) const noexcept;
 
     /// Cached server information from the last successful initialize().
-    [[nodiscard]] std::optional<InitializeResult> server() const;
+    [[nodiscard]] std::optional<InitializeResult> server(void) const;
 
 private:
     /// Acquire a strong reference to the live Session, or empty if
     /// disconnected. Centralises the lock+copy that protects against
-    /// races with disconnect() resetting `session_`. Returns by value
+    /// races with disconnect() resetting `m_session`. Returns by value
     /// so callers can drop the lock immediately and still keep the
     /// session alive for the duration of their operation.
-    [[nodiscard]] std::shared_ptr<Session> acquire_session() const;
+    [[nodiscard]] std::shared_ptr<Session> acquire_session(void) const;
 
-    Implementation                              client_info_;
-    std::shared_ptr<Session>                    session_;
-    mutable std::mutex                          session_mu_;
-    std::optional<InitializeResult>             server_;
-    mutable std::mutex                          server_mu_;
-    std::atomic<bool>                           connected_{false};
+    Implementation                              m_client_info;
+    std::shared_ptr<Session>                    m_session;
+    mutable std::mutex                          m_session_mu;
+    std::optional<InitializeResult>             m_server;
+    mutable std::mutex                          m_server_mu;
+    std::atomic<bool>                           m_connected{false};
 
-    SamplingHandler                             sampling_handler_;
-    RootsListHandler                            roots_handler_;
-    ElicitationHandler                          elicitation_handler_;
-    ElicitationCompleteHandler                  elicitation_complete_handler_;
-    TaskStatusHandler                           task_status_handler_;
-    std::optional<ClientCapabilities>           capabilities_override_;
-    std::mutex                                  handlers_mu_;
+    SamplingHandler                             m_sampling_handler;
+    RootsListHandler                            m_roots_handler;
+    ElicitationHandler                          m_elicitation_handler;
+    ElicitationCompleteHandler                  m_elicitation_complete_handler;
+    TaskStatusHandler                           m_task_status_handler;
+    std::optional<ClientCapabilities>           m_capabilities_override;
+    std::mutex                                  m_handlers_mu;
 };
 
 }  // namespace mcp

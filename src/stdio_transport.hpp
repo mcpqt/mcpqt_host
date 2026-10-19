@@ -48,7 +48,7 @@ public:
         bool owns_fds = false;
     };
 
-    StdioTransport();
+    StdioTransport(void);
     explicit StdioTransport(Options opts);
     ~StdioTransport() override;
 
@@ -56,35 +56,35 @@ public:
     void on_error(ErrorCallback cb)     override;
     void on_close(CloseCallback cb)     override;
 
-    void start() override;
-    void close() override;
+    void start(void) override;
+    void close(void) override;
 
     [[nodiscard]] std::error_code send(std::string_view frame) override;
-    [[nodiscard]] bool is_open() const noexcept override {
-        return running_.load(std::memory_order_acquire);
+    [[nodiscard]] bool is_open(void) const noexcept override {
+        return m_running.load(std::memory_order_acquire);
     }
 
 private:
-    void read_loop() noexcept;
+    void read_loop(void) noexcept;
     void deliver_error(std::error_code ec) noexcept;
-    void fire_close() noexcept;
+    void fire_close(void) noexcept;
 
-    Options opts_;
+    Options m_opts;
 
-    int  wakeup_read_fd_  = -1;   // self-pipe read end (closed-on-stop)
-    int  wakeup_write_fd_ = -1;
+    int  m_wakeup_read_fd  = -1;   // self-pipe read end (closed-on-stop)
+    int  m_wakeup_write_fd = -1;
 
-    std::atomic<bool> running_{false};
-    std::atomic<bool> closing_{false};
-    std::atomic<bool> close_fired_{false};
+    std::atomic<bool> m_running{false};
+    std::atomic<bool> m_closing{false};
+    std::atomic<bool> m_close_fired{false};
 
-    std::thread read_thread_;
-    std::mutex  write_mutex_;     // serializes writes to write_fd_
+    std::thread m_read_thread;
+    std::mutex  m_write_mutex;     // serializes writes to Options::write_fd
 
     // Callbacks. Set once before start(); read without locking thereafter.
-    MessageCallback on_message_;
-    ErrorCallback   on_error_;
-    CloseCallback   on_close_;
+    MessageCallback m_on_message;
+    ErrorCallback   m_on_error;
+    CloseCallback   m_on_close;
 };
 
 }  // namespace mcp

@@ -44,7 +44,7 @@ namespace {
 using namespace std::chrono_literals;
 
 struct EnableTraceLogging {
-    EnableTraceLogging() {
+    EnableTraceLogging(void) {
         if (std::getenv("MCP_TRACE")) {
             mcp::set_log_level(mcp::LogLevel::trace);
         }
@@ -59,7 +59,7 @@ const char* kInitBody =
     R"({"protocolVersion":"2025-11-25","capabilities":{},)"
     R"("clientInfo":{"name":"t","version":"0"}}})";
 
-Headers base_headers() {
+Headers base_headers(void) {
     return {{"Content-Type", "application/json"},
             {"Accept", "application/json, text/event-stream"}};
 }
@@ -69,20 +69,20 @@ Headers base_headers() {
 class HttpEndToEnd : public QObject {
     Q_OBJECT
 private slots:
-    void InitializeAndToolCall();
-    void OriginAllowlistRejectsCrossOrigin();
-    void ServerInitiatedSamplingThroughGetStream();
-    void SessionIdReusedAcrossCalls();
-    void UnsupportedMcpProtocolVersionIs400();
-    void ClientSendsDeleteOnGracefulClose();
-    void FixedPortIsHonored();
-    void PostToTerminatedSessionIs404();
-    void OnSessionClosedFiresOnceOnDelete();
-    void OnSessionClosedFiresOnStop();
-    void ClientCapabilitiesCapturedAtInitialize();
+    void InitializeAndToolCall(void);
+    void OriginAllowlistRejectsCrossOrigin(void);
+    void ServerInitiatedSamplingThroughGetStream(void);
+    void SessionIdReusedAcrossCalls(void);
+    void UnsupportedMcpProtocolVersionIs400(void);
+    void ClientSendsDeleteOnGracefulClose(void);
+    void FixedPortIsHonored(void);
+    void PostToTerminatedSessionIs404(void);
+    void OnSessionClosedFiresOnceOnDelete(void);
+    void OnSessionClosedFiresOnStop(void);
+    void ClientCapabilitiesCapturedAtInitialize(void);
 };
 
-void HttpEndToEnd::InitializeAndToolCall() {
+void HttpEndToEnd::InitializeAndToolCall(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "calc-http", .version = "1.0"},
         mcp::HttpServerHost::Options{
@@ -139,7 +139,7 @@ void HttpEndToEnd::InitializeAndToolCall() {
     host.stop();
 }
 
-void HttpEndToEnd::OriginAllowlistRejectsCrossOrigin() {
+void HttpEndToEnd::OriginAllowlistRejectsCrossOrigin(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -170,7 +170,7 @@ void HttpEndToEnd::OriginAllowlistRejectsCrossOrigin() {
     host.stop();
 }
 
-void HttpEndToEnd::ServerInitiatedSamplingThroughGetStream() {
+void HttpEndToEnd::ServerInitiatedSamplingThroughGetStream(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "agent", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -230,7 +230,7 @@ void HttpEndToEnd::ServerInitiatedSamplingThroughGetStream() {
     host.stop();
 }
 
-void HttpEndToEnd::SessionIdReusedAcrossCalls() {
+void HttpEndToEnd::SessionIdReusedAcrossCalls(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -275,7 +275,7 @@ void HttpEndToEnd::SessionIdReusedAcrossCalls() {
     host.stop();
 }
 
-void HttpEndToEnd::UnsupportedMcpProtocolVersionIs400() {
+void HttpEndToEnd::UnsupportedMcpProtocolVersionIs400(void) {
     // Spec MUST: a request with a present-but-unsupported
     // MCP-Protocol-Version header is rejected with 400.
     mcp::HttpServerHost host{
@@ -300,7 +300,7 @@ void HttpEndToEnd::UnsupportedMcpProtocolVersionIs400() {
     host.stop();
 }
 
-void HttpEndToEnd::ClientSendsDeleteOnGracefulClose() {
+void HttpEndToEnd::ClientSendsDeleteOnGracefulClose(void) {
     // Spec: a client that no longer needs a session SHOULD send an
     // HTTP DELETE on the MCP path. Verify our transport does it,
     // and that the server's session table reflects the removal.
@@ -344,7 +344,7 @@ void HttpEndToEnd::ClientSendsDeleteOnGracefulClose() {
     host.stop();
 }
 
-void HttpEndToEnd::FixedPortIsHonored() {
+void HttpEndToEnd::FixedPortIsHonored(void) {
     // Regression: start() used to bind to an any-port
     // unconditionally, silently ignoring Options::port. Grab an
     // OS-assigned port with a throwaway host, then demand it back
@@ -383,7 +383,7 @@ void HttpEndToEnd::FixedPortIsHonored() {
     host.stop();
 }
 
-void HttpEndToEnd::PostToTerminatedSessionIs404() {
+void HttpEndToEnd::PostToTerminatedSessionIs404(void) {
     // Spec: a request carrying an Mcp-Session-Id the server no longer
     // recognizes MUST get 404 (the client's cue to re-initialize).
     // A session-less non-initialize POST stays a plain 400.
@@ -424,7 +424,7 @@ void HttpEndToEnd::PostToTerminatedSessionIs404() {
     host.stop();
 }
 
-void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete() {
+void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete(void) {
     // The pre-destruction hook must fire exactly once per session on the
     // client-DELETE teardown path, with the Server still alive. Track the
     // Server* seen so we can assert identity, and count invocations.
@@ -478,7 +478,7 @@ void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete() {
     QCOMPARE(calls.load(), 1);
 }
 
-void HttpEndToEnd::OnSessionClosedFiresOnStop() {
+void HttpEndToEnd::OnSessionClosedFiresOnStop(void) {
     // stop() tears down every surviving session; the hook must fire once
     // for each, before any close/join/destroy.
     std::atomic<int> calls{0};
@@ -516,7 +516,7 @@ void HttpEndToEnd::OnSessionClosedFiresOnStop() {
     QCOMPARE(calls.load(), 2);
 }
 
-void HttpEndToEnd::ClientCapabilitiesCapturedAtInitialize() {
+void HttpEndToEnd::ClientCapabilitiesCapturedAtInitialize(void) {
     // Before initialize: nullopt. After an initialize advertising known
     // capabilities: the accessor returns them, readable from the factory
     // thread via the session-closed hook (any-thread contract).

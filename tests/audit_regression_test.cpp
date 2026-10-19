@@ -64,29 +64,29 @@ struct ServerThread {
 class AuditRegression : public QObject {
     Q_OBJECT
 private slots:
-    void PaginationCursorRejectsNegative();
-    void PaginationCursorAcceptsValidDigits();
-    void MaxTokensRejectsNegative();
-    void MaxTokensRejectsOverflow();
-    void MaxTokensRejectsNonInteger();
-    void MalformedListToolsParamsYieldsInvalidParams();
-    void SamplingMessageContentArrayPreservesAll();
-    void SamplingMessageSingleBlockOnWire();
-    void RequestIdAcceptsWholeFloat();
-    void RequestIdRejectsFractionalFloat();
-    void ProgressTokenAcceptsWholeFloat();
-    void NullSetNotificationHandlerActuallyClears();
-    void ClientSetSamplingHandlerNullClears();
-    void DisconnectRaceWithInFlightCallIsSafe();
-    void SendRequestAfterCloseFailsImmediately();
-    void ConcurrentInitializeRequestsExactlyOneSucceeds();
+    void PaginationCursorRejectsNegative(void);
+    void PaginationCursorAcceptsValidDigits(void);
+    void MaxTokensRejectsNegative(void);
+    void MaxTokensRejectsOverflow(void);
+    void MaxTokensRejectsNonInteger(void);
+    void MalformedListToolsParamsYieldsInvalidParams(void);
+    void SamplingMessageContentArrayPreservesAll(void);
+    void SamplingMessageSingleBlockOnWire(void);
+    void RequestIdAcceptsWholeFloat(void);
+    void RequestIdRejectsFractionalFloat(void);
+    void ProgressTokenAcceptsWholeFloat(void);
+    void NullSetNotificationHandlerActuallyClears(void);
+    void ClientSetSamplingHandlerNullClears(void);
+    void DisconnectRaceWithInFlightCallIsSafe(void);
+    void SendRequestAfterCloseFailsImmediately(void);
+    void ConcurrentInitializeRequestsExactlyOneSucceeds(void);
 #if !defined(_WIN32)
-    void StdioStripsCrBeforeNewline();
+    void StdioStripsCrBeforeNewline(void);
 #endif
-    void NonStringMethodIsDropped();
+    void NonStringMethodIsDropped(void);
 };
 
-void AuditRegression::PaginationCursorRejectsNegative() {
+void AuditRegression::PaginationCursorRejectsNegative(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(1);
@@ -112,7 +112,7 @@ void AuditRegression::PaginationCursorRejectsNegative() {
     client.disconnect();
 }
 
-void AuditRegression::PaginationCursorAcceptsValidDigits() {
+void AuditRegression::PaginationCursorAcceptsValidDigits(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);
@@ -140,17 +140,17 @@ void AuditRegression::PaginationCursorAcceptsValidDigits() {
 // maxTokens validation (audit #6)
 // -------------------------------------------------------------------------
 
-void AuditRegression::MaxTokensRejectsNegative() {
+void AuditRegression::MaxTokensRejectsNegative(void) {
     Json j = mcp::parse_json(R"({"messages":[],"maxTokens":-1})");
     QVERIFY_EXCEPTION_THROWN(([&]{ (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()), mcp::Error);
 }
 
-void AuditRegression::MaxTokensRejectsOverflow() {
+void AuditRegression::MaxTokensRejectsOverflow(void) {
     Json j = mcp::parse_json(R"({"messages":[],"maxTokens":99999999999999999999})");
     QVERIFY_EXCEPTION_THROWN(([&]{ (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()), mcp::Error);
 }
 
-void AuditRegression::MaxTokensRejectsNonInteger() {
+void AuditRegression::MaxTokensRejectsNonInteger(void) {
     Json j = mcp::parse_json(R"({"messages":[],"maxTokens":"large"})");
     QVERIFY_EXCEPTION_THROWN(([&]{ (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()), mcp::Error);
 }
@@ -161,7 +161,7 @@ void AuditRegression::MaxTokensRejectsNonInteger() {
 // propagate a json::type_error past the dispatcher.
 // -------------------------------------------------------------------------
 
-void AuditRegression::MalformedListToolsParamsYieldsInvalidParams() {
+void AuditRegression::MalformedListToolsParamsYieldsInvalidParams(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.tool("x", QJsonObject{{"type", "object"}},
@@ -197,7 +197,7 @@ void AuditRegression::MalformedListToolsParamsYieldsInvalidParams() {
 // SamplingMessage content array preservation (audit spec #3)
 // -------------------------------------------------------------------------
 
-void AuditRegression::SamplingMessageContentArrayPreservesAll() {
+void AuditRegression::SamplingMessageContentArrayPreservesAll(void) {
     Json j = mcp::parse_json(R"({
         "role":"user",
         "content":[
@@ -211,7 +211,7 @@ void AuditRegression::SamplingMessageContentArrayPreservesAll() {
     QCOMPARE(std::get<mcp::TextContent>(m.content[1]).text, std::string("b"));
 }
 
-void AuditRegression::SamplingMessageSingleBlockOnWire() {
+void AuditRegression::SamplingMessageSingleBlockOnWire(void) {
     mcp::SamplingMessage m{
         .role    = mcp::Role::assistant,
         .content = { mcp::TextContent{.text = "x"} },
@@ -226,17 +226,17 @@ void AuditRegression::SamplingMessageSingleBlockOnWire() {
 // RequestId / ProgressToken accept whole-number floats (audit spec #7)
 // -------------------------------------------------------------------------
 
-void AuditRegression::RequestIdAcceptsWholeFloat() {
+void AuditRegression::RequestIdAcceptsWholeFloat(void) {
     auto id = mcp::from_json<mcp::RequestId>(QJsonValue(1.0));
     QVERIFY(id.is_integer());
     QCOMPARE(id.as_integer(), std::int64_t{1});
 }
 
-void AuditRegression::RequestIdRejectsFractionalFloat() {
+void AuditRegression::RequestIdRejectsFractionalFloat(void) {
     QVERIFY_EXCEPTION_THROWN(([&]{ (void)mcp::from_json<mcp::RequestId>(QJsonValue(1.5)); }()), mcp::Error);
 }
 
-void AuditRegression::ProgressTokenAcceptsWholeFloat() {
+void AuditRegression::ProgressTokenAcceptsWholeFloat(void) {
     auto t = mcp::from_json<mcp::ProgressToken>(QJsonValue(42.0));
     QVERIFY(t.is_integer());
     QCOMPARE(t.as_integer(), std::int64_t{42});
@@ -248,7 +248,7 @@ void AuditRegression::ProgressTokenAcceptsWholeFloat() {
 // not silently leave the previous one installed.
 // -------------------------------------------------------------------------
 
-void AuditRegression::NullSetNotificationHandlerActuallyClears() {
+void AuditRegression::NullSetNotificationHandlerActuallyClears(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto a = std::make_unique<mcp::Session>(std::move(p.a));
     auto b = std::make_unique<mcp::Session>(std::move(p.b));
@@ -274,7 +274,7 @@ void AuditRegression::NullSetNotificationHandlerActuallyClears() {
     b->close();
 }
 
-void AuditRegression::ClientSetSamplingHandlerNullClears() {
+void AuditRegression::ClientSetSamplingHandlerNullClears(void) {
     auto p = mcp::test::make_in_memory_pair();
 
     // Spin up a server that calls sample() so we can observe whether
@@ -334,7 +334,7 @@ void AuditRegression::ClientSetSamplingHandlerNullClears() {
 // in a way that leaves the Session destroyed mid-use.
 // -------------------------------------------------------------------------
 
-void AuditRegression::DisconnectRaceWithInFlightCallIsSafe() {
+void AuditRegression::DisconnectRaceWithInFlightCallIsSafe(void) {
     auto p = mcp::test::make_in_memory_pair();
     std::shared_ptr<mcp::Server> server = std::make_shared<mcp::Server>(
         mcp::Implementation{.name = "x", .version = "0"});
@@ -354,7 +354,7 @@ void AuditRegression::DisconnectRaceWithInFlightCallIsSafe() {
     // Fire the call in flight, then disconnect from the main thread.
     auto fut = client.call_tool("slow");
     std::this_thread::sleep_for(5ms);  // small window for the request to leave
-    client.disconnect();               // race here used to be UAF on session_
+    client.disconnect();               // race here used to be UAF on m_session
 
     try { (void)fut.get(); }
     catch (const mcp::Error&) {}        // either error or success — both OK
@@ -369,7 +369,7 @@ void AuditRegression::DisconnectRaceWithInFlightCallIsSafe() {
 // orphans a promise (audit adversarial #8 / concurrency #send-after-close)
 // -------------------------------------------------------------------------
 
-void AuditRegression::SendRequestAfterCloseFailsImmediately() {
+void AuditRegression::SendRequestAfterCloseFailsImmediately(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto a = std::make_unique<mcp::Session>(std::move(p.a));
     auto b = std::make_unique<mcp::Session>(std::move(p.b));
@@ -389,7 +389,7 @@ void AuditRegression::SendRequestAfterCloseFailsImmediately() {
 // succeed (audit concurrency #6).
 // -------------------------------------------------------------------------
 
-void AuditRegression::ConcurrentInitializeRequestsExactlyOneSucceeds() {
+void AuditRegression::ConcurrentInitializeRequestsExactlyOneSucceeds(void) {
     auto p = mcp::test::make_in_memory_pair();
     std::shared_ptr<mcp::Server> server = std::make_shared<mcp::Server>(
         mcp::Implementation{.name = "x", .version = "0"});
@@ -431,7 +431,7 @@ void AuditRegression::ConcurrentInitializeRequestsExactlyOneSucceeds() {
 // -------------------------------------------------------------------------
 
 #if !defined(_WIN32)
-void AuditRegression::StdioStripsCrBeforeNewline() {
+void AuditRegression::StdioStripsCrBeforeNewline(void) {
     int t2[2];
     int f2[2];
     QVERIFY(::pipe(t2) == 0);
@@ -466,7 +466,7 @@ void AuditRegression::StdioStripsCrBeforeNewline() {
 // quiet-fail downstream parsing.
 // -------------------------------------------------------------------------
 
-void AuditRegression::NonStringMethodIsDropped() {
+void AuditRegression::NonStringMethodIsDropped(void) {
     auto p = mcp::test::make_in_memory_pair();
     auto a_session = std::make_unique<mcp::Session>(std::move(p.a));
     auto b_session = std::make_unique<mcp::Session>(std::move(p.b));

@@ -43,30 +43,30 @@ using namespace std::chrono_literals;
 class HttpOAuth : public QObject {
     Q_OBJECT
 private slots:
-    void MissingAuthorizationProduces401();
-    void InvalidBearerProduces401();
-    void NonBearerSchemeRejected();
-    void ValidBearerEndToEnd();
-    void ClientReceives401Callback();
-    void ResourceMetadataDocumentIsServed();
-    void MetadataDocumentNotServedWhenAbsent();
-    void CaseInsensitiveBearerScheme();
-    void MultipleAuthorizationHeadersRejected();
-    void InsufficientScopeProduces403();
-    void ChallengeIncludesInvalidTokenError();
-    void EmptyBearerTokenRejected();
-    void MetadataDocumentHasCors();
-    void RealmInjectionRejectedAtStart();
-    void MetadataUrlInjectionRejectedAtStart();
-    void ClientSetAccessTokenRotates();
-    void BindToNonLoopbackRequiresAllowInsecureHttp();
-    void BindToNonLoopbackWithAllowInsecureHttpStartsCleanly();
-    void OptionsPreflightAllowsAllowedOrigin();
-    void OptionsPreflightRejectsDisallowedOrigin();
-    void NoValidatorMeansNoAuth();
+    void MissingAuthorizationProduces401(void);
+    void InvalidBearerProduces401(void);
+    void NonBearerSchemeRejected(void);
+    void ValidBearerEndToEnd(void);
+    void ClientReceives401Callback(void);
+    void ResourceMetadataDocumentIsServed(void);
+    void MetadataDocumentNotServedWhenAbsent(void);
+    void CaseInsensitiveBearerScheme(void);
+    void MultipleAuthorizationHeadersRejected(void);
+    void InsufficientScopeProduces403(void);
+    void ChallengeIncludesInvalidTokenError(void);
+    void EmptyBearerTokenRejected(void);
+    void MetadataDocumentHasCors(void);
+    void RealmInjectionRejectedAtStart(void);
+    void MetadataUrlInjectionRejectedAtStart(void);
+    void ClientSetAccessTokenRotates(void);
+    void BindToNonLoopbackRequiresAllowInsecureHttp(void);
+    void BindToNonLoopbackWithAllowInsecureHttpStartsCleanly(void);
+    void OptionsPreflightAllowsAllowedOrigin(void);
+    void OptionsPreflightRejectsDisallowedOrigin(void);
+    void NoValidatorMeansNoAuth(void);
 };
 
-void HttpOAuth::MissingAuthorizationProduces401() {
+void HttpOAuth::MissingAuthorizationProduces401(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -100,7 +100,7 @@ void HttpOAuth::MissingAuthorizationProduces401() {
     host.stop();
 }
 
-void HttpOAuth::InvalidBearerProduces401() {
+void HttpOAuth::InvalidBearerProduces401(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -129,7 +129,7 @@ void HttpOAuth::InvalidBearerProduces401() {
     host.stop();
 }
 
-void HttpOAuth::NonBearerSchemeRejected() {
+void HttpOAuth::NonBearerSchemeRejected(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -155,7 +155,7 @@ void HttpOAuth::NonBearerSchemeRejected() {
     host.stop();
 }
 
-void HttpOAuth::ValidBearerEndToEnd() {
+void HttpOAuth::ValidBearerEndToEnd(void) {
     std::atomic<int> validations{0};
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "calc", .version = "1.0"},
@@ -203,7 +203,7 @@ void HttpOAuth::ValidBearerEndToEnd() {
     host.stop();
 }
 
-void HttpOAuth::ClientReceives401Callback() {
+void HttpOAuth::ClientReceives401Callback(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -248,7 +248,7 @@ void HttpOAuth::ClientReceives401Callback() {
     host.stop();
 }
 
-void HttpOAuth::ResourceMetadataDocumentIsServed() {
+void HttpOAuth::ResourceMetadataDocumentIsServed(void) {
     QJsonObject metadata{
         {"resource", "https://example.com/mcp"},
         {"authorization_servers", QJsonArray{"https://idp.example"}},
@@ -289,7 +289,7 @@ void HttpOAuth::ResourceMetadataDocumentIsServed() {
     host.stop();
 }
 
-void HttpOAuth::MetadataDocumentNotServedWhenAbsent() {
+void HttpOAuth::MetadataDocumentNotServedWhenAbsent(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -308,7 +308,7 @@ void HttpOAuth::MetadataDocumentNotServedWhenAbsent() {
     host.stop();
 }
 
-void HttpOAuth::CaseInsensitiveBearerScheme() {
+void HttpOAuth::CaseInsensitiveBearerScheme(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -341,7 +341,7 @@ void HttpOAuth::CaseInsensitiveBearerScheme() {
     host.stop();
 }
 
-void HttpOAuth::MultipleAuthorizationHeadersRejected() {
+void HttpOAuth::MultipleAuthorizationHeadersRejected(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -371,7 +371,7 @@ void HttpOAuth::MultipleAuthorizationHeadersRejected() {
     host.stop();
 }
 
-void HttpOAuth::InsufficientScopeProduces403() {
+void HttpOAuth::InsufficientScopeProduces403(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -403,7 +403,7 @@ void HttpOAuth::InsufficientScopeProduces403() {
     host.stop();
 }
 
-void HttpOAuth::ChallengeIncludesInvalidTokenError() {
+void HttpOAuth::ChallengeIncludesInvalidTokenError(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -432,7 +432,7 @@ void HttpOAuth::ChallengeIncludesInvalidTokenError() {
     host.stop();
 }
 
-void HttpOAuth::EmptyBearerTokenRejected() {
+void HttpOAuth::EmptyBearerTokenRejected(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -461,7 +461,7 @@ void HttpOAuth::EmptyBearerTokenRejected() {
     host.stop();
 }
 
-void HttpOAuth::MetadataDocumentHasCors() {
+void HttpOAuth::MetadataDocumentHasCors(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -482,7 +482,7 @@ void HttpOAuth::MetadataDocumentHasCors() {
     host.stop();
 }
 
-void HttpOAuth::RealmInjectionRejectedAtStart() {
+void HttpOAuth::RealmInjectionRejectedAtStart(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -501,7 +501,7 @@ void HttpOAuth::RealmInjectionRejectedAtStart() {
     QVERIFY_EXCEPTION_THROWN(host.start(), std::invalid_argument);
 }
 
-void HttpOAuth::MetadataUrlInjectionRejectedAtStart() {
+void HttpOAuth::MetadataUrlInjectionRejectedAtStart(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -519,7 +519,7 @@ void HttpOAuth::MetadataUrlInjectionRejectedAtStart() {
     QVERIFY_EXCEPTION_THROWN(host.start(), std::invalid_argument);
 }
 
-void HttpOAuth::ClientSetAccessTokenRotates() {
+void HttpOAuth::ClientSetAccessTokenRotates(void) {
     std::atomic<int> valid_count{0};
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
@@ -569,7 +569,7 @@ void HttpOAuth::ClientSetAccessTokenRotates() {
     host.stop();
 }
 
-void HttpOAuth::BindToNonLoopbackRequiresAllowInsecureHttp() {
+void HttpOAuth::BindToNonLoopbackRequiresAllowInsecureHttp(void) {
     // Bearer auth + non-loopback host + plain HTTP without the
     // explicit acknowledgement throws at start().
     mcp::HttpServerHost host{
@@ -588,7 +588,7 @@ void HttpOAuth::BindToNonLoopbackRequiresAllowInsecureHttp() {
     QVERIFY_EXCEPTION_THROWN(host.start(), std::invalid_argument);
 }
 
-void HttpOAuth::BindToNonLoopbackWithAllowInsecureHttpStartsCleanly() {
+void HttpOAuth::BindToNonLoopbackWithAllowInsecureHttpStartsCleanly(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -613,7 +613,7 @@ void HttpOAuth::BindToNonLoopbackWithAllowInsecureHttpStartsCleanly() {
     host.stop();
 }
 
-void HttpOAuth::OptionsPreflightAllowsAllowedOrigin() {
+void HttpOAuth::OptionsPreflightAllowsAllowedOrigin(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -647,7 +647,7 @@ void HttpOAuth::OptionsPreflightAllowsAllowedOrigin() {
     host.stop();
 }
 
-void HttpOAuth::OptionsPreflightRejectsDisallowedOrigin() {
+void HttpOAuth::OptionsPreflightRejectsDisallowedOrigin(void) {
     mcp::HttpServerHost host{
         mcp::Implementation{.name = "x", .version = "0"},
         mcp::HttpServerHost::Options{
@@ -668,7 +668,7 @@ void HttpOAuth::OptionsPreflightRejectsDisallowedOrigin() {
     host.stop();
 }
 
-void HttpOAuth::NoValidatorMeansNoAuth() {
+void HttpOAuth::NoValidatorMeansNoAuth(void) {
     // Sanity check: existing code paths (no validator configured)
     // are unaffected — no Authorization header required.
     mcp::HttpServerHost host{

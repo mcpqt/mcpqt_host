@@ -41,7 +41,7 @@
 
 namespace {
 
-QStringList library_filters() {
+QStringList library_filters(void) {
     QStringList filters;
 #if defined(Q_OS_WIN)
     filters << "*.dll";
@@ -90,7 +90,7 @@ QString resolve_plugin_path(const QString& dir, const QString& name) {
     return {};
 }
 
-void print_help() {
+void print_help(void) {
     std::cout
         << "commands:\n"
         << "  list                 list shared libraries in the plugin directory\n"

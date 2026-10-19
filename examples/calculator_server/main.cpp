@@ -40,7 +40,7 @@ extern "C" void on_signal(int) {
     g_shutdown_requested.test_and_set(std::memory_order_release);
 }
 
-mcp::Json arith_schema() {
+mcp::Json arith_schema(void) {
     QJsonObject a{{"type", "number"}, {"description", "left operand"}};
     QJsonObject b{{"type", "number"}, {"description", "right operand"}};
     QJsonObject props{{"a", a}, {"b", b}};
@@ -60,7 +60,7 @@ mcp::CallToolResult text_result(std::string s, bool is_err = false) {
 
 }  // namespace
 
-int main() {
+int main(void) {
     mcp::set_log_level(mcp::LogLevel::info);
 
     mcp::Server server{ mcp::Implementation{

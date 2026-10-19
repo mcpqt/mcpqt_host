@@ -54,52 +54,52 @@ struct UtilServerThread {
 class Cancelled : public QObject {
     Q_OBJECT
 private slots:
-    void RoundTrip();
+    void RoundTrip(void);
 };
 
 class Progress : public QObject {
     Q_OBJECT
 private slots:
-    void RoundTrip();
+    void RoundTrip(void);
 };
 
 class Logging : public QObject {
     Q_OBJECT
 private slots:
-    void LevelStrings();
-    void MessageNotificationRoundTrip();
+    void LevelStrings(void);
+    void MessageNotificationRoundTrip(void);
 };
 
 class Ping : public QObject {
     Q_OBJECT
 private slots:
-    void ClientPingResolves();
+    void ClientPingResolves(void);
 };
 
 class LoggingIntegration : public QObject {
     Q_OBJECT
 private slots:
-    void ServerLogReachesClient();
-    void SetLevelFiltersServerEmissions();
+    void ServerLogReachesClient(void);
+    void SetLevelFiltersServerEmissions(void);
 };
 
 class ProgressIntegration : public QObject {
     Q_OBJECT
 private slots:
-    void ServerProgressReachesClient();
+    void ServerProgressReachesClient(void);
 };
 
 class CancellationIntegration : public QObject {
     Q_OBJECT
 private slots:
-    void ClientCanSendCancelledNotification();
+    void ClientCanSendCancelledNotification(void);
 };
 
 // -------------------------------------------------------------------------
 // Round-trip tests
 // -------------------------------------------------------------------------
 
-void Cancelled::RoundTrip() {
+void Cancelled::RoundTrip(void) {
     mcp::CancelledNotificationParams p{
         .request_id = mcp::RequestId{42},
         .reason     = "user requested",
@@ -112,7 +112,7 @@ void Cancelled::RoundTrip() {
     QCOMPARE(back.request_id->as_integer(), std::int64_t{42});
 }
 
-void Progress::RoundTrip() {
+void Progress::RoundTrip(void) {
     mcp::ProgressNotificationParams p{
         .progress_token = mcp::ProgressToken{"tok"},
         .progress       = 0.5,
@@ -127,7 +127,7 @@ void Progress::RoundTrip() {
     QCOMPARE(back.total,    1.0);
 }
 
-void Logging::LevelStrings() {
+void Logging::LevelStrings(void) {
     QCOMPARE(mcp::to_string(mcp::LoggingLevel::debug),     "debug");
     QCOMPARE(mcp::to_string(mcp::LoggingLevel::emergency), "emergency");
     Json j = mcp::to_json(mcp::LoggingLevel::warning);
@@ -136,7 +136,7 @@ void Logging::LevelStrings() {
     QCOMPARE(back, mcp::LoggingLevel::warning);
 }
 
-void Logging::MessageNotificationRoundTrip() {
+void Logging::MessageNotificationRoundTrip(void) {
     mcp::LoggingMessageNotificationParams p{
         .level  = mcp::LoggingLevel::info,
         .logger = "scheduler",
@@ -154,7 +154,7 @@ void Logging::MessageNotificationRoundTrip() {
 // Ping
 // -------------------------------------------------------------------------
 
-void Ping::ClientPingResolves() {
+void Ping::ClientPingResolves(void) {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server&) {});
 
@@ -176,7 +176,7 @@ void Ping::ClientPingResolves() {
 // Logging
 // -------------------------------------------------------------------------
 
-void LoggingIntegration::ServerLogReachesClient() {
+void LoggingIntegration::ServerLogReachesClient(void) {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.enable_logging(mcp::LoggingLevel::debug);
@@ -213,7 +213,7 @@ void LoggingIntegration::ServerLogReachesClient() {
     client.disconnect();
 }
 
-void LoggingIntegration::SetLevelFiltersServerEmissions() {
+void LoggingIntegration::SetLevelFiltersServerEmissions(void) {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.enable_logging(mcp::LoggingLevel::debug);
@@ -255,7 +255,7 @@ void LoggingIntegration::SetLevelFiltersServerEmissions() {
 // Progress + cancellation (limited Phase 2 scope)
 // -------------------------------------------------------------------------
 
-void ProgressIntegration::ServerProgressReachesClient() {
+void ProgressIntegration::ServerProgressReachesClient(void) {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.tool("loud_op",
@@ -291,7 +291,7 @@ void ProgressIntegration::ServerProgressReachesClient() {
     client.disconnect();
 }
 
-void CancellationIntegration::ClientCanSendCancelledNotification() {
+void CancellationIntegration::ClientCanSendCancelledNotification(void) {
     auto p = mcp::test::make_in_memory_pair();
     std::promise<mcp::CancelledNotificationParams> got;
     auto fut = got.get_future();

@@ -90,36 +90,36 @@ public:
         // Server::run registers any of its request handlers. A frame
         // delivered in that window would route into an empty handler
         // map and emit a spurious "method not found: initialize"
-        // response. The `started_` gate, flipped by start(), is what
+        // response. The `m_started` gate, flipped by start(), is what
         // marks the dispatcher as fully populated.
-        std::lock_guard<std::mutex> lk(buffered_mu_);
-        on_message_ = std::move(cb);
+        std::lock_guard<std::mutex> lk(m_buffered_mu);
+        m_on_message = std::move(cb);
     }
-    void on_error(ErrorCallback cb)     override { on_error_   = std::move(cb); }
-    void on_close(CloseCallback cb)     override { on_close_   = std::move(cb); }
+    void on_error(ErrorCallback cb)     override { m_on_error   = std::move(cb); }
+    void on_close(CloseCallback cb)     override { m_on_close   = std::move(cb); }
 
-    void start() override {
+    void start(void) override {
         // Flip the gate and drain anything that arrived before all
         // request handlers were registered. By the time Session::start
         // runs us, set_request_handler in Server::run has completed.
         std::deque<std::string> drain;
         {
-            std::lock_guard<std::mutex> lk(buffered_mu_);
-            started_ = true;
-            buffered_.swap(drain);
+            std::lock_guard<std::mutex> lk(m_buffered_mu);
+            m_started = true;
+            m_buffered.swap(drain);
         }
-        if (on_message_) {
-            for (auto& f : drain) on_message_(std::move(f));
+        if (m_on_message) {
+            for (auto& f : drain) m_on_message(std::move(f));
         }
     }
 
-    void close() override {
-        if (closed_.exchange(true, std::memory_order_acq_rel)) return;
+    void close(void) override {
+        if (m_closed.exchange(true, std::memory_order_acq_rel)) return;
         // Cancel any waiters on pending POST replies.
         std::unordered_map<std::string, std::promise<std::string>> drained;
         {
-            std::lock_guard<std::mutex> lk(pending_mu_);
-            drained.swap(pending_);
+            std::lock_guard<std::mutex> lk(m_pending_mu);
+            drained.swap(m_pending);
         }
         for (auto& [id, p] : drained) {
             try { throw Error{error_code::internal_error, "session closed"}; }
@@ -127,11 +127,11 @@ public:
         }
         // Wake any GET stream waiter so the http handler can return.
         {
-            std::lock_guard<std::mutex> lk(get_mu_);
-            get_cv_.notify_all();
+            std::lock_guard<std::mutex> lk(m_get_mu);
+            m_get_cv.notify_all();
         }
-        if (on_close_) {
-            try { on_close_(); }
+        if (m_on_close) {
+            try { m_on_close(); }
             catch (const std::exception& e) {
                 MCP_LOG_ERROR(std::string{"HttpSessionTransport on_close threw: "} + e.what());
             } catch (...) {
@@ -140,12 +140,12 @@ public:
         }
     }
 
-    [[nodiscard]] bool is_closed() const noexcept {
-        return closed_.load(std::memory_order_acquire);
+    [[nodiscard]] bool is_closed(void) const noexcept {
+        return m_closed.load(std::memory_order_acquire);
     }
 
     [[nodiscard]] std::error_code send(std::string_view frame) override {
-        if (closed_.load(std::memory_order_acquire)) {
+        if (m_closed.load(std::memory_order_acquire)) {
             return std::make_error_code(std::errc::not_connected);
         }
         // Parse the frame's id (responses have one) so we can route
@@ -166,15 +166,15 @@ public:
             std::string key = canonical_id(j.value("id"));
             std::promise<std::string> awaiter;
             {
-                std::lock_guard<std::mutex> lk(pending_mu_);
-                auto it = pending_.find(key);
-                if (it == pending_.end()) {
+                std::lock_guard<std::mutex> lk(m_pending_mu);
+                auto it = m_pending.find(key);
+                if (it == m_pending.end()) {
                     MCP_LOG_WARN("HttpSessionTransport: no awaiter for response id="
                                  + key);
                     return std::make_error_code(std::errc::invalid_argument);
                 }
                 awaiter = std::move(it->second);
-                pending_.erase(it);
+                m_pending.erase(it);
             }
             awaiter.set_value(std::string{frame});
             return {};
@@ -186,9 +186,9 @@ public:
         // client opens its GET stream so a tool handler that fires
         // server.sample() right after initialize doesn't lose its
         // request to a startup race.
-        std::lock_guard<std::mutex> lk(get_mu_);
-        get_queue_.emplace_back(frame);
-        get_cv_.notify_all();
+        std::lock_guard<std::mutex> lk(m_get_mu);
+        m_get_queue.emplace_back(frame);
+        m_get_cv.notify_all();
         return {};
     }
 
@@ -196,29 +196,29 @@ public:
     // frame if one was available, std::nullopt otherwise. Caller must
     // call `enter_get_stream()` once before the first drain so outbound
     // traffic stops being dropped.
-    void enter_get_stream() {
-        std::lock_guard<std::mutex> lk(get_mu_);
-        get_active_ = true;
+    void enter_get_stream(void) {
+        std::lock_guard<std::mutex> lk(m_get_mu);
+        m_get_active = true;
     }
-    void leave_get_stream() {
-        std::lock_guard<std::mutex> lk(get_mu_);
-        get_active_ = false;
+    void leave_get_stream(void) {
+        std::lock_guard<std::mutex> lk(m_get_mu);
+        m_get_active = false;
         // Don't drain the queue: another GET might be opened (with
         // resumability). This build ships without resumability so in
         // practice we simply lose the queue's contents on disconnect.
     }
     std::optional<std::string>
-    try_get_frame() {
-        std::lock_guard<std::mutex> lk(get_mu_);
-        if (get_queue_.empty()) return std::nullopt;
-        std::string out = std::move(get_queue_.front());
-        get_queue_.pop_front();
+    try_get_frame(void) {
+        std::lock_guard<std::mutex> lk(m_get_mu);
+        if (m_get_queue.empty()) return std::nullopt;
+        std::string out = std::move(m_get_queue.front());
+        m_get_queue.pop_front();
         return out;
     }
 
-    [[nodiscard]] bool is_open() const noexcept override {
+    [[nodiscard]] bool is_open(void) const noexcept override {
         // Open from construction until close(); see start() comment.
-        return !closed_.load(std::memory_order_acquire);
+        return !m_closed.load(std::memory_order_acquire);
     }
 
     // Host-facing helpers ----------------------------------------------------
@@ -243,20 +243,20 @@ public:
             std::string key = canonical_id(j.value("id"));
             std::promise<std::string> p;
             reply = p.get_future();
-            std::lock_guard<std::mutex> lk(pending_mu_);
-            pending_.emplace(std::move(key), std::move(p));
+            std::lock_guard<std::mutex> lk(m_pending_mu);
+            m_pending.emplace(std::move(key), std::move(p));
         }
-        // Deliver under buffered_mu_ so the started_/buffered_/on_message_
+        // Deliver under m_buffered_mu so the m_started/m_buffered/m_on_message
         // triple stays consistent against start() and on_message().
-        // started_ alone is the gate, not on_message_: the latter is
+        // m_started alone is the gate, not m_on_message: the latter is
         // wired by Session::Session before set_request_handler calls
         // run, and dispatching during that window produces spurious
         // "method not found" errors.
-        std::lock_guard<std::mutex> lk(buffered_mu_);
-        if (started_ && on_message_) {
-            on_message_(std::move(raw));
+        std::lock_guard<std::mutex> lk(m_buffered_mu);
+        if (m_started && m_on_message) {
+            m_on_message(std::move(raw));
         } else {
-            buffered_.emplace_back(std::move(raw));
+            m_buffered.emplace_back(std::move(raw));
         }
         return reply;
     }
@@ -268,30 +268,30 @@ private:
         return std::string{};
     }
 
-    std::atomic<bool>                                            closed_{false};
+    std::atomic<bool>                                            m_closed{false};
 
-    // Pre-start buffer, the callback, and the started_ gate share a
+    // Pre-start buffer, the callback, and the m_started gate share a
     // mutex so their three-way consistency is maintained across the
     // setter (on_message), the gate flip (start), and the producer
     // (deliver_request_or_notification).
-    std::mutex                                                   buffered_mu_;
-    bool                                                         started_ = false;
-    MessageCallback                                              on_message_;
-    std::deque<std::string>                                      buffered_;
+    std::mutex                                                   m_buffered_mu;
+    bool                                                         m_started = false;
+    MessageCallback                                              m_on_message;
+    std::deque<std::string>                                      m_buffered;
 
-    ErrorCallback                                                on_error_;
-    CloseCallback                                                on_close_;
+    ErrorCallback                                                m_on_error;
+    CloseCallback                                                m_on_close;
 
-    std::mutex                                                   pending_mu_;
-    std::unordered_map<std::string, std::promise<std::string>>   pending_;
+    std::mutex                                                   m_pending_mu;
+    std::unordered_map<std::string, std::promise<std::string>>   m_pending;
 
     // GET-stream queue (server-initiated outbound traffic). Frames
     // produced by `send()` while a GET stream is active are pushed
     // here and consumed by the GET handler.
-    std::mutex                                                   get_mu_;
-    std::condition_variable                                      get_cv_;
-    std::deque<std::string>                                      get_queue_;
-    bool                                                         get_active_ = false;
+    std::mutex                                                   m_get_mu;
+    std::condition_variable                                      m_get_cv;
+    std::deque<std::string>                                      m_get_queue;
+    bool                                                         m_get_active = false;
 };
 
 // =====================================================================
@@ -302,22 +302,22 @@ private:
 class SharedTransportShim final : public Transport {
 public:
     explicit SharedTransportShim(std::shared_ptr<HttpSessionTransport> inner)
-        : inner_(std::move(inner)) {}
+        : m_inner(std::move(inner)) {}
 
-    void on_message(MessageCallback cb) override { inner_->on_message(std::move(cb)); }
-    void on_error(ErrorCallback cb)     override { inner_->on_error(std::move(cb));   }
-    void on_close(CloseCallback cb)     override { inner_->on_close(std::move(cb));   }
-    void start() override { inner_->start(); }
-    void close() override { inner_->close(); }
+    void on_message(MessageCallback cb) override { m_inner->on_message(std::move(cb)); }
+    void on_error(ErrorCallback cb)     override { m_inner->on_error(std::move(cb));   }
+    void on_close(CloseCallback cb)     override { m_inner->on_close(std::move(cb));   }
+    void start(void) override { m_inner->start(); }
+    void close(void) override { m_inner->close(); }
     [[nodiscard]] std::error_code send(std::string_view f) override {
-        return inner_->send(f);
+        return m_inner->send(f);
     }
-    [[nodiscard]] bool is_open() const noexcept override {
-        return inner_->is_open();
+    [[nodiscard]] bool is_open(void) const noexcept override {
+        return m_inner->is_open();
     }
 
 private:
-    std::shared_ptr<HttpSessionTransport> inner_;
+    std::shared_ptr<HttpSessionTransport> m_inner;
 };
 
 // =====================================================================
@@ -342,7 +342,7 @@ void invoke_session_closed(const HttpServerHost::Options& opts,
     }
 }
 
-std::string make_session_id() {
+std::string make_session_id(void) {
     // 128-bit hex string from a per-call seeded RNG. Cryptographic
     // strength isn't promised here (std::random_device quality varies
     // per platform) — this is "unguessable enough" for non-adversarial
@@ -743,43 +743,43 @@ struct HttpServerHost::Impl {
 HttpServerHost::HttpServerHost(Implementation server_info,
                                Options        opts,
                                SessionFactory factory)
-    : server_info_(std::move(server_info)),
-      opts_(std::move(opts)),
-      factory_(std::move(factory)),
-      impl_(std::make_unique<Impl>()) {}
+    : m_server_info(std::move(server_info)),
+      m_opts(std::move(opts)),
+      m_factory(std::move(factory)),
+      m_impl(std::make_unique<Impl>()) {}
 
 HttpServerHost::~HttpServerHost() { stop(); }
 
-int HttpServerHost::port() const noexcept {
-    return impl_ ? impl_->port.load(std::memory_order_acquire) : 0;
+int HttpServerHost::port(void) const noexcept {
+    return m_impl ? m_impl->port.load(std::memory_order_acquire) : 0;
 }
 
-std::size_t HttpServerHost::active_sessions() const {
-    if (!impl_) return 0;
-    std::lock_guard<std::mutex> lk(impl_->sessions_mu);
-    return impl_->sessions.size();
+std::size_t HttpServerHost::active_sessions(void) const {
+    if (!m_impl) return 0;
+    std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+    return m_impl->sessions.size();
 }
 
 // =====================================================================
 // Lifecycle
 // =====================================================================
 
-void HttpServerHost::start() {
-    if (started_.exchange(true, std::memory_order_acq_rel)) return;
+void HttpServerHost::start(void) {
+    if (m_started.exchange(true, std::memory_order_acq_rel)) return;
 
     // Inputs that get spliced into HTTP response headers have to be
     // sanitised — a CR/LF or `"` would smuggle a header. We don't try
     // to escape; we reject. Legitimate realm names and URLs don't
     // contain these.
-    if (!valid_quoted_param(opts_.auth_realm)) {
-        started_.store(false, std::memory_order_release);
+    if (!valid_quoted_param(m_opts.auth_realm)) {
+        m_started.store(false, std::memory_order_release);
         throw std::invalid_argument(
             "HttpServerHost: auth_realm contains a control or quoting "
             "character — refusing to splice into the WWW-Authenticate "
             "header");
     }
-    if (!valid_quoted_param(opts_.resource_metadata_url)) {
-        started_.store(false, std::memory_order_release);
+    if (!valid_quoted_param(m_opts.resource_metadata_url)) {
+        m_started.store(false, std::memory_order_release);
         throw std::invalid_argument(
             "HttpServerHost: resource_metadata_url contains a control "
             "or quoting character — refusing to splice into the "
@@ -787,8 +787,8 @@ void HttpServerHost::start() {
     }
     // path is what we register routes under; allowing weird values
     // would conflict with the well-known endpoints below.
-    if (opts_.path.empty() || opts_.path.front() != '/') {
-        started_.store(false, std::memory_order_release);
+    if (m_opts.path.empty() || m_opts.path.front() != '/') {
+        m_started.store(false, std::memory_order_release);
         throw std::invalid_argument(
             "HttpServerHost: path must begin with '/'");
     }
@@ -797,26 +797,26 @@ void HttpServerHost::start() {
     // tokens in the clear. The spec mandates HTTPS in production;
     // we let users opt into "I have a TLS terminator in front of
     // me" via allow_insecure_http rather than guess.
-    const bool is_loopback = (opts_.host == "127.0.0.1" ||
-                              opts_.host == "::1"       ||
-                              opts_.host == "localhost");
-    if (opts_.bearer_validator && !is_loopback &&
-        !opts_.allow_insecure_http) {
-        started_.store(false, std::memory_order_release);
+    const bool is_loopback = (m_opts.host == "127.0.0.1" ||
+                              m_opts.host == "::1"       ||
+                              m_opts.host == "localhost");
+    if (m_opts.bearer_validator && !is_loopback &&
+        !m_opts.allow_insecure_http) {
+        m_started.store(false, std::memory_order_release);
         throw std::invalid_argument(
             "HttpServerHost: bearer authentication is configured but "
             "the host is binding to a non-loopback address (\"" +
-            opts_.host + "\") and the SDK is on plain HTTP. Set "
+            m_opts.host + "\") and the SDK is on plain HTTP. Set "
             "Options::allow_insecure_http=true to acknowledge that "
             "TLS termination happens elsewhere (typically a reverse "
             "proxy), or bind to 127.0.0.1/::1 for development.");
     }
 
-    impl_->http   = new QHttpServer();
-    impl_->thread = new QThread();
-    impl_->thread->setObjectName(QStringLiteral("mcp-http-server"));
+    m_impl->http   = new QHttpServer();
+    m_impl->thread = new QThread();
+    m_impl->thread->setObjectName(QStringLiteral("mcp-http-server"));
 
-    auto* http = impl_->http;
+    auto* http = m_impl->http;
 
     // ---- POST: a client frame -> JSON response or 202 Accepted ----
     //
@@ -828,7 +828,7 @@ void HttpServerHost::start() {
     // async reply on a QTimer and out of that machinery entirely.
     http->router()->addRule<std::function<void()>>(
         std::make_unique<QHttpServerRouterRule>(
-            QString::fromStdString(opts_.path),
+            QString::fromStdString(m_opts.path),
             QHttpServerRequest::Method::Post,
             [this](const QRegularExpressionMatch&,
                    const QHttpServerRequest& req,
@@ -837,7 +837,7 @@ void HttpServerHost::start() {
             write_raw_http_response(socket, spec);
         };
 
-        if (!origin_allowed(req, opts_.allowed_origins)) {
+        if (!origin_allowed(req, m_opts.allowed_origins)) {
             send({403, QByteArrayLiteral("text/plain"),
                   QByteArrayLiteral("Origin not allowed"), {}});
             return;
@@ -852,7 +852,7 @@ void HttpServerHost::start() {
             return;
         }
         {
-            const auto auth = authorize(req, opts_);
+            const auto auth = authorize(req, m_opts);
             if (!auth.allowed) {
                 std::vector<std::pair<QByteArray, QByteArray>> h;
                 if (!auth.challenge.empty()) {
@@ -875,9 +875,9 @@ void HttpServerHost::start() {
 
         std::shared_ptr<SessionContext> ctx;
         if (!sid.empty()) {
-            std::lock_guard<std::mutex> lk(impl_->sessions_mu);
-            auto it = impl_->sessions.find(sid);
-            if (it != impl_->sessions.end()) {
+            std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+            auto it = m_impl->sessions.find(sid);
+            if (it != m_impl->sessions.end()) {
                 ctx = it->second;
                 ctx->last_seen = std::chrono::steady_clock::now();
             } else if (is_initialize_body) {
@@ -885,8 +885,8 @@ void HttpServerHost::start() {
                 ctx->id        = sid;
                 ctx->last_seen = std::chrono::steady_clock::now();
                 ctx->transport = std::make_shared<HttpSessionTransport>();
-                ctx->server    = std::make_unique<Server>(server_info_);
-                factory_(*ctx->server);
+                ctx->server    = std::make_unique<Server>(m_server_info);
+                m_factory(*ctx->server);
 
                 // Run the Server on its own thread, wrapping our
                 // shared_ptr transport in a unique_ptr-shaped shim so
@@ -897,7 +897,7 @@ void HttpServerHost::start() {
                 ctx->run_thread = std::thread([server_ptr, transport]() {
                     server_ptr->run(std::make_unique<SharedTransportShim>(transport));
                 });
-                impl_->sessions.emplace(sid, ctx);
+                m_impl->sessions.emplace(sid, ctx);
             }
         }
 
@@ -943,7 +943,7 @@ void HttpServerHost::start() {
         const std::string session_id = ctx->id;
         QPointer<QTcpSocket> sock = socket;
 
-        auto* timer = new QTimer(impl_->http);
+        auto* timer = new QTimer(m_impl->http);
         timer->setInterval(10);
         QObject::connect(timer, &QTimer::timeout, timer,
             [reply_shared, budget, session_id, sock, timer]() {
@@ -1003,16 +1003,16 @@ void HttpServerHost::start() {
     // streaming API; we write HTTP/1.1 chunked framing directly.
     http->router()->addRule<std::function<void()>>(
         std::make_unique<QHttpServerRouterRule>(
-            QString::fromStdString(opts_.path),
+            QString::fromStdString(m_opts.path),
             QHttpServerRequest::Method::Get,
             [this](const QRegularExpressionMatch&,
                    const QHttpServerRequest& req,
                    QTcpSocket*              socket) {
-                if (!origin_allowed(req, opts_.allowed_origins)) {
+                if (!origin_allowed(req, m_opts.allowed_origins)) {
                     write_raw_http_error(socket, 403, "Origin not allowed");
                     return;
                 }
-                const auto auth = authorize(req, opts_);
+                const auto auth = authorize(req, m_opts);
                 if (!auth.allowed) {
                     write_raw_http_error(socket, auth.status, auth.body,
                                          auth.challenge);
@@ -1026,9 +1026,9 @@ void HttpServerHost::start() {
                 }
                 std::shared_ptr<SessionContext> ctx;
                 {
-                    std::lock_guard<std::mutex> lk(impl_->sessions_mu);
-                    auto sit = impl_->sessions.find(*sid);
-                    if (sit != impl_->sessions.end()) ctx = sit->second;
+                    std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+                    auto sit = m_impl->sessions.find(*sid);
+                    if (sit != m_impl->sessions.end()) ctx = sit->second;
                 }
                 if (!ctx) {
                     write_raw_http_error(socket, 404, "");
@@ -1047,7 +1047,7 @@ void HttpServerHost::start() {
                 socket->write(head);
 
                 QPointer<QTcpSocket> sock = socket;
-                auto* timer = new QTimer(impl_->http);
+                auto* timer = new QTimer(m_impl->http);
                 timer->setInterval(10);
                 auto last_beat = std::make_shared<
                     std::chrono::steady_clock::time_point>(
@@ -1087,14 +1087,14 @@ void HttpServerHost::start() {
             }));
 
     // ---- DELETE: terminate session ----
-    http->route(QString::fromStdString(opts_.path),
+    http->route(QString::fromStdString(m_opts.path),
                 QHttpServerRequest::Method::Delete,
                 [this](const QHttpServerRequest& req) -> QHttpServerResponse {
-        if (!origin_allowed(req, opts_.allowed_origins)) {
+        if (!origin_allowed(req, m_opts.allowed_origins)) {
             return text_response("Origin not allowed",
                                  QHttpServerResponder::StatusCode::Forbidden);
         }
-        const auto auth = authorize(req, opts_);
+        const auto auth = authorize(req, m_opts);
         if (!auth.allowed) {
             auto r = text_response(auth.body, status_from_int(auth.status));
             if (!auth.challenge.empty()) {
@@ -1109,18 +1109,18 @@ void HttpServerHost::start() {
         }
         std::shared_ptr<SessionContext> ctx;
         {
-            std::lock_guard<std::mutex> lk(impl_->sessions_mu);
-            auto sit = impl_->sessions.find(*it);
-            if (sit != impl_->sessions.end()) {
+            std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+            auto sit = m_impl->sessions.find(*it);
+            if (sit != m_impl->sessions.end()) {
                 ctx = sit->second;
-                impl_->sessions.erase(sit);
+                m_impl->sessions.erase(sit);
             }
         }
         if (ctx) {
             // Notify the embedder while the Server is still fully alive
             // (before close/join/destruction) so it can drop any raw
             // Server* it holds. The sessions_mu is already released.
-            invoke_session_closed(opts_, *ctx->server);
+            invoke_session_closed(m_opts, *ctx->server);
             // Close the transport first, let its on_close cascade
             // unblock the server's run loop, then join.
             ctx->transport->close();
@@ -1130,11 +1130,11 @@ void HttpServerHost::start() {
     });
 
     // ---- OPTIONS preflight ----
-    if (opts_.enable_cors_preflight) {
-        http->route(QString::fromStdString(opts_.path),
+    if (m_opts.enable_cors_preflight) {
+        http->route(QString::fromStdString(m_opts.path),
                     QHttpServerRequest::Method::Options,
                     [this](const QHttpServerRequest& req) -> QHttpServerResponse {
-            const auto acao = resolve_cors_origin(req, opts_.allowed_origins);
+            const auto acao = resolve_cors_origin(req, m_opts.allowed_origins);
             if (acao.empty()) {
                 return QHttpServerResponse(
                     QHttpServerResponder::StatusCode::Forbidden);
@@ -1159,9 +1159,9 @@ void HttpServerHost::start() {
     }
 
     // ---- RFC 9728 Protected Resource Metadata ----
-    if (opts_.resource_metadata.has_value()) {
+    if (m_opts.resource_metadata.has_value()) {
         const QByteArray body =
-            QByteArray::fromStdString(dump(*opts_.resource_metadata));
+            QByteArray::fromStdString(dump(*m_opts.resource_metadata));
         const auto handler = [body](const QHttpServerRequest&)
                 -> QHttpServerResponse {
             auto r = QHttpServerResponse(
@@ -1175,56 +1175,56 @@ void HttpServerHost::start() {
         };
         http->route(QStringLiteral("/.well-known/oauth-protected-resource"),
                     QHttpServerRequest::Method::Get, handler);
-        if (opts_.path.size() > 1) {
+        if (m_opts.path.size() > 1) {
             http->route(QStringLiteral("/.well-known/oauth-protected-resource") +
-                            QString::fromStdString(opts_.path),
+                            QString::fromStdString(m_opts.path),
                         QHttpServerRequest::Method::Get, handler);
         }
     }
 
     // ---- Bind + run on the dedicated thread ----
-    http->moveToThread(impl_->thread);
-    QObject::connect(impl_->thread, &QThread::finished, http,
+    http->moveToThread(m_impl->thread);
+    QObject::connect(m_impl->thread, &QThread::finished, http,
                      &QObject::deleteLater);
 
     auto bound = std::make_shared<std::promise<int>>();
     auto bound_fut = bound->get_future();
-    QObject::connect(impl_->thread, &QThread::started, http,
+    QObject::connect(m_impl->thread, &QThread::started, http,
         [this, bound]() {
             QHostAddress addr;
-            if (opts_.host == "localhost") {
+            if (m_opts.host == "localhost") {
                 addr = QHostAddress::LocalHost;
             } else {
-                addr = QHostAddress(QString::fromStdString(opts_.host));
+                addr = QHostAddress(QString::fromStdString(m_opts.host));
             }
-            const quint16 requested = static_cast<quint16>(opts_.port);
-            const quint16 actual = impl_->http->listen(addr, requested);
+            const quint16 requested = static_cast<quint16>(m_opts.port);
+            const quint16 actual = m_impl->http->listen(addr, requested);
             const int result = actual != 0 ? static_cast<int>(actual) : -1;
-            impl_->port.store(result, std::memory_order_release);
+            m_impl->port.store(result, std::memory_order_release);
             bound->set_value(result);
         });
 
-    impl_->thread->start();
+    m_impl->thread->start();
     const int actual_port = bound_fut.get();
     if (actual_port <= 0) {
-        started_.store(false, std::memory_order_release);
+        m_started.store(false, std::memory_order_release);
         // Tear the half-started thread down before throwing.
-        impl_->thread->quit();
-        impl_->thread->wait();
-        impl_->http   = nullptr;  // deleted via the finished->deleteLater link
-        delete impl_->thread;
-        impl_->thread = nullptr;
+        m_impl->thread->quit();
+        m_impl->thread->wait();
+        m_impl->http   = nullptr;  // deleted via the finished->deleteLater link
+        delete m_impl->thread;
+        m_impl->thread = nullptr;
         throw std::runtime_error(
-            "HttpServerHost: bind failed for " + opts_.host + ":" +
-            std::to_string(opts_.port));
+            "HttpServerHost: bind failed for " + m_opts.host + ":" +
+            std::to_string(m_opts.port));
     }
 }
 
-void HttpServerHost::stop() {
-    if (stopping_.exchange(true, std::memory_order_acq_rel)) return;
-    if (!started_.load(std::memory_order_acquire)) return;
+void HttpServerHost::stop(void) {
+    if (m_stopping.exchange(true, std::memory_order_acq_rel)) return;
+    if (!m_started.load(std::memory_order_acquire)) return;
 
-    if (impl_) {
+    if (m_impl) {
         // Close transports first so any in-flight handler (a POST
         // awaiting a sampling reply that will never arrive) can
         // return. If we stopped the server before this, those
@@ -1239,13 +1239,13 @@ void HttpServerHost::stop() {
         // "on_close finished".
         std::unordered_map<std::string, std::shared_ptr<SessionContext>> drained;
         {
-            std::lock_guard<std::mutex> lk(impl_->sessions_mu);
-            drained.swap(impl_->sessions);
+            std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+            drained.swap(m_impl->sessions);
         }
         // Notify the embedder for every surviving session while its
         // Server is still fully alive, before any close/join/destroy.
         for (auto& [id, ctx] : drained) {
-            invoke_session_closed(opts_, *ctx->server);
+            invoke_session_closed(m_opts, *ctx->server);
         }
         for (auto& [id, ctx] : drained) {
             ctx->transport->close();
@@ -1255,13 +1255,13 @@ void HttpServerHost::stop() {
         // QHttpServer (Qt 6.4) has no stop(); tearing the thread down
         // and letting the finished->deleteLater link destroy the
         // server closes its listening sockets.
-        if (impl_->thread) {
-            impl_->thread->quit();
-            impl_->thread->wait();
+        if (m_impl->thread) {
+            m_impl->thread->quit();
+            m_impl->thread->wait();
         }
-        impl_->http   = nullptr;
-        delete impl_->thread;
-        impl_->thread = nullptr;
+        m_impl->http   = nullptr;
+        delete m_impl->thread;
+        m_impl->thread = nullptr;
 
         for (auto& [id, ctx] : drained) {
             if (ctx->run_thread.joinable()) ctx->run_thread.join();

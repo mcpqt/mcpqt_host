@@ -18,7 +18,7 @@
 namespace mcp {
 
 Client::Client(Implementation client_info)
-    : client_info_(std::move(client_info)) {}
+    : m_client_info(std::move(client_info)) {}
 
 Client::~Client() {
     disconnect();
@@ -30,65 +30,65 @@ void Client::connect(std::unique_ptr<Transport> transport) {
     }
     disconnect();
     {
-        std::lock_guard<std::mutex> lk(session_mu_);
-        session_ = std::make_shared<Session>(std::move(transport));
+        std::lock_guard<std::mutex> lk(m_session_mu);
+        m_session = std::make_shared<Session>(std::move(transport));
     }
     // Start under the lock-acquired pointer, but don't hold the lock
     // across start() — start spawns the read thread, which can run
     // arbitrary user callbacks.
     auto local = acquire_session();
     if (local) local->start();
-    connected_.store(true, std::memory_order_release);
+    m_connected.store(true, std::memory_order_release);
 }
 
-void Client::disconnect() {
-    if (!connected_.exchange(false, std::memory_order_acq_rel)) return;
+void Client::disconnect(void) {
+    if (!m_connected.exchange(false, std::memory_order_acq_rel)) return;
     std::shared_ptr<Session> local;
     {
-        std::lock_guard<std::mutex> lk(session_mu_);
-        local = std::move(session_);
-        session_.reset();
+        std::lock_guard<std::mutex> lk(m_session_mu);
+        local = std::move(m_session);
+        m_session.reset();
     }
     // close() + drop our reference outside the lock; concurrent
     // call sites that took an earlier copy will keep the Session
     // alive via shared_ptr count until they finish.
     if (local) local->close();
     {
-        std::lock_guard<std::mutex> lk(server_mu_);
-        server_.reset();
+        std::lock_guard<std::mutex> lk(m_server_mu);
+        m_server.reset();
     }
 }
 
-std::shared_ptr<Session> Client::acquire_session() const {
-    std::lock_guard<std::mutex> lk(session_mu_);
-    return session_;
+std::shared_ptr<Session> Client::acquire_session(void) const {
+    std::lock_guard<std::mutex> lk(m_session_mu);
+    return m_session;
 }
 
-bool Client::is_connected() const noexcept {
-    return connected_.load(std::memory_order_acquire);
+bool Client::is_connected(void) const noexcept {
+    return m_connected.load(std::memory_order_acquire);
 }
 
-std::optional<InitializeResult> Client::server() const {
-    std::lock_guard<std::mutex> lk(server_mu_);
-    return server_;
+std::optional<InitializeResult> Client::server(void) const {
+    std::lock_guard<std::mutex> lk(m_server_mu);
+    return m_server;
 }
 
 // =====================================================================
 // initialize
 // =====================================================================
 
-std::future<InitializeResult> Client::initialize() {
+std::future<InitializeResult> Client::initialize(void) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
     }
     ClientCapabilities caps;
     {
-        std::lock_guard<std::mutex> lk(handlers_mu_);
+        std::lock_guard<std::mutex> lk(m_handlers_mu);
         // First derive caps from the registered handlers...
-        if (sampling_handler_) caps.sampling = SamplingCapability{};
-        if (roots_handler_)    caps.roots    = RootsCapability{};
-        if (elicitation_handler_) {
+        if (m_sampling_handler) caps.sampling = SamplingCapability{};
+        if (m_roots_handler)    caps.roots    = RootsCapability{};
+        if (m_elicitation_handler) {
             ElicitationCapability ec;
             ec.form = QJsonObject{};
             ec.url  = QJsonObject{};
@@ -101,8 +101,8 @@ std::future<InitializeResult> Client::initialize() {
         // keep their handler-derived values rather than getting
         // wiped out, which is what users expect from "override"
         // semantics.
-        if (capabilities_override_.has_value()) {
-            const auto& o = *capabilities_override_;
+        if (m_capabilities_override.has_value()) {
+            const auto& o = *m_capabilities_override;
             if (o.experimental.has_value()) caps.experimental = o.experimental;
             if (o.roots.has_value())        caps.roots        = o.roots;
             if (o.sampling.has_value())     caps.sampling     = o.sampling;
@@ -113,7 +113,7 @@ std::future<InitializeResult> Client::initialize() {
     InitializeRequestParams params{
         .protocol_version = std::string{kLatestProtocolVersion},
         .capabilities     = std::move(caps),
-        .client_info      = client_info_,
+        .client_info      = m_client_info,
     };
 
     return std::async(std::launch::async,
@@ -122,8 +122,8 @@ std::future<InitializeResult> Client::initialize() {
                                               payload).get();
             auto res = from_json<InitializeResult>(raw);
             {
-                std::lock_guard<std::mutex> lk(server_mu_);
-                server_ = res;
+                std::lock_guard<std::mutex> lk(m_server_mu);
+                m_server = res;
             }
             const auto note_ec = session->send_notification(
                 std::string{method_notifications_initialized});
@@ -237,8 +237,8 @@ void Client::set_task_status_handler(TaskStatusHandler handler) {
     auto session = acquire_session();
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     {
-        std::lock_guard<std::mutex> lk(handlers_mu_);
-        task_status_handler_ = handler;
+        std::lock_guard<std::mutex> lk(m_handlers_mu);
+        m_task_status_handler = handler;
     }
     const std::string method{method_notifications_tasks_status};
     if (handler) {
@@ -398,7 +398,7 @@ std::error_code Client::cancel_request(RequestId request_id,
         to_json(params));
 }
 
-std::future<void> Client::ping() {
+std::future<void> Client::ping(void) {
     auto session = acquire_session();
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     return session->send_request_void(std::string{method_ping}, {});
@@ -450,8 +450,8 @@ void Client::set_sampling_handler(SamplingHandler handler) {
     auto session = acquire_session();
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     {
-        std::lock_guard<std::mutex> lk(handlers_mu_);
-        sampling_handler_ = handler;
+        std::lock_guard<std::mutex> lk(m_handlers_mu);
+        m_sampling_handler = handler;
     }
     const std::string method{method_sampling_create_message};
     if (handler) {
@@ -479,8 +479,8 @@ void Client::set_elicitation_handler(ElicitationHandler handler) {
     auto session = acquire_session();
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     {
-        std::lock_guard<std::mutex> lk(handlers_mu_);
-        elicitation_handler_ = handler;
+        std::lock_guard<std::mutex> lk(m_handlers_mu);
+        m_elicitation_handler = handler;
     }
     const std::string method{method_elicitation_create};
     if (handler) {
@@ -513,8 +513,8 @@ void Client::set_elicitation_complete_handler(
     auto session = acquire_session();
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     {
-        std::lock_guard<std::mutex> lk(handlers_mu_);
-        elicitation_complete_handler_ = handler;
+        std::lock_guard<std::mutex> lk(m_handlers_mu);
+        m_elicitation_complete_handler = handler;
     }
     const std::string method{method_notifications_elicitation_complete};
     if (handler) {
@@ -543,8 +543,8 @@ void Client::set_roots_list_handler(RootsListHandler handler) {
     auto session = acquire_session();
     if (!session) throw Error{error_code::internal_error, "client not connected"};
     {
-        std::lock_guard<std::mutex> lk(handlers_mu_);
-        roots_handler_ = handler;
+        std::lock_guard<std::mutex> lk(m_handlers_mu);
+        m_roots_handler = handler;
     }
     const std::string method{method_roots_list};
     if (handler) {
@@ -574,11 +574,11 @@ Client::complete(CompletionReference reference,
 }
 
 void Client::set_client_capabilities(ClientCapabilities caps) {
-    std::lock_guard<std::mutex> lk(handlers_mu_);
-    capabilities_override_ = std::move(caps);
+    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    m_capabilities_override = std::move(caps);
 }
 
-std::error_code Client::notify_roots_list_changed() {
+std::error_code Client::notify_roots_list_changed(void) {
     auto session = acquire_session();
     if (!session) {
         return std::make_error_code(std::errc::not_connected);

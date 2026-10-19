@@ -100,67 +100,67 @@ struct SqliteError : public std::runtime_error {
 
 class Stmt {
 public:
-    Stmt() = default;
+    Stmt(void) = default;
     Stmt(sqlite3* db, std::string_view sql) {
         if (sqlite3_prepare_v2(db, sql.data(),
                                 static_cast<int>(sql.size()),
-                                &raw_, nullptr) != SQLITE_OK) {
+                                &m_raw, nullptr) != SQLITE_OK) {
             throw SqliteError(std::string{"sqlite prepare failed: "}
                               + sqlite3_errmsg(db));
         }
     }
     Stmt(const Stmt&) = delete;
     Stmt& operator=(const Stmt&) = delete;
-    Stmt(Stmt&& o) noexcept : raw_(o.raw_) { o.raw_ = nullptr; }
+    Stmt(Stmt&& o) noexcept : m_raw(o.m_raw) { o.m_raw = nullptr; }
     Stmt& operator=(Stmt&& o) noexcept {
         if (this != &o) {
-            if (raw_) sqlite3_finalize(raw_);
-            raw_ = o.raw_; o.raw_ = nullptr;
+            if (m_raw) sqlite3_finalize(m_raw);
+            m_raw = o.m_raw; o.m_raw = nullptr;
         }
         return *this;
     }
-    ~Stmt() { if (raw_) sqlite3_finalize(raw_); }
-    sqlite3_stmt* get() const noexcept { return raw_; }
-    sqlite3_stmt* operator->() const noexcept { return raw_; }
+    ~Stmt() { if (m_raw) sqlite3_finalize(m_raw); }
+    sqlite3_stmt* get(void) const noexcept { return m_raw; }
+    sqlite3_stmt* operator->() const noexcept { return m_raw; }
 
     // Bind helpers. 1-indexed per SQLite convention.
     void bind(int i, std::string_view s) {
         // SQLITE_TRANSIENT: SQLite copies the buffer, so we don't
         // have to keep `s` alive.
-        if (sqlite3_bind_text(raw_, i, s.data(),
+        if (sqlite3_bind_text(m_raw, i, s.data(),
                                static_cast<int>(s.size()),
                                SQLITE_TRANSIENT) != SQLITE_OK) {
             throw SqliteError("sqlite bind failed");
         }
     }
     void bind(int i, std::int64_t v) {
-        if (sqlite3_bind_int64(raw_, i, v) != SQLITE_OK) {
+        if (sqlite3_bind_int64(m_raw, i, v) != SQLITE_OK) {
             throw SqliteError("sqlite bind failed");
         }
     }
     void bind_null(int i) {
-        if (sqlite3_bind_null(raw_, i) != SQLITE_OK) {
+        if (sqlite3_bind_null(m_raw, i) != SQLITE_OK) {
             throw SqliteError("sqlite bind failed");
         }
     }
 
-    int step() { return sqlite3_step(raw_); }
+    int step(void) { return sqlite3_step(m_raw); }
 
     // Column readers.
     std::string text(int col) const {
-        const auto* p = sqlite3_column_text(raw_, col);
-        const auto  n = sqlite3_column_bytes(raw_, col);
+        const auto* p = sqlite3_column_text(m_raw, col);
+        const auto  n = sqlite3_column_bytes(m_raw, col);
         return p ? std::string{reinterpret_cast<const char*>(p),
                                 static_cast<std::size_t>(n)}
                  : std::string{};
     }
-    std::int64_t i64(int col) const { return sqlite3_column_int64(raw_, col); }
+    std::int64_t i64(int col) const { return sqlite3_column_int64(m_raw, col); }
     bool is_null(int col) const {
-        return sqlite3_column_type(raw_, col) == SQLITE_NULL;
+        return sqlite3_column_type(m_raw, col) == SQLITE_NULL;
     }
 
 private:
-    sqlite3_stmt* raw_ = nullptr;
+    sqlite3_stmt* m_raw = nullptr;
 };
 
 class Db {
@@ -170,12 +170,12 @@ public:
             ? (SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
             : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
                | SQLITE_OPEN_FULLMUTEX);
-        if (sqlite3_open_v2(path.c_str(), &handle_, flags, nullptr) != SQLITE_OK) {
-            const std::string msg = handle_
-                ? sqlite3_errmsg(handle_)
+        if (sqlite3_open_v2(path.c_str(), &m_handle, flags, nullptr) != SQLITE_OK) {
+            const std::string msg = m_handle
+                ? sqlite3_errmsg(m_handle)
                 : "unknown sqlite open failure";
-            if (handle_) sqlite3_close(handle_);
-            handle_ = nullptr;
+            if (m_handle) sqlite3_close(m_handle);
+            m_handle = nullptr;
             throw SqliteError(std::string{"sqlite open failed: "} + msg);
         }
         // Sensible defaults: WAL for concurrent readers, foreign keys on.
@@ -187,16 +187,16 @@ public:
     }
     Db(const Db&) = delete;
     Db& operator=(const Db&) = delete;
-    ~Db() { if (handle_) sqlite3_close(handle_); }
+    ~Db() { if (m_handle) sqlite3_close(m_handle); }
 
-    sqlite3* handle() const noexcept { return handle_; }
+    sqlite3* handle(void) const noexcept { return m_handle; }
 
     void exec(std::string_view sql) {
         char* err = nullptr;
         // sqlite3_exec doesn't take a length — but our statements
         // are well-formed string_views over null-terminated
         // literals, so .data() is safe here.
-        if (sqlite3_exec(handle_, std::string{sql}.c_str(),
+        if (sqlite3_exec(m_handle, std::string{sql}.c_str(),
                           nullptr, nullptr, &err) != SQLITE_OK) {
             const std::string msg = err ? err : "unknown error";
             if (err) sqlite3_free(err);
@@ -204,10 +204,10 @@ public:
         }
     }
 
-    Stmt prepare(std::string_view sql) { return Stmt{handle_, sql}; }
+    Stmt prepare(std::string_view sql) { return Stmt{m_handle, sql}; }
 
 private:
-    sqlite3* handle_ = nullptr;
+    sqlite3* m_handle = nullptr;
 };
 
 // =====================================================================
@@ -255,12 +255,12 @@ END;
 // Helpers
 // =====================================================================
 
-std::int64_t now_unix_seconds() {
+std::int64_t now_unix_seconds(void) {
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-std::string default_db_path() {
+std::string default_db_path(void) {
     // Per XDG Base Directory: state files live under
     // $XDG_STATE_HOME (default ~/.local/state).
     const char* state = std::getenv("XDG_STATE_HOME");
@@ -303,10 +303,10 @@ mcp::CallToolResult err_text(std::string s) {
 class NotesService {
 public:
     NotesService(std::shared_ptr<Db> db, bool readonly)
-        : db_(std::move(db)), readonly_(readonly) {}
+        : m_db(std::move(db)), m_readonly(readonly) {}
 
     mcp::CallToolResult write(const Json& args) {
-        if (readonly_) return err_text("notes/write: server is read-only");
+        if (m_readonly) return err_text("notes/write: server is read-only");
         const std::string key   = jstr(args, "key");
         const std::string value = jstr(args, "value");
         const std::string tags  = jstr(args, "tags");
@@ -317,7 +317,7 @@ public:
             return err_text("notes/write: `value` is required");
 
         const auto now = now_unix_seconds();
-        auto stmt = db_->prepare(R"sql(
+        auto stmt = m_db->prepare(R"sql(
             INSERT INTO notes(key, value, tags, created_at, updated_at)
             VALUES (?1, ?2, ?3, ?4, ?4)
             ON CONFLICT(key) DO UPDATE SET
@@ -331,7 +331,7 @@ public:
         stmt.bind(4, now);
         if (stmt.step() != SQLITE_DONE) {
             return err_text(std::string{"notes/write: "} +
-                            sqlite3_errmsg(db_->handle()));
+                            sqlite3_errmsg(m_db->handle()));
         }
         return ok_text("ok: stored under key \"" + key + "\"");
     }
@@ -339,7 +339,7 @@ public:
     mcp::CallToolResult read(const Json& args) {
         const std::string key = jstr(args, "key");
         if (key.empty()) return err_text("notes/read: `key` is required");
-        auto stmt = db_->prepare(
+        auto stmt = m_db->prepare(
             "SELECT value, tags, created_at, updated_at "
             "FROM notes WHERE key = ?1");
         stmt.bind(1, key);
@@ -349,7 +349,7 @@ public:
         }
         if (rc != SQLITE_ROW) {
             return err_text(std::string{"notes/read: "} +
-                            sqlite3_errmsg(db_->handle()));
+                            sqlite3_errmsg(m_db->handle()));
         }
         QJsonObject structured{
             {"key",       jsv(key)},
@@ -382,7 +382,7 @@ public:
         }
         sql += " ORDER BY updated_at DESC LIMIT ?";
 
-        auto stmt = db_->prepare(sql);
+        auto stmt = m_db->prepare(sql);
         int idx = 1;
         for (const auto& b : binds) stmt.bind(idx++, b);
         stmt.bind(idx, limit);
@@ -425,7 +425,7 @@ public:
             fts_query = std::move(wrapped);
         }
 
-        auto stmt = db_->prepare(R"sql(
+        auto stmt = m_db->prepare(R"sql(
             SELECT n.key, n.value, n.tags, n.updated_at,
                    snippet(notes_fts, 1, '<<', '>>', '…', 12) AS snip,
                    bm25(notes_fts)                            AS score
@@ -458,7 +458,7 @@ public:
     /// the explicit `confirm` flag isn't set. Returns either the
     /// successful deletion message or a refused-by-user error.
     mcp::CallToolResult del(const Json& args, mcp::Server& server) {
-        if (readonly_) return err_text("notes/delete: server is read-only");
+        if (m_readonly) return err_text("notes/delete: server is read-only");
         const std::string key      = jstr(args, "key");
         const bool        confirm  = jbool(args, "confirm", false);
         if (key.empty()) return err_text("notes/delete: `key` is required");
@@ -499,16 +499,16 @@ public:
         std::string sql = is_glob
             ? "DELETE FROM notes WHERE key LIKE ?1"
             : "DELETE FROM notes WHERE key = ?1";
-        auto stmt = db_->prepare(sql);
+        auto stmt = m_db->prepare(sql);
         // Translate '*' → '%' for the LIKE form.
         std::string bind_key = key;
         for (char& c : bind_key) if (c == '*') c = '%';
         stmt.bind(1, bind_key);
         if (stmt.step() != SQLITE_DONE) {
             return err_text(std::string{"notes/delete: "} +
-                            sqlite3_errmsg(db_->handle()));
+                            sqlite3_errmsg(m_db->handle()));
         }
-        const int n = sqlite3_changes(db_->handle());
+        const int n = sqlite3_changes(m_db->handle());
         return ok_text(std::to_string(n) + " note(s) deleted");
     }
 
@@ -516,28 +516,28 @@ public:
         // count rows + size on disk + version stamp.
         std::int64_t row_count = 0;
         {
-            auto stmt = db_->prepare("SELECT COUNT(*) FROM notes");
+            auto stmt = m_db->prepare("SELECT COUNT(*) FROM notes");
             if (stmt.step() == SQLITE_ROW) row_count = stmt.i64(0);
         }
         QJsonObject structured{
-            {"path",          jsv(db_path_)},
-            {"readOnly",      readonly_},
+            {"path",          jsv(m_db_path)},
+            {"readOnly",      m_readonly},
             {"noteCount",     jiv(row_count)},
             {"sqliteVersion", jsv(sqlite3_libversion())},
         };
         std::string summary = std::to_string(row_count)
-                            + " note(s) at " + db_path_;
+                            + " note(s) at " + m_db_path;
         return ok_json(structured, std::move(summary));
     }
 
-    void set_db_path(std::string p) { db_path_ = std::move(p); }
+    void set_db_path(std::string p) { m_db_path = std::move(p); }
 
-    std::shared_ptr<Db> db() const { return db_; }
+    std::shared_ptr<Db> db(void) const { return m_db; }
 
 private:
-    std::shared_ptr<Db> db_;
-    bool                readonly_;
-    std::string         db_path_;
+    std::shared_ptr<Db> m_db;
+    bool                m_readonly;
+    std::string         m_db_path;
 };
 
 // =====================================================================

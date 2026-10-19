@@ -29,7 +29,7 @@ struct InMemoryTransportPair {
     std::unique_ptr<InMemoryTransport> b;
 };
 
-InMemoryTransportPair make_in_memory_pair();
+InMemoryTransportPair make_in_memory_pair(void);
 
 class InMemoryTransport final : public Transport {
 public:
@@ -41,25 +41,25 @@ public:
     void on_message(MessageCallback cb) override;
     void on_error(ErrorCallback cb)     override;
     void on_close(CloseCallback cb)     override;
-    void start() override;
-    void close() override;
+    void start(void) override;
+    void close(void) override;
     [[nodiscard]] std::error_code send(std::string_view frame) override;
-    [[nodiscard]] bool is_open() const noexcept override;
+    [[nodiscard]] bool is_open(void) const noexcept override;
 
 private:
-    void run_dispatch();
+    void run_dispatch(void);
 
-    Side                       side_;
-    std::shared_ptr<Channel>   ch_;
+    Side                       m_side;
+    std::shared_ptr<Channel>   m_ch;
 
-    std::atomic<bool>          started_{false};
-    std::atomic<bool>          closed_{false};
+    std::atomic<bool>          m_started{false};
+    std::atomic<bool>          m_closed{false};
 
-    std::thread                worker_;
+    std::thread                m_worker;
 
-    MessageCallback            on_message_;
-    ErrorCallback              on_error_;
-    CloseCallback              on_close_;
+    MessageCallback            m_on_message;
+    ErrorCallback              m_on_error;
+    CloseCallback              m_on_close;
 };
 
 }  // namespace mcp::test

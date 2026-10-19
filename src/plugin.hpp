@@ -48,7 +48,7 @@
 //       Q_INTERFACES(mcp::PluginInterface)
 //   public:
 //       void initialize(const mcp::HostInterface& host) override {
-//           host_ = host;
+//           m_host = host;
 //           registerPublicSlots();
 //       }
 //   public slots:
@@ -78,7 +78,7 @@ namespace mcp {
 
 /// The handle a plugin receives once at initialize(). All plugin↔host
 /// interaction — including cross-plugin function calls — flows through these
-/// callbacks. Copy it into a member (as `host_`) if you need it later.
+/// callbacks. Copy it into a member (as `m_host`) if you need it later.
 struct HostInterface {
     /// Enumerate every function currently registered with the host, across all
     /// loaded plugins. Each entry is a fully-qualified signature of the form
@@ -138,18 +138,18 @@ public:
 
     /// Called once when the host unloads the plugin, before the shared library
     /// is detached. Must not throw.
-    virtual void shutdown() {}
+    virtual void shutdown(void) {}
 
 protected:
     /// Publish every public slot on this plugin to the host. This does not
     /// validate or reject anything: the host decides which slots are acceptable
     /// functions (0..10 parameters, a registered QMetaType return including
     /// `void`, declared by the plugin, not duplicated). Call it from
-    /// initialize() after storing `host` into `host_`.
-    void registerPublicSlots();
+    /// initialize() after storing `host` into `m_host`.
+    void registerPublicSlots(void);
 
     /// Stored copy of the host handle, for use after initialize().
-    HostInterface host_;
+    HostInterface m_host;
 };
 
 /// Read a Q_CLASSINFO value (e.g. "id", "version", "description") from a

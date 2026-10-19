@@ -33,32 +33,32 @@ public:
         : mcp::PluginInterface(parent) {}
 
     void initialize(const mcp::HostInterface& host) override {
-        host_ = host;
+        m_host = host;
 
         // Discover: find HelloPlugin's greet function by signature pattern.
-        const QStringList funcs = host_.getFuncs();
+        const QStringList funcs = m_host.getFuncs();
         for (const QString& sig : funcs) {
             if (sig.startsWith(QStringLiteral("hello.greet("))) {
-                target_greet_ = sig;
+                m_target_greet = sig;
                 break;
             }
         }
         registerPublicSlots();
     }
-    void shutdown() override {}
+    void shutdown(void) override {}
 
 public slots:
     // "caller.greet_via_host(QString)" — forwards to hello.greet(QString),
     // passing the name as the single positional argument.
     QString greet_via_host(QString name) {
-        if (target_greet_.isEmpty()) {
+        if (m_target_greet.isEmpty()) {
             return QStringLiteral("hello plugin's greet() is not loaded");
         }
-        return host_.callFunc(target_greet_, { name }).toString();
+        return m_host.callFunc(m_target_greet, { name }).toString();
     }
 
 private:
-    QString target_greet_;
+    QString m_target_greet;
 };
 
 }  // namespace

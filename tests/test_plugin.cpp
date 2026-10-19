@@ -27,10 +27,10 @@ public:
     explicit TestPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
 
     void initialize(const mcp::HostInterface& host) override {
-        host_ = host;
+        m_host = host;
         registerPublicSlots();
     }
-    void shutdown() override {}
+    void shutdown(void) override {}
 
 public slots:
     // Natural return type, one typed QString parameter.
@@ -40,16 +40,16 @@ public slots:
     double add(double a, double b) { return a + b; }
 
     // void return, no parameters.
-    void reset() {}
+    void reset(void) {}
 
     // void return that throws; the host maps this to an error.
-    void boom() { throw std::runtime_error("boom from plugin"); }
+    void boom(void) { throw std::runtime_error("boom from plugin"); }
 
     // Natural QString return.
-    QString dup() { return QStringLiteral("dup"); }
+    QString dup(void) { return QStringLiteral("dup"); }
 
     // Non-QVariant return types (carried via QGenericReturnArgument).
-    int     meaning() { return 42; }
+    int     meaning(void) { return 42; }
     QString upper(QString text) { return text.toUpper(); }
 };
 

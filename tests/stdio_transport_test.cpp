@@ -39,7 +39,7 @@ struct PipeHarness {
     int  from_transport_w = -1;
     std::unique_ptr<mcp::StdioTransport> transport;
 
-    PipeHarness() {
+    PipeHarness(void) {
         int t2[2];
         int f2[2];
         QCOMPARE(::pipe(t2), 0);
@@ -84,7 +84,7 @@ struct PipeHarness {
         return out;
     }
 
-    void close_transport_input() {
+    void close_transport_input(void) {
         if (to_transport_w >= 0) {
             ::close(to_transport_w);
             to_transport_w = -1;
@@ -110,7 +110,7 @@ struct Sink {
         errors.push_back(ec);
         cv.notify_all();
     }
-    void on_close() {
+    void on_close(void) {
         std::lock_guard<std::mutex> lk(mu);
         closed = true;
         cv.notify_all();
@@ -131,22 +131,22 @@ struct Sink {
 class StdioTransport : public QObject {
     Q_OBJECT
 private slots:
-    void DeliversWholeFrame();
-    void SplitsMultipleFramesByNewline();
-    void BuffersAcrossReads();
-    void IgnoresEmptyLines();
-    void SendWritesNewlineDelimitedFrames();
-    void RejectsFramesWithEmbeddedNewline();
-    void ConcurrentSendsAreSerialized();
-    void SendBeforeStartFails();
-    void EofTriggersClose();
-    void ExplicitCloseUnblocksReadLoop();
-    void IsOpenReflectsLifecycle();
-    void IdempotentStartAndClose();
-    void OversizedFrameTriggersErrorAndClose();
+    void DeliversWholeFrame(void);
+    void SplitsMultipleFramesByNewline(void);
+    void BuffersAcrossReads(void);
+    void IgnoresEmptyLines(void);
+    void SendWritesNewlineDelimitedFrames(void);
+    void RejectsFramesWithEmbeddedNewline(void);
+    void ConcurrentSendsAreSerialized(void);
+    void SendBeforeStartFails(void);
+    void EofTriggersClose(void);
+    void ExplicitCloseUnblocksReadLoop(void);
+    void IsOpenReflectsLifecycle(void);
+    void IdempotentStartAndClose(void);
+    void OversizedFrameTriggersErrorAndClose(void);
 };
 
-void StdioTransport::DeliversWholeFrame() {
+void StdioTransport::DeliversWholeFrame(void) {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -162,7 +162,7 @@ void StdioTransport::DeliversWholeFrame() {
     QCOMPARE(sink.messages.front(), std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"});
 }
 
-void StdioTransport::SplitsMultipleFramesByNewline() {
+void StdioTransport::SplitsMultipleFramesByNewline(void) {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -179,7 +179,7 @@ void StdioTransport::SplitsMultipleFramesByNewline() {
     QCOMPARE(sink.messages[2], std::string{"c"});
 }
 
-void StdioTransport::BuffersAcrossReads() {
+void StdioTransport::BuffersAcrossReads(void) {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -196,7 +196,7 @@ void StdioTransport::BuffersAcrossReads() {
     QCOMPARE(sink.messages[1], std::string{"then-next"});
 }
 
-void StdioTransport::IgnoresEmptyLines() {
+void StdioTransport::IgnoresEmptyLines(void) {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -212,7 +212,7 @@ void StdioTransport::IgnoresEmptyLines() {
     QCOMPARE(sink.messages[0], std::string{"hi"});
 }
 
-void StdioTransport::SendWritesNewlineDelimitedFrames() {
+void StdioTransport::SendWritesNewlineDelimitedFrames(void) {
     PipeHarness h;
     h.transport->start();
 
@@ -223,7 +223,7 @@ void StdioTransport::SendWritesNewlineDelimitedFrames() {
     QCOMPARE(out, std::string{R"({"jsonrpc":"2.0","id":7,"method":"y"})"} + "\n");
 }
 
-void StdioTransport::RejectsFramesWithEmbeddedNewline() {
+void StdioTransport::RejectsFramesWithEmbeddedNewline(void) {
     PipeHarness h;
     h.transport->start();
     auto ec = h.transport->send("a\nb");
@@ -231,7 +231,7 @@ void StdioTransport::RejectsFramesWithEmbeddedNewline() {
     QCOMPARE(ec, std::make_error_code(std::errc::invalid_argument));
 }
 
-void StdioTransport::ConcurrentSendsAreSerialized() {
+void StdioTransport::ConcurrentSendsAreSerialized(void) {
     PipeHarness h;
     h.transport->start();
 
@@ -279,14 +279,14 @@ void StdioTransport::ConcurrentSendsAreSerialized() {
     QCOMPARE(frame_count, kThreads * kPer);
 }
 
-void StdioTransport::SendBeforeStartFails() {
+void StdioTransport::SendBeforeStartFails(void) {
     PipeHarness h;
     auto ec = h.transport->send("x");
     QVERIFY(ec);
     QCOMPARE(ec, std::make_error_code(std::errc::not_connected));
 }
 
-void StdioTransport::EofTriggersClose() {
+void StdioTransport::EofTriggersClose(void) {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -299,7 +299,7 @@ void StdioTransport::EofTriggersClose() {
     QVERIFY(sink.wait_for_close());
 }
 
-void StdioTransport::ExplicitCloseUnblocksReadLoop() {
+void StdioTransport::ExplicitCloseUnblocksReadLoop(void) {
     // Sink before PipeHarness so the harness destructor (which closes
     // the transport, firing on_close on the read thread) sees a still-
     // alive sink. The reverse ordering crashed under ASan.
@@ -314,7 +314,7 @@ void StdioTransport::ExplicitCloseUnblocksReadLoop() {
     QVERIFY(sink.wait_for_close());
 }
 
-void StdioTransport::IsOpenReflectsLifecycle() {
+void StdioTransport::IsOpenReflectsLifecycle(void) {
     PipeHarness h;
     QVERIFY(!h.transport->is_open());
     h.transport->start();
@@ -323,7 +323,7 @@ void StdioTransport::IsOpenReflectsLifecycle() {
     QVERIFY(!h.transport->is_open());
 }
 
-void StdioTransport::IdempotentStartAndClose() {
+void StdioTransport::IdempotentStartAndClose(void) {
     PipeHarness h;
     h.transport->start();
     h.transport->start();   // second start() is a no-op
@@ -331,7 +331,7 @@ void StdioTransport::IdempotentStartAndClose() {
     h.transport->close();   // second close() is a no-op
 }
 
-void StdioTransport::OversizedFrameTriggersErrorAndClose() {
+void StdioTransport::OversizedFrameTriggersErrorAndClose(void) {
     int t2[2];
     int f2[2];
     QCOMPARE(::pipe(t2), 0);

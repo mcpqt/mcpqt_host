@@ -46,11 +46,11 @@ struct PluginManager::FunctionEntry {
     QMetaMethod             method;
 };
 
-PluginManager::PluginManager() = default;
+PluginManager::PluginManager(void) = default;
 
 PluginManager::~PluginManager() { unload_all(); }
 
-QStringList PluginManager::host_get_funcs() const {
+QStringList PluginManager::host_get_funcs(void) const {
     return functions();
 }
 
@@ -185,8 +185,8 @@ QVariant PluginManager::invoke_method(QObject* object,
 
 QVariant PluginManager::call_function(const QString& signature,
                                       const QVariantList& args) const {
-    const auto it = registry_.constFind(signature);
-    if (it == registry_.constEnd()) {
+    const auto it = m_registry.constFind(signature);
+    if (it == m_registry.constEnd()) {
         throw Error{ error_code::method_not_found,
                      "unknown function: " + signature.toStdString() };
     }
@@ -260,13 +260,13 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
         }
     }
 
-    if (registry_.contains(signature)) {
+    if (m_registry.contains(signature)) {
         MCP_LOG_WARN("PluginManager: function '" + signature.toStdString() +
                      "' is already registered; skipping duplicate");
         return false;
     }
 
-    registry_.insert(signature, FunctionEntry{ inst, method });
+    m_registry.insert(signature, FunctionEntry{ inst, method });
     inst->signatures.append(signature);
     return true;
 }
@@ -288,7 +288,7 @@ void PluginManager::unload_instance(const std::shared_ptr<Instance>& inst) {
         return;
     }
     for (const QString& signature : inst->signatures) {
-        registry_.remove(signature);
+        m_registry.remove(signature);
     }
     inst->signatures.clear();
 
@@ -349,7 +349,7 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
         return LoadOutcome::Failed;
     }
     const std::string id = id_q.toStdString();
-    for (const auto& existing : plugins_) {
+    for (const auto& existing : m_plugins) {
         if (existing->id == id) {
             MCP_LOG_WARN("PluginManager: plugin id '" + id +
                          "' already loaded from " +
@@ -391,18 +391,18 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
                      "' threw: " + e.what());
         if (inst->pinned) {
             // It already claimed logging; its sink code must stay resident.
-            plugins_.push_back(std::move(inst));
+            m_plugins.push_back(std::move(inst));
             return LoadOutcome::Failed;
         }
         unload_instance(inst);
         return LoadOutcome::Failed;
     }
 
-    plugins_.push_back(std::move(inst));
+    m_plugins.push_back(std::move(inst));
 
-    MCP_LOG_INFO("PluginManager: loaded plugin '" + plugins_.back()->id + "' (" +
+    MCP_LOG_INFO("PluginManager: loaded plugin '" + m_plugins.back()->id + "' (" +
                  file.toStdString() + "), " +
-                 std::to_string(plugins_.back()->signatures.size()) +
+                 std::to_string(m_plugins.back()->signatures.size()) +
                  " function(s) registered");
     return LoadOutcome::Loaded;
 }
@@ -463,7 +463,7 @@ std::size_t PluginManager::load_directory(const QString& directory) {
 
 bool PluginManager::unload_plugin(const std::string& id) {
     std::shared_ptr<Instance> target;
-    for (const auto& inst : plugins_) {
+    for (const auto& inst : m_plugins) {
         if (inst->id == id) {
             target = inst;
             break;
@@ -479,7 +479,7 @@ bool PluginManager::unload_plugin(const std::string& id) {
     }
 
     const QString target_id = QString::fromStdString(target->id);
-    for (const auto& other : plugins_) {
+    for (const auto& other : m_plugins) {
         if (other.get() == target.get()) {
             continue;
         }
@@ -503,51 +503,51 @@ bool PluginManager::unload_plugin(const std::string& id) {
     }
 
     unload_instance(target);
-    plugins_.erase(std::remove_if(plugins_.begin(), plugins_.end(),
+    m_plugins.erase(std::remove_if(m_plugins.begin(), m_plugins.end(),
                                   [&target](const std::shared_ptr<Instance>& p) {
                                       return p.get() == target.get();
                                   }),
-                   plugins_.end());
+                   m_plugins.end());
     MCP_LOG_INFO("PluginManager: unloaded plugin '" + id + "'");
     return true;
 }
 
-void PluginManager::unload_all() {
-    for (auto it = plugins_.begin(); it != plugins_.end();) {
+void PluginManager::unload_all(void) {
+    for (auto it = m_plugins.begin(); it != m_plugins.end();) {
         if ((*it)->pinned) {
             ++it;
             continue;
         }
         unload_instance(*it);
-        it = plugins_.erase(it);
+        it = m_plugins.erase(it);
     }
 }
 
-std::size_t PluginManager::plugin_count() const { return plugins_.size(); }
+std::size_t PluginManager::plugin_count(void) const { return m_plugins.size(); }
 
-QStringList PluginManager::plugin_ids() const {
+QStringList PluginManager::plugin_ids(void) const {
     QStringList ids;
-    for (const auto& inst : plugins_) {
+    for (const auto& inst : m_plugins) {
         ids << QString::fromStdString(inst->id);
     }
     return ids;
 }
 
 QObject* PluginManager::plugin_object(const std::string& id) const {
-    for (const auto& inst : plugins_) {
+    for (const auto& inst : m_plugins) {
         if (inst->id == id) return inst->object;
     }
     return nullptr;
 }
 
-QStringList PluginManager::functions() const {
-    QStringList sigs = registry_.keys();
+QStringList PluginManager::functions(void) const {
+    QStringList sigs = m_registry.keys();
     sigs.sort();
     return sigs;
 }
 
 bool PluginManager::has_function(const QString& signature) const {
-    return registry_.contains(signature);
+    return m_registry.contains(signature);
 }
 
 }  // namespace mcp

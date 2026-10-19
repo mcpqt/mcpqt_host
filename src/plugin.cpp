@@ -29,7 +29,7 @@ QString plugin_class_info(const QMetaObject* meta_object, const char* key) {
     return {};
 }
 
-void PluginInterface::registerPublicSlots() {
+void PluginInterface::registerPublicSlots(void) {
     const QMetaObject* mo     = metaObject();
     const QString      prefix = plugin_class_info(mo, "id") + ".";
 
@@ -44,10 +44,10 @@ void PluginInterface::registerPublicSlots() {
         // which slots are acceptable functions (return type, arity, parameter
         // types, inherited methods, duplicates); the plugin does not filter or
         // reject anything here.
-        if (host_.regFunc) {
+        if (m_host.regFunc) {
             const QString signature =
                 prefix + QString::fromLatin1(method.methodSignature());
-            (void)host_.regFunc(signature);
+            (void)m_host.regFunc(signature);
         }
     }
 }

@@ -50,29 +50,29 @@ public:
     using Handler = std::function<QByteArray(const Request&)>;
 
     explicit FakeHttpServer(Handler handler) {
-        worker_ = new Worker(std::move(handler));
-        thread_ = new QThread;
-        worker_->moveToThread(thread_);
-        QObject::connect(thread_, &QThread::started, worker_,
-                         [this] { worker_->start(); });
-        QObject::connect(thread_, &QThread::finished, worker_,
+        m_worker = new Worker(std::move(handler));
+        m_thread = new QThread;
+        m_worker->moveToThread(m_thread);
+        QObject::connect(m_thread, &QThread::started, m_worker,
+                         [this] { m_worker->start(); });
+        QObject::connect(m_thread, &QThread::finished, m_worker,
                          &QObject::deleteLater);
-        thread_->start();
-        while (worker_->port() == 0) {
+        m_thread->start();
+        while (m_worker->port() == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 
     ~FakeHttpServer() {
-        thread_->quit();
-        thread_->wait();
-        delete thread_;
+        m_thread->quit();
+        m_thread->wait();
+        delete m_thread;
     }
 
     FakeHttpServer(const FakeHttpServer&)            = delete;
     FakeHttpServer& operator=(const FakeHttpServer&) = delete;
 
-    [[nodiscard]] quint16 port() const { return worker_->port(); }
+    [[nodiscard]] quint16 port(void) const { return m_worker->port(); }
     [[nodiscard]] QString url(const QString& path = QStringLiteral("/mcp")) const {
         return QStringLiteral("http://127.0.0.1:%1%2").arg(port()).arg(path);
     }
@@ -80,20 +80,20 @@ public:
 private:
     class Worker : public QObject {
     public:
-        explicit Worker(Handler h) : handler_(std::move(h)) {}
+        explicit Worker(Handler h) : m_handler(std::move(h)) {}
 
-        void start() {
-            server_ = new QTcpServer(this);
-            QObject::connect(server_, &QTcpServer::newConnection, this, [this] {
-                while (QTcpSocket* c = server_->nextPendingConnection()) {
+        void start(void) {
+            m_server = new QTcpServer(this);
+            QObject::connect(m_server, &QTcpServer::newConnection, this, [this] {
+                while (QTcpSocket* c = m_server->nextPendingConnection()) {
                     handle(c);
                 }
             });
-            server_->listen(QHostAddress::LocalHost, 0);
-            port_.store(server_->serverPort());
+            m_server->listen(QHostAddress::LocalHost, 0);
+            m_port.store(m_server->serverPort());
         }
 
-        [[nodiscard]] quint16 port() const { return port_.load(); }
+        [[nodiscard]] quint16 port(void) const { return m_port.load(); }
 
     private:
         static bool request_complete(const QByteArray& buf) {
@@ -141,7 +141,7 @@ private:
             QObject::connect(c, &QTcpSocket::readyRead, c, [this, c, buf] {
                 buf->append(c->readAll());
                 if (!request_complete(*buf)) return;
-                const QByteArray resp = handler_(parse(*buf));
+                const QByteArray resp = m_handler(parse(*buf));
                 c->write(resp);
                 c->flush();
                 c->disconnectFromHost();
@@ -150,13 +150,13 @@ private:
                              &QObject::deleteLater);
         }
 
-        QTcpServer*          server_ = nullptr;
-        Handler              handler_;
-        std::atomic<quint16> port_{0};
+        QTcpServer*          m_server = nullptr;
+        Handler              m_handler;
+        std::atomic<quint16> m_port{0};
     };
 
-    Worker*  worker_ = nullptr;
-    QThread* thread_ = nullptr;
+    Worker*  m_worker = nullptr;
+    QThread* m_thread = nullptr;
 };
 
 // --------------------------------------------------------------------------

@@ -34,13 +34,13 @@ using mcp::Json;
 class RequestId : public QObject {
     Q_OBJECT
 private slots:
-    void IntegerRoundTrip();
-    void StringRoundTrip();
-    void CanonicalDistinguishesStringFromInt();
-    void RejectsBoolAndNull();
+    void IntegerRoundTrip(void);
+    void StringRoundTrip(void);
+    void CanonicalDistinguishesStringFromInt(void);
+    void RejectsBoolAndNull(void);
 };
 
-void RequestId::IntegerRoundTrip() {
+void RequestId::IntegerRoundTrip(void) {
     mcp::RequestId id{42};
     QVERIFY(id.is_integer());
     QCOMPARE(id.as_integer(), std::int64_t{42});
@@ -50,7 +50,7 @@ void RequestId::IntegerRoundTrip() {
     QCOMPARE(id, back);
 }
 
-void RequestId::StringRoundTrip() {
+void RequestId::StringRoundTrip(void) {
     mcp::RequestId id{std::string{"abc"}};
     QVERIFY(id.is_string());
     QCOMPARE(id.as_string(), std::string{"abc"});
@@ -60,7 +60,7 @@ void RequestId::StringRoundTrip() {
     QCOMPARE(id, back);
 }
 
-void RequestId::CanonicalDistinguishesStringFromInt() {
+void RequestId::CanonicalDistinguishesStringFromInt(void) {
     mcp::RequestId i{5};
     mcp::RequestId s{"5"};
     QVERIFY(i.canonical() != s.canonical());
@@ -68,7 +68,7 @@ void RequestId::CanonicalDistinguishesStringFromInt() {
             std::hash<mcp::RequestId>{}(s));
 }
 
-void RequestId::RejectsBoolAndNull() {
+void RequestId::RejectsBoolAndNull(void) {
     Json j = true;
     mcp::RequestId out;
     QVERIFY_EXCEPTION_THROWN(mcp::from_json(j, out), mcp::Error);
@@ -83,17 +83,17 @@ void RequestId::RejectsBoolAndNull() {
 class JsonRpc : public QObject {
     Q_OBJECT
 private slots:
-    void RequestRoundTrip();
-    void RequestRejectsBadJsonrpc();
-    void NotificationOmitsId();
-    void ResponseSuccess();
-    void ResponseError();
-    void ResponseRejectsBothResultAndError();
-    void ParseMessageDispatchesOnShape();
-    void ParseMessageRejectsBadShape();
+    void RequestRoundTrip(void);
+    void RequestRejectsBadJsonrpc(void);
+    void NotificationOmitsId(void);
+    void ResponseSuccess(void);
+    void ResponseError(void);
+    void ResponseRejectsBothResultAndError(void);
+    void ParseMessageDispatchesOnShape(void);
+    void ParseMessageRejectsBadShape(void);
 };
 
-void JsonRpc::RequestRoundTrip() {
+void JsonRpc::RequestRoundTrip(void) {
     mcp::JsonRpcRequest r{
         .id     = mcp::RequestId{1},
         .method = "tools/list",
@@ -110,12 +110,12 @@ void JsonRpc::RequestRoundTrip() {
     QCOMPARE(back.params, r.params);
 }
 
-void JsonRpc::RequestRejectsBadJsonrpc() {
+void JsonRpc::RequestRejectsBadJsonrpc(void) {
     Json j = QJsonObject{{"jsonrpc", "1.0"}, {"id", 1}, {"method", "x"}};
     QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::JsonRpcRequest>(j), mcp::Error);
 }
 
-void JsonRpc::NotificationOmitsId() {
+void JsonRpc::NotificationOmitsId(void) {
     mcp::JsonRpcNotification n{.method = "notifications/initialized"};
     Json j = mcp::to_json(n);
     QVERIFY(!mcp::test::has_key(j, "id"));
@@ -125,7 +125,7 @@ void JsonRpc::NotificationOmitsId() {
     QCOMPARE(back.method, n.method);
 }
 
-void JsonRpc::ResponseSuccess() {
+void JsonRpc::ResponseSuccess(void) {
     mcp::JsonRpcResponse r{
         .id      = mcp::RequestId{1},
         .outcome = QJsonObject{{"k", "v"}},
@@ -138,7 +138,7 @@ void JsonRpc::ResponseSuccess() {
     QCOMPARE(back.result(), r.result());
 }
 
-void JsonRpc::ResponseError() {
+void JsonRpc::ResponseError(void) {
     mcp::JsonRpcResponse r{
         .id      = mcp::RequestId{1},
         .outcome = mcp::ErrorObject{mcp::error_code::method_not_found, "no", {}},
@@ -152,7 +152,7 @@ void JsonRpc::ResponseError() {
     QCOMPARE(back.error().message, std::string{"no"});
 }
 
-void JsonRpc::ResponseRejectsBothResultAndError() {
+void JsonRpc::ResponseRejectsBothResultAndError(void) {
     Json j = QJsonObject{{"jsonrpc", "2.0"},
                          {"id", 1},
                          {"result", "x"},
@@ -160,7 +160,7 @@ void JsonRpc::ResponseRejectsBothResultAndError() {
     QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::JsonRpcResponse>(j), mcp::Error);
 }
 
-void JsonRpc::ParseMessageDispatchesOnShape() {
+void JsonRpc::ParseMessageDispatchesOnShape(void) {
     Json req  = QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "x"}};
     Json note = QJsonObject{{"jsonrpc", "2.0"}, {"method", "x"}};
     Json resp = QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"result", "y"}};
@@ -174,7 +174,7 @@ void JsonRpc::ParseMessageDispatchesOnShape() {
     QVERIFY(std::holds_alternative<mcp::JsonRpcResponse>(m3));
 }
 
-void JsonRpc::ParseMessageRejectsBadShape() {
+void JsonRpc::ParseMessageRejectsBadShape(void) {
     const Json bad = QJsonObject{{"jsonrpc", "2.0"}};
     QVERIFY_EXCEPTION_THROWN(([&] { (void)mcp::parse_message(bad); }()), mcp::Error);
 }
@@ -186,11 +186,11 @@ void JsonRpc::ParseMessageRejectsBadShape() {
 class Implementation : public QObject {
     Q_OBJECT
 private slots:
-    void RoundTripWithAllFields();
-    void MinimalShape();
+    void RoundTripWithAllFields(void);
+    void MinimalShape(void);
 };
 
-void Implementation::RoundTripWithAllFields() {
+void Implementation::RoundTripWithAllFields(void) {
     mcp::Implementation imp{
         .name        = "calc",
         .title       = "Calculator",
@@ -212,7 +212,7 @@ void Implementation::RoundTripWithAllFields() {
     QCOMPARE(back.website_url, imp.website_url);
 }
 
-void Implementation::MinimalShape() {
+void Implementation::MinimalShape(void) {
     mcp::Implementation imp{.name = "x", .version = "1"};
     Json j = mcp::to_json(imp);
     QVERIFY(!mcp::test::has_key(j, "title"));
@@ -225,14 +225,14 @@ void Implementation::MinimalShape() {
 class Capabilities : public QObject {
     Q_OBJECT
 private slots:
-    void ServerToolsListChanged();
-    void ServerLoggingPresenceOnly();
-    void ResourcesSubscribeAndListChanged();
-    void ClientSamplingTools();
-    void EmptyServerCapsSerializeAsEmptyObject();
+    void ServerToolsListChanged(void);
+    void ServerLoggingPresenceOnly(void);
+    void ResourcesSubscribeAndListChanged(void);
+    void ClientSamplingTools(void);
+    void EmptyServerCapsSerializeAsEmptyObject(void);
 };
 
-void Capabilities::ServerToolsListChanged() {
+void Capabilities::ServerToolsListChanged(void) {
     mcp::ServerCapabilities caps;
     caps.tools = mcp::ToolsCapability{.list_changed = true};
     Json j = mcp::to_json(caps);
@@ -242,7 +242,7 @@ void Capabilities::ServerToolsListChanged() {
     QCOMPARE(back.tools->list_changed, true);
 }
 
-void Capabilities::ServerLoggingPresenceOnly() {
+void Capabilities::ServerLoggingPresenceOnly(void) {
     mcp::ServerCapabilities caps;
     caps.logging = QJsonObject{};  // presence-only
     Json j = mcp::to_json(caps);
@@ -251,7 +251,7 @@ void Capabilities::ServerLoggingPresenceOnly() {
     QVERIFY(back.logging.has_value());
 }
 
-void Capabilities::ResourcesSubscribeAndListChanged() {
+void Capabilities::ResourcesSubscribeAndListChanged(void) {
     mcp::ServerCapabilities caps;
     caps.resources = mcp::ResourcesCapability{
         .subscribe    = true,
@@ -266,7 +266,7 @@ void Capabilities::ResourcesSubscribeAndListChanged() {
     QCOMPARE(back.resources->list_changed, false);
 }
 
-void Capabilities::ClientSamplingTools() {
+void Capabilities::ClientSamplingTools(void) {
     mcp::ClientCapabilities caps;
     caps.sampling = mcp::SamplingCapability{.tools = QJsonObject{}};
     Json j = mcp::to_json(caps);
@@ -276,7 +276,7 @@ void Capabilities::ClientSamplingTools() {
     QVERIFY(back.sampling->tools.has_value());
 }
 
-void Capabilities::EmptyServerCapsSerializeAsEmptyObject() {
+void Capabilities::EmptyServerCapsSerializeAsEmptyObject(void) {
     mcp::ServerCapabilities caps;
     Json j = mcp::to_json(caps);
     QVERIFY(j.isObject());
@@ -290,12 +290,12 @@ void Capabilities::EmptyServerCapsSerializeAsEmptyObject() {
 class Initialize : public QObject {
     Q_OBJECT
 private slots:
-    void RequestParamsRoundTrip();
-    void ResultRoundTrip();
-    void NotificationMethodConstantsAreSpecCorrect();
+    void RequestParamsRoundTrip(void);
+    void ResultRoundTrip(void);
+    void NotificationMethodConstantsAreSpecCorrect(void);
 };
 
-void Initialize::RequestParamsRoundTrip() {
+void Initialize::RequestParamsRoundTrip(void) {
     mcp::InitializeRequestParams p{
         .protocol_version = std::string{mcp::kLatestProtocolVersion},
         .capabilities     = {},
@@ -313,7 +313,7 @@ void Initialize::RequestParamsRoundTrip() {
     QCOMPARE(back.capabilities.roots->list_changed, true);
 }
 
-void Initialize::ResultRoundTrip() {
+void Initialize::ResultRoundTrip(void) {
     mcp::InitializeResult r{
         .protocol_version = "2025-11-25",
         .capabilities     = {},
@@ -332,7 +332,7 @@ void Initialize::ResultRoundTrip() {
     QVERIFY(back.capabilities.tools.has_value());
 }
 
-void Initialize::NotificationMethodConstantsAreSpecCorrect() {
+void Initialize::NotificationMethodConstantsAreSpecCorrect(void) {
     QCOMPARE(mcp::method_initialize, std::string_view{"initialize"});
     QCOMPARE(mcp::method_notifications_initialized,
              std::string_view{"notifications/initialized"});
@@ -345,15 +345,15 @@ void Initialize::NotificationMethodConstantsAreSpecCorrect() {
 class Content : public QObject {
     Q_OBJECT
 private slots:
-    void TextBlockShape();
-    void ImageBlockShape();
-    void AudioBlockShape();
-    void BlockVariantDispatchesOnType();
-    void BlockVariantRejectsUnknownType();
-    void AnnotationsRoundTrip();
+    void TextBlockShape(void);
+    void ImageBlockShape(void);
+    void AudioBlockShape(void);
+    void BlockVariantDispatchesOnType(void);
+    void BlockVariantRejectsUnknownType(void);
+    void AnnotationsRoundTrip(void);
 };
 
-void Content::TextBlockShape() {
+void Content::TextBlockShape(void) {
     mcp::TextContent t{.text = "hi"};
     Json j = mcp::to_json(t);
     QCOMPARE(j["type"], mcp::test::jv("text"));
@@ -362,7 +362,7 @@ void Content::TextBlockShape() {
     QCOMPARE(back.text, t.text);
 }
 
-void Content::ImageBlockShape() {
+void Content::ImageBlockShape(void) {
     mcp::ImageContent i{.data = "Zm9v", .mime_type = "image/png"};
     Json j = mcp::to_json(i);
     QCOMPARE(j["type"],     mcp::test::jv("image"));
@@ -372,14 +372,14 @@ void Content::ImageBlockShape() {
     QCOMPARE(back.mime_type, i.mime_type);
 }
 
-void Content::AudioBlockShape() {
+void Content::AudioBlockShape(void) {
     mcp::AudioContent a{.data = "abcd", .mime_type = "audio/wav"};
     Json j = mcp::to_json(a);
     QCOMPARE(j["type"],     mcp::test::jv("audio"));
     QCOMPARE(j["mimeType"], mcp::test::jv("audio/wav"));
 }
 
-void Content::BlockVariantDispatchesOnType() {
+void Content::BlockVariantDispatchesOnType(void) {
     Json text = QJsonObject{{"type", "text"}, {"text", "x"}};
     auto block = mcp::from_json<mcp::ContentBlock>(text);
     QVERIFY(std::holds_alternative<mcp::TextContent>(block));
@@ -390,12 +390,12 @@ void Content::BlockVariantDispatchesOnType() {
     QVERIFY(std::holds_alternative<mcp::ImageContent>(block));
 }
 
-void Content::BlockVariantRejectsUnknownType() {
+void Content::BlockVariantRejectsUnknownType(void) {
     Json unknown = QJsonObject{{"type", "video"}};
     QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::ContentBlock>(unknown), mcp::Error);
 }
 
-void Content::AnnotationsRoundTrip() {
+void Content::AnnotationsRoundTrip(void) {
     mcp::Annotations a;
     a.audience      = std::vector<mcp::Role>{mcp::Role::user, mcp::Role::assistant};
     a.priority      = 0.5;
@@ -417,14 +417,14 @@ void Content::AnnotationsRoundTrip() {
 class Tools : public QObject {
     Q_OBJECT
 private slots:
-    void ToolRoundTrip();
-    void ListToolsResultRoundTrip();
-    void CallToolRequestParamsShape();
-    void CallToolResultRoundTrip();
-    void ToolAnnotationsRoundTrip();
+    void ToolRoundTrip(void);
+    void ListToolsResultRoundTrip(void);
+    void CallToolRequestParamsShape(void);
+    void CallToolResultRoundTrip(void);
+    void ToolAnnotationsRoundTrip(void);
 };
 
-void Tools::ToolRoundTrip() {
+void Tools::ToolRoundTrip(void) {
     mcp::Tool t{
         .name         = "add",
         .title        = "Add",
@@ -444,7 +444,7 @@ void Tools::ToolRoundTrip() {
     QCOMPARE(back.input_schema, t.input_schema);
 }
 
-void Tools::ListToolsResultRoundTrip() {
+void Tools::ListToolsResultRoundTrip(void) {
     mcp::ListToolsResult r;
     r.tools.push_back(mcp::Tool{
         .name         = "x",
@@ -460,7 +460,7 @@ void Tools::ListToolsResultRoundTrip() {
     QCOMPARE(back.next_cursor, std::string{"next"});
 }
 
-void Tools::CallToolRequestParamsShape() {
+void Tools::CallToolRequestParamsShape(void) {
     mcp::CallToolRequestParams p{
         .name      = "add",
         .arguments = QJsonObject{{"a", 1}, {"b", 2}},
@@ -473,7 +473,7 @@ void Tools::CallToolRequestParamsShape() {
     QCOMPARE(back.arguments, p.arguments);
 }
 
-void Tools::CallToolResultRoundTrip() {
+void Tools::CallToolResultRoundTrip(void) {
     mcp::CallToolResult r;
     r.content.push_back(mcp::TextContent{.text = "3"});
     r.is_error = false;
@@ -487,7 +487,7 @@ void Tools::CallToolResultRoundTrip() {
     QCOMPARE(std::get<mcp::TextContent>(back.content[0]).text, std::string{"3"});
 }
 
-void Tools::ToolAnnotationsRoundTrip() {
+void Tools::ToolAnnotationsRoundTrip(void) {
     mcp::ToolAnnotations a{
         .title            = "Add",
         .read_only_hint   = true,
@@ -510,18 +510,18 @@ void Tools::ToolAnnotationsRoundTrip() {
 class SpecAdditions : public QObject {
     Q_OBJECT
 private slots:
-    void ToolUseContentRoundTrip();
-    void ToolResultContentRoundTrip();
-    void ToolResultRejectsNestedToolUseInContent();
-    void SamplingToolsAndToolChoiceRoundTrip();
-    void ToolChoiceObjectFormForNamedTool();
-    void IconsAndMetaOnImplementation();
-    void MetaOnInitializeResult();
-    void ToolExecutionRoundTrip();
-    void UrlElicitationRequiredErrorDataRoundTrip();
+    void ToolUseContentRoundTrip(void);
+    void ToolResultContentRoundTrip(void);
+    void ToolResultRejectsNestedToolUseInContent(void);
+    void SamplingToolsAndToolChoiceRoundTrip(void);
+    void ToolChoiceObjectFormForNamedTool(void);
+    void IconsAndMetaOnImplementation(void);
+    void MetaOnInitializeResult(void);
+    void ToolExecutionRoundTrip(void);
+    void UrlElicitationRequiredErrorDataRoundTrip(void);
 };
 
-void SpecAdditions::ToolUseContentRoundTrip() {
+void SpecAdditions::ToolUseContentRoundTrip(void) {
     mcp::ToolUseContent c{
         .id    = "tu_abc",
         .name  = "search",
@@ -538,7 +538,7 @@ void SpecAdditions::ToolUseContentRoundTrip() {
     QCOMPARE(std::get<mcp::ToolUseContent>(back).id, std::string{"tu_abc"});
 }
 
-void SpecAdditions::ToolResultContentRoundTrip() {
+void SpecAdditions::ToolResultContentRoundTrip(void) {
     mcp::ToolResultContent c{
         .tool_use_id = "tu_abc",
         .content     = { mcp::TextContent{.text = "found 42"} },
@@ -555,7 +555,7 @@ void SpecAdditions::ToolResultContentRoundTrip() {
     QCOMPARE(std::get<mcp::ToolResultContent>(back).tool_use_id, std::string{"tu_abc"});
 }
 
-void SpecAdditions::ToolResultRejectsNestedToolUseInContent() {
+void SpecAdditions::ToolResultRejectsNestedToolUseInContent(void) {
     // PlainContentBlock parser MUST reject "tool_use" / "tool_result"
     // — that's the spec rule preventing recursive content blocks.
     Json j = QJsonObject{
@@ -569,7 +569,7 @@ void SpecAdditions::ToolResultRejectsNestedToolUseInContent() {
     QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::ContentBlock>(j), mcp::Error);
 }
 
-void SpecAdditions::SamplingToolsAndToolChoiceRoundTrip() {
+void SpecAdditions::SamplingToolsAndToolChoiceRoundTrip(void) {
     mcp::CreateMessageRequestParams p{
         .messages = { mcp::SamplingMessage{
             .role    = mcp::Role::user,
@@ -595,7 +595,7 @@ void SpecAdditions::SamplingToolsAndToolChoiceRoundTrip() {
     QCOMPARE(*back.tool_choice->mode, mcp::ToolChoiceMode::any);
 }
 
-void SpecAdditions::ToolChoiceObjectFormForNamedTool() {
+void SpecAdditions::ToolChoiceObjectFormForNamedTool(void) {
     mcp::ToolChoice c{
         .mode = mcp::ToolChoiceMode::tool,
         .name = "search",
@@ -609,7 +609,7 @@ void SpecAdditions::ToolChoiceObjectFormForNamedTool() {
     QCOMPARE(*back.name, std::string{"search"});
 }
 
-void SpecAdditions::IconsAndMetaOnImplementation() {
+void SpecAdditions::IconsAndMetaOnImplementation(void) {
     mcp::Implementation impl{
         .name    = "x", .version = "1",
         .icons   = std::vector<mcp::Icon>{{
@@ -627,7 +627,7 @@ void SpecAdditions::IconsAndMetaOnImplementation() {
     QCOMPARE((*back.meta)["app.example/internal"], mcp::test::jv(42));
 }
 
-void SpecAdditions::MetaOnInitializeResult() {
+void SpecAdditions::MetaOnInitializeResult(void) {
     mcp::InitializeResult r{
         .protocol_version = "2025-11-25",
         .capabilities     = {},
@@ -641,7 +641,7 @@ void SpecAdditions::MetaOnInitializeResult() {
     QCOMPARE((*back.meta)["x"], mcp::test::jv(1));
 }
 
-void SpecAdditions::ToolExecutionRoundTrip() {
+void SpecAdditions::ToolExecutionRoundTrip(void) {
     mcp::Tool t{
         .name         = "danger",
         .input_schema = QJsonObject{{"type", "object"}},
@@ -656,7 +656,7 @@ void SpecAdditions::ToolExecutionRoundTrip() {
     QCOMPARE(back.execution->task_support, mcp::TaskSupport::required);
 }
 
-void SpecAdditions::UrlElicitationRequiredErrorDataRoundTrip() {
+void SpecAdditions::UrlElicitationRequiredErrorDataRoundTrip(void) {
     mcp::UrlElicitationRequiredErrorData d{
         .elicitations = { mcp::ElicitUrlRequestParams{
             .message        = "Authorise via the linked URL",

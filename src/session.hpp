@@ -104,11 +104,11 @@ public:
     void set_on_closed(ClosedCallback cb);
 
     /// Begin processing. Idempotent.
-    void start();
+    void start(void);
 
     /// Stop processing, cancel all pending requests, and close the
     /// transport. Idempotent.
-    void close();
+    void close(void);
 
     /// Send a JSON-RPC request and return a future for its result.
     /// `timeout` of zero means use `Options::default_request_timeout`.
@@ -160,9 +160,9 @@ public:
     std::error_code send_notification(std::string    method,
                                       Json params = {});
 
-    [[nodiscard]] bool is_open() const noexcept {
-        return started_.load(std::memory_order_acquire) &&
-               !closed_.load(std::memory_order_acquire);
+    [[nodiscard]] bool is_open(void) const noexcept {
+        return m_started.load(std::memory_order_acquire) &&
+               !m_closed.load(std::memory_order_acquire);
     }
 
 private:
@@ -171,15 +171,15 @@ private:
     void handle_notification(JsonRpcNotification note);
     void handle_response(JsonRpcResponse resp);
     void send_message(const JsonRpcMessage& msg);
-    void timeout_loop();
+    void timeout_loop(void);
     void cancel_all_pending(const ErrorObject& reason);
 
-    [[nodiscard]] RequestId next_id() noexcept;
+    [[nodiscard]] RequestId next_id(void) noexcept;
 
     /// A parked outbound request. Instead of a bare promise we hold
     /// type-erased resolvers so the typed `send_request_for<T>` can run
     /// its json->T conversion at resolution time. Exactly one of
-    /// `resolve` / `reject` is invoked, always *outside* `pending_mu_`
+    /// `resolve` / `reject` is invoked, always *outside* `m_pending_mu`
     /// (resolving a future can wake a waiter that re-enters the Session).
     struct Pending {
         std::function<void(Json)>     resolve;
@@ -195,38 +195,38 @@ private:
                           Pending        pending,
                           std::chrono::milliseconds timeout);
 
-    std::unique_ptr<Transport> transport_;
-    Options                    opts_;
+    std::unique_ptr<Transport> m_transport;
+    Options                    m_opts;
 
-    std::atomic<bool>          started_{false};
-    std::atomic<bool>          closed_{false};
-    std::atomic<std::int64_t>  next_id_{1};
+    std::atomic<bool>          m_started{false};
+    std::atomic<bool>          m_closed{false};
+    std::atomic<std::int64_t>  m_next_id{1};
 
     // Pending outbound requests awaiting a response. Keyed by canonical
     // RequestId string so int and string ids never collide.
-    std::mutex                                              pending_mu_;
-    std::unordered_map<RequestId, Pending>                  pending_;
-    std::condition_variable                                 timeout_cv_;
-    std::thread                                             timeout_thread_;
+    std::mutex                                              m_pending_mu;
+    std::unordered_map<RequestId, Pending>                  m_pending;
+    std::condition_variable                                 m_timeout_cv;
+    std::thread                                             m_timeout_thread;
 
-    // Handler tables. Read-mostly; protected by handlers_mu_ so they can
+    // Handler tables. Read-mostly; protected by m_handlers_mu so they can
     // be modified after start() without UB.
-    std::mutex                                              handlers_mu_;
-    std::unordered_map<std::string, RequestHandler>         req_handlers_;
-    std::unordered_map<std::string, NotificationHandler>    note_handlers_;
-    RequestHandler                                          fallback_req_;
-    NotificationHandler                                     fallback_note_;
+    std::mutex                                              m_handlers_mu;
+    std::unordered_map<std::string, RequestHandler>         m_req_handlers;
+    std::unordered_map<std::string, NotificationHandler>    m_note_handlers;
+    RequestHandler                                          m_fallback_req;
+    NotificationHandler                                     m_fallback_note;
 
-    std::mutex                                              closed_cb_mu_;
-    ClosedCallback                                          on_closed_;
-    std::atomic<bool>                                       closed_cb_fired_{false};
+    std::mutex                                              m_closed_cb_mu;
+    ClosedCallback                                          m_on_closed;
+    std::atomic<bool>                                       m_closed_cb_fired{false};
 
     // Tracks live request-dispatch workers so close() can wait for
-    // them to finish before any member they touch (transport_,
+    // them to finish before any member they touch (m_transport,
     // handler functions) is destroyed.
-    std::mutex                                              workers_mu_;
-    std::condition_variable                                 workers_cv_;
-    int                                                     workers_running_ = 0;
+    std::mutex                                              m_workers_mu;
+    std::condition_variable                                 m_workers_cv;
+    int                                                     m_workers_running = 0;
 };
 
 }  // namespace mcp

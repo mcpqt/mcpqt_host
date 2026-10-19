@@ -51,13 +51,13 @@ using LogSink = std::function<void(LogLevel, std::string_view)>;
 [[nodiscard]] bool claim_log_sink(LogSink sink);
 
 /// True once a sink has been claimed via `claim_log_sink()`.
-[[nodiscard]] bool log_sink_claimed() noexcept;
+[[nodiscard]] bool log_sink_claimed(void) noexcept;
 
 /// Set the global minimum level. Calls below this level are dropped before
 /// any message is formatted. Thread-safe (atomic).
 void set_log_level(LogLevel level) noexcept;
 
-[[nodiscard]] LogLevel log_level() noexcept;
+[[nodiscard]] LogLevel log_level(void) noexcept;
 
 /// Low-level entry point. Prefer the `MCP_LOG_*` macros below, which
 /// short-circuit at the call site when the level is disabled.

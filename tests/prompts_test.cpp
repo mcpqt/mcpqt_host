@@ -64,14 +64,14 @@ using mcp::Json;
 class Prompts : public QObject {
     Q_OBJECT
 private slots:
-    void PromptArgumentRoundTrip();
-    void PromptRoundTripWithArguments();
-    void PromptMessageRoundTrip();
-    void GetPromptResultRoundTrip();
-    void GetPromptParamsArgumentsAreStringMap();
+    void PromptArgumentRoundTrip(void);
+    void PromptRoundTripWithArguments(void);
+    void PromptMessageRoundTrip(void);
+    void GetPromptResultRoundTrip(void);
+    void GetPromptParamsArgumentsAreStringMap(void);
 };
 
-void Prompts::PromptArgumentRoundTrip() {
+void Prompts::PromptArgumentRoundTrip(void) {
     mcp::PromptArgument a{
         .name        = "topic",
         .title       = "Topic",
@@ -86,7 +86,7 @@ void Prompts::PromptArgumentRoundTrip() {
     QCOMPARE(back.required, a.required);
 }
 
-void Prompts::PromptRoundTripWithArguments() {
+void Prompts::PromptRoundTripWithArguments(void) {
     mcp::Prompt p{
         .name        = "summarize",
         .description = "Summarize text",
@@ -104,7 +104,7 @@ void Prompts::PromptRoundTripWithArguments() {
     QCOMPARE((*back.arguments)[0].name, std::string{"text"});
 }
 
-void Prompts::PromptMessageRoundTrip() {
+void Prompts::PromptMessageRoundTrip(void) {
     mcp::PromptMessage m{
         .role    = mcp::Role::user,
         .content = mcp::TextContent{.text = "hello"},
@@ -117,7 +117,7 @@ void Prompts::PromptMessageRoundTrip() {
     QVERIFY(std::holds_alternative<mcp::TextContent>(back.content));
 }
 
-void Prompts::GetPromptResultRoundTrip() {
+void Prompts::GetPromptResultRoundTrip(void) {
     mcp::GetPromptResult r{
         .description = "A summary prompt",
         .messages    = {
@@ -135,7 +135,7 @@ void Prompts::GetPromptResultRoundTrip() {
     QCOMPARE(back.messages[0].role, mcp::Role::user);
 }
 
-void Prompts::GetPromptParamsArgumentsAreStringMap() {
+void Prompts::GetPromptParamsArgumentsAreStringMap(void) {
     mcp::GetPromptRequestParams p{
         .name      = "x",
         .arguments = std::unordered_map<std::string, std::string>{
@@ -158,12 +158,12 @@ void Prompts::GetPromptParamsArgumentsAreStringMap() {
 class PromptsIntegration : public QObject {
     Q_OBJECT
 private slots:
-    void ListPromptsAndGetPrompt();
-    void MissingPromptMapsToError();
-    void EmptyArgumentsAreOkay();
+    void ListPromptsAndGetPrompt(void);
+    void MissingPromptMapsToError(void);
+    void EmptyArgumentsAreOkay(void);
 };
 
-void PromptsIntegration::ListPromptsAndGetPrompt() {
+void PromptsIntegration::ListPromptsAndGetPrompt(void) {
     auto p = mcp::test::make_in_memory_pair();
     PromptsServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.prompt(mcp::Prompt{
@@ -213,7 +213,7 @@ void PromptsIntegration::ListPromptsAndGetPrompt() {
     client.disconnect();
 }
 
-void PromptsIntegration::MissingPromptMapsToError() {
+void PromptsIntegration::MissingPromptMapsToError(void) {
     auto p = mcp::test::make_in_memory_pair();
     PromptsServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.prompt(mcp::Prompt{.name = "x"},
@@ -236,7 +236,7 @@ void PromptsIntegration::MissingPromptMapsToError() {
     client.disconnect();
 }
 
-void PromptsIntegration::EmptyArgumentsAreOkay() {
+void PromptsIntegration::EmptyArgumentsAreOkay(void) {
     std::atomic<bool> handler_saw_empty_args = false;
     auto p = mcp::test::make_in_memory_pair();
     PromptsServerThread srv(std::move(p.b), [&](mcp::Server& s) {

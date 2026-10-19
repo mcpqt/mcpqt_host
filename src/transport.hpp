@@ -30,7 +30,7 @@ public:
 
     virtual ~Transport() = default;
 
-    Transport() = default;
+    Transport(void) = default;
     Transport(const Transport&) = delete;
     Transport& operator=(const Transport&) = delete;
     Transport(Transport&&) = delete;
@@ -49,18 +49,18 @@ public:
 
     /// Begin processing. The transport may spawn one or more threads.
     /// Idempotent: calling `start()` after `start()` is a no-op.
-    virtual void start() = 0;
+    virtual void start(void) = 0;
 
     /// Stop processing. Blocks until the worker thread(s) have exited.
     /// Idempotent: calling `close()` more than once is a no-op.
-    virtual void close() = 0;
+    virtual void close(void) = 0;
 
     /// Send a single complete JSON-RPC frame. Returns an empty error_code
     /// on success. Thread-safe.
     [[nodiscard]] virtual std::error_code send(std::string_view frame) = 0;
 
     /// Whether the transport is currently running.
-    [[nodiscard]] virtual bool is_open() const noexcept = 0;
+    [[nodiscard]] virtual bool is_open(void) const noexcept = 0;
 };
 
 }  // namespace mcp

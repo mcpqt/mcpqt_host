@@ -114,11 +114,11 @@ spawn_notes(const std::string& binary, const std::string& db_path) {
 class NotesSubprocess : public QObject {
     Q_OBJECT
 private slots:
-    void EndToEnd();
-    void DeleteWithoutConfirmIsAbortedOnElicitDecline();
+    void EndToEnd(void);
+    void DeleteWithoutConfirmIsAbortedOnElicitDecline(void);
 };
 
-void NotesSubprocess::EndToEnd() {
+void NotesSubprocess::EndToEnd(void) {
 #if !defined(MCP_TEST_NOTES_SERVER)
     QSKIP("mcp_notes_server not built (no SQLite3); skipping");
 #else
@@ -223,7 +223,7 @@ void NotesSubprocess::EndToEnd() {
 #endif
 }
 
-void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline() {
+void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
 #if !defined(MCP_TEST_NOTES_SERVER)
     QSKIP("mcp_notes_server not built; skipping");
 #else

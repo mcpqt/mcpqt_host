@@ -25,7 +25,7 @@ namespace mcp {
 // RequestId
 // =====================================================================
 
-std::string RequestId::canonical() const {
+std::string RequestId::canonical(void) const {
     if (is_string()) {
         return "s:" + as_string();
     }
@@ -1103,7 +1103,7 @@ void from_json(const QJsonValue& j, CancelledNotificationParams& p) {
 // Progress
 // =====================================================================
 
-std::string ProgressToken::canonical() const {
+std::string ProgressToken::canonical(void) const {
     return is_string() ? "s:" + as_string()
                        : "i:" + std::to_string(as_integer());
 }
@@ -1259,7 +1259,7 @@ void from_json(const QJsonValue& j, IncludeContext& c) {
 
 std::string_view to_string(ToolChoiceMode m) noexcept {
     switch (m) {
-        case ToolChoiceMode::auto_: return "auto";
+        case ToolChoiceMode::m_auto: return "auto";
         case ToolChoiceMode::any:   return "any";
         case ToolChoiceMode::none:  return "none";
         case ToolChoiceMode::tool:  return "tool";
@@ -1269,7 +1269,7 @@ std::string_view to_string(ToolChoiceMode m) noexcept {
 QJsonValue to_json(ToolChoiceMode m) { return to_json(to_string(m)); }
 void from_json(const QJsonValue& j, ToolChoiceMode& m) {
     const auto s = from_json<std::string>(j);
-    if      (s == "auto")     m = ToolChoiceMode::auto_;
+    if      (s == "auto")     m = ToolChoiceMode::m_auto;
     else if (s == "any")      m = ToolChoiceMode::any;
     else if (s == "none")     m = ToolChoiceMode::none;
     else if (s == "tool")     m = ToolChoiceMode::tool;

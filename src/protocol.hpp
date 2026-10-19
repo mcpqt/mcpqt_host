@@ -49,29 +49,29 @@ class RequestId {
 public:
     using Value = std::variant<std::string, std::int64_t>;
 
-    RequestId() : value_(std::int64_t{0}) {}
-    RequestId(std::string s)   : value_(std::move(s)) {}
-    RequestId(const char* s)   : value_(std::string{s}) {}
-    RequestId(std::int64_t i)  : value_(i) {}
-    RequestId(int i)           : value_(static_cast<std::int64_t>(i)) {}
+    RequestId(void) : m_value(std::int64_t{0}) {}
+    RequestId(std::string s)   : m_value(std::move(s)) {}
+    RequestId(const char* s)   : m_value(std::string{s}) {}
+    RequestId(std::int64_t i)  : m_value(i) {}
+    RequestId(int i)           : m_value(static_cast<std::int64_t>(i)) {}
 
-    [[nodiscard]] const Value& value() const noexcept { return value_; }
+    [[nodiscard]] const Value& value(void) const noexcept { return m_value; }
 
-    [[nodiscard]] bool is_string()  const noexcept { return value_.index() == 0; }
-    [[nodiscard]] bool is_integer() const noexcept { return value_.index() == 1; }
+    [[nodiscard]] bool is_string(void)  const noexcept { return m_value.index() == 0; }
+    [[nodiscard]] bool is_integer(void) const noexcept { return m_value.index() == 1; }
 
-    [[nodiscard]] const std::string& as_string() const { return std::get<0>(value_); }
-    [[nodiscard]] std::int64_t       as_integer() const { return std::get<1>(value_); }
+    [[nodiscard]] const std::string& as_string(void) const { return std::get<0>(m_value); }
+    [[nodiscard]] std::int64_t       as_integer(void) const { return std::get<1>(m_value); }
 
     /// Canonical string form used for hash/map keys. String ids are returned
     /// as-is with a leading 's:' marker; integer ids get an 'i:' marker. This
     /// guarantees that the integer 5 and the string "5" do not collide.
-    [[nodiscard]] std::string canonical() const;
+    [[nodiscard]] std::string canonical(void) const;
 
     friend bool operator==(const RequestId&, const RequestId&) = default;
 
 private:
-    Value value_;
+    Value m_value;
 };
 
 [[nodiscard]] QJsonValue to_json(const RequestId& id);
@@ -105,13 +105,13 @@ struct JsonRpcResponse {
     std::variant<Json /*result*/,
                  ErrorObject /*error*/> outcome;
 
-    [[nodiscard]] bool is_error()   const noexcept { return outcome.index() == 1; }
-    [[nodiscard]] bool is_success() const noexcept { return outcome.index() == 0; }
+    [[nodiscard]] bool is_error(void)   const noexcept { return outcome.index() == 1; }
+    [[nodiscard]] bool is_success(void) const noexcept { return outcome.index() == 0; }
 
-    [[nodiscard]] const Json& result() const {
+    [[nodiscard]] const Json& result(void) const {
         return std::get<0>(outcome);
     }
-    [[nodiscard]] const ErrorObject& error() const {
+    [[nodiscard]] const ErrorObject& error(void) const {
         return std::get<1>(outcome);
     }
 };
@@ -732,23 +732,23 @@ inline constexpr std::string_view method_notifications_cancelled
 /// normalise to a thin variant.
 class ProgressToken {
 public:
-    ProgressToken() : value_(std::int64_t{0}) {}
-    ProgressToken(std::string s)  : value_(std::move(s)) {}
-    ProgressToken(const char* s)  : value_(std::string{s}) {}
-    ProgressToken(std::int64_t i) : value_(i) {}
-    ProgressToken(int i)          : value_(static_cast<std::int64_t>(i)) {}
+    ProgressToken(void) : m_value(std::int64_t{0}) {}
+    ProgressToken(std::string s)  : m_value(std::move(s)) {}
+    ProgressToken(const char* s)  : m_value(std::string{s}) {}
+    ProgressToken(std::int64_t i) : m_value(i) {}
+    ProgressToken(int i)          : m_value(static_cast<std::int64_t>(i)) {}
 
-    [[nodiscard]] bool is_string()  const noexcept { return value_.index() == 0; }
-    [[nodiscard]] bool is_integer() const noexcept { return value_.index() == 1; }
+    [[nodiscard]] bool is_string(void)  const noexcept { return m_value.index() == 0; }
+    [[nodiscard]] bool is_integer(void) const noexcept { return m_value.index() == 1; }
 
-    [[nodiscard]] const std::string& as_string() const { return std::get<0>(value_); }
-    [[nodiscard]] std::int64_t       as_integer() const { return std::get<1>(value_); }
-    [[nodiscard]] std::string        canonical() const;
+    [[nodiscard]] const std::string& as_string(void) const { return std::get<0>(m_value); }
+    [[nodiscard]] std::int64_t       as_integer(void) const { return std::get<1>(m_value); }
+    [[nodiscard]] std::string        canonical(void) const;
 
     friend bool operator==(const ProgressToken&, const ProgressToken&) = default;
 
 private:
-    std::variant<std::string, std::int64_t> value_;
+    std::variant<std::string, std::int64_t> m_value;
 };
 [[nodiscard]] QJsonValue to_json(const ProgressToken& t);
 void from_json(const QJsonValue& j, ProgressToken& t);
@@ -832,7 +832,7 @@ void from_json(const QJsonValue& j, IncludeContext& c);
 ///   - "any"    — model MUST call at least one tool
 ///   - "none"   — model MUST NOT call tools
 ///   - "tool"   — model MUST call the specific tool named
-enum class ToolChoiceMode { auto_, any, none, tool };
+enum class ToolChoiceMode { m_auto, any, none, tool };
 [[nodiscard]] std::string_view to_string(ToolChoiceMode m) noexcept;
 [[nodiscard]] QJsonValue to_json(ToolChoiceMode m);
 void from_json(const QJsonValue& j, ToolChoiceMode& m);

@@ -91,7 +91,7 @@ bool claim_log_sink(LogSink sink) {
     return true;
 }
 
-bool log_sink_claimed() noexcept {
+bool log_sink_claimed(void) noexcept {
     return g_claimed.load(std::memory_order_acquire);
 }
 
@@ -99,7 +99,7 @@ void set_log_level(LogLevel level) noexcept {
     g_level.store(level, std::memory_order_relaxed);
 }
 
-LogLevel log_level() noexcept {
+LogLevel log_level(void) noexcept {
     return g_level.load(std::memory_order_relaxed);
 }
 

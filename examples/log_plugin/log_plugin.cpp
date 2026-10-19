@@ -40,16 +40,16 @@ public:
     explicit LogPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
 
     void initialize(const mcp::HostInterface& host) override {
-        host_ = host;
+        m_host = host;
 
         if (const char* path = std::getenv("MCP_LOG_FILE"); path != nullptr && *path != '\0') {
-            file_ = std::fopen(path, "a");
+            m_file = std::fopen(path, "a");
         }
-        output_ = file_ != nullptr ? file_ : stderr;
+        m_output = m_file != nullptr ? m_file : stderr;
 
         // Claim last: this must be the final step so a setup failure above
         // cannot leave a claimed sink pointing at a half-initialised plugin.
-        const bool ok = host_.claimLogging(
+        const bool ok = m_host.claimLogging(
             [this](mcp::LogLevel level, std::string_view msg) { write(level, msg); });
         if (!ok) {
             qWarning("logging plugin: log sink already claimed; not taking over");
@@ -61,12 +61,12 @@ public:
         }
     }
 
-    void shutdown() override {
-        std::lock_guard<std::mutex> lk(mu_);
-        if (file_ != nullptr) {
-            std::fclose(file_);
-            file_ = nullptr;
-            output_ = stderr;
+    void shutdown(void) override {
+        std::lock_guard<std::mutex> lk(m_mu);
+        if (m_file != nullptr) {
+            std::fclose(m_file);
+            m_file = nullptr;
+            m_output = stderr;
         }
     }
 
@@ -79,14 +79,14 @@ private:
         };
         const QByteArray line = QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n';
 
-        std::lock_guard<std::mutex> lk(mu_);
-        std::fwrite(line.constData(), 1, static_cast<std::size_t>(line.size()), output_);
-        std::fflush(output_);
+        std::lock_guard<std::mutex> lk(m_mu);
+        std::fwrite(line.constData(), 1, static_cast<std::size_t>(line.size()), m_output);
+        std::fflush(m_output);
     }
 
-    std::mutex mu_;
-    std::FILE* file_   = nullptr;
-    std::FILE* output_ = stderr;
+    std::mutex m_mu;
+    std::FILE* m_file   = nullptr;
+    std::FILE* m_output = stderr;
 };
 
 }  // namespace

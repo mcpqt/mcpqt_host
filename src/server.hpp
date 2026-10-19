@@ -74,7 +74,7 @@ public:
         std::function<GetPromptResult(const std::unordered_map<std::string, std::string>& arguments)>;
 
     explicit Server(Implementation server_info);
-    /// Out-of-line because the optional `tasks_` member holds a
+    /// Out-of-line because the optional `m_tasks` member holds a
     /// pImpl-style forward-declared TaskStore.
     ~Server();
 
@@ -163,7 +163,7 @@ public:
 
     /// Send `roots/list` to the client and return a future for the
     /// result. The client must declare the roots capability.
-    [[nodiscard]] std::future<ListRootsResult> list_roots();
+    [[nodiscard]] std::future<ListRootsResult> list_roots(void);
 
     /// Send `elicitation/create` to the client and return a future for
     /// the result. Pass either an `ElicitFormRequestParams` (in-band
@@ -237,7 +237,7 @@ public:
     /// short-circuit an elicitation-driven tool with an actionable
     /// message when `.elicitation` is absent — instead of discovering
     /// the gap by a round-trip failure.
-    [[nodiscard]] std::optional<ClientCapabilities> client_capabilities() const;
+    [[nodiscard]] std::optional<ClientCapabilities> client_capabilities(void) const;
 
     /// Run the server: bind a transport, install handlers, start the
     /// session, then block on a condition variable until `stop()` is
@@ -251,7 +251,7 @@ public:
     /// notifying that from a signal handler is undefined. Use a side
     /// channel (e.g. set an atomic flag in the signal handler and call
     /// stop() from the main thread).
-    void stop();
+    void stop(void);
 
 private:
     void on_initialize(const InitializeRequestParams& params,
@@ -283,63 +283,63 @@ private:
         ResourceReadHandler  handler;
     };
 
-    Implementation                              server_info_;
-    std::optional<std::string>                  instructions_;
-    std::size_t                                 page_size_{0};
-    std::unordered_map<std::string, ToolEntry>  tools_;
-    std::mutex                                  tools_mu_;
+    Implementation                              m_server_info;
+    std::optional<std::string>                  m_instructions;
+    std::size_t                                 m_page_size{0};
+    std::unordered_map<std::string, ToolEntry>  m_tools;
+    std::mutex                                  m_tools_mu;
 
-    std::unordered_map<std::string, ResourceEntry> resources_;
-    std::vector<ResourceTemplate>                  resource_templates_;
-    ResourceReadHandler                            fallback_resource_handler_;
-    std::mutex                                     resources_mu_;
+    std::unordered_map<std::string, ResourceEntry> m_resources;
+    std::vector<ResourceTemplate>                  m_resource_templates;
+    ResourceReadHandler                            m_fallback_resource_handler;
+    std::mutex                                     m_resources_mu;
 
     struct PromptEntry {
         Prompt           descriptor;
         PromptGetHandler handler;
     };
-    std::unordered_map<std::string, PromptEntry>   prompts_;
-    std::mutex                                     prompts_mu_;
+    std::unordered_map<std::string, PromptEntry>   m_prompts;
+    std::mutex                                     m_prompts_mu;
 
-    std::atomic<bool>                              logging_enabled_{false};
-    std::atomic<LoggingLevel>                      log_level_{LoggingLevel::info};
+    std::atomic<bool>                              m_logging_enabled{false};
+    std::atomic<LoggingLevel>                      m_log_level{LoggingLevel::info};
 
-    CompletionHandler                              completion_handler_;
-    std::mutex                                     completion_mu_;
+    CompletionHandler                              m_completion_handler;
+    std::mutex                                     m_completion_mu;
 
     /// Inbound `notifications/elicitation/complete` from the client.
     /// Set via set_elicitation_complete_handler(); guards live under
-    /// completion_mu_ to keep the handler-registration mutexing
+    /// m_completion_mu to keep the handler-registration mutexing
     /// surface narrow.
-    ElicitationCompleteHandler                     elicitation_complete_handler_;
+    ElicitationCompleteHandler                     m_elicitation_complete_handler;
 
     /// Tasks: nullable. Allocated by enable_tasks(). When null, the
     /// `tasks` capability is not advertised and `tools/call` requests
     /// with a `task` augmentation receive a method_not_supported
     /// error.
-    std::unique_ptr<detail::TaskStore>             tasks_;
-    std::optional<std::int64_t>                    tasks_default_ttl_ms_;
-    std::size_t                                    tasks_max_concurrent_{0};
+    std::unique_ptr<detail::TaskStore>             m_tasks;
+    std::optional<std::int64_t>                    m_tasks_default_ttl_ms;
+    std::size_t                                    m_tasks_max_concurrent{0};
 
     /// Acquire a strong reference to the live Session; returns empty
     /// when run() has not started or has already returned. Lets
     /// log/sample/list_roots/etc. be called from any thread without
     /// racing with the run() teardown.
-    [[nodiscard]] std::shared_ptr<Session> acquire_session() const;
+    [[nodiscard]] std::shared_ptr<Session> acquire_session(void) const;
 
-    std::shared_ptr<Session>                    session_;
-    mutable std::mutex                          session_mu_;
-    std::atomic<bool>                           initialized_{false};
+    std::shared_ptr<Session>                    m_session;
+    mutable std::mutex                          m_session_mu;
+    std::atomic<bool>                           m_initialized{false};
 
     /// Client capabilities captured at initialize, readable any-thread.
     /// Guarded by its own mutex (narrow surface, like the handler
     /// registration mutexes above) rather than piggy-backing on
-    /// session_mu_.
-    std::optional<ClientCapabilities>           client_capabilities_;
-    mutable std::mutex                          client_capabilities_mu_;
-    std::atomic<bool>                           stop_requested_{false};
-    std::mutex                                  stop_mu_;
-    std::condition_variable                     stop_cv_;
+    /// m_session_mu.
+    std::optional<ClientCapabilities>           m_client_capabilities;
+    mutable std::mutex                          m_client_capabilities_mu;
+    std::atomic<bool>                           m_stop_requested{false};
+    std::mutex                                  m_stop_mu;
+    std::condition_variable                     m_stop_cv;
 };
 
 }  // namespace mcp

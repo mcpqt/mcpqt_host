@@ -17,19 +17,23 @@ namespace mcp {
 /// errors. The MCP spec inherits the standard codes and adds its own in
 /// [-32000, -32099]. Server- or domain-specific errors should use
 /// application-defined codes outside the reserved range.
-namespace error_code {
+///
+/// `no_error` (0) represents the absence of an error. This is an unscoped
+/// enumeration: it converts implicitly to the wire integer, so it can be
+/// passed to Error and compared with ErrorObject::code without casts.
+enum error_code : int {
+    no_error = 0,
 
-// JSON-RPC 2.0 standard codes.
-inline constexpr int parse_error      = -32700;
-inline constexpr int invalid_request  = -32600;
-inline constexpr int method_not_found = -32601;
-inline constexpr int invalid_params   = -32602;
-inline constexpr int internal_error   = -32603;
+    // JSON-RPC 2.0 standard codes.
+    parse_error     = -32700,
+    invalid_request = -32600,
+    method_not_found,   // -32601
+    invalid_params,     // -32602
+    internal_error,     // -32603
 
-// MCP-specific (in the implementation-defined JSON-RPC range).
-inline constexpr int url_elicitation_required = -32042;
-
-}  // namespace error_code
+    // MCP-specific (in the implementation-defined JSON-RPC range).
+    url_elicitation_required = -32042,
+};
 
 /// A wire-format-compatible JSON-RPC error object.
 ///
@@ -37,11 +41,11 @@ inline constexpr int url_elicitation_required = -32042;
 /// also raised as `Error` (an exception) when a method call receives an error
 /// response and the caller asks for the result via a future.
 struct ErrorObject {
-    int         code{};
+    int         code{error_code::no_error};
     std::string message;
     QJsonValue  data;  // optional; null when absent on the wire
 
-    [[nodiscard]] bool has_data() const noexcept { return !data.isNull(); }
+    [[nodiscard]] bool has_data(void) const noexcept { return !data.isNull(); }
 };
 
 /// Exception type for MCP errors. Carries the wire `ErrorObject`.
@@ -52,19 +56,19 @@ struct ErrorObject {
 class Error : public std::runtime_error {
 public:
     explicit Error(ErrorObject err)
-        : std::runtime_error(err.message), error_(std::move(err)) {}
+        : std::runtime_error(err.message), m_error(std::move(err)) {}
 
     Error(int code, std::string msg, QJsonValue data = QJsonValue(QJsonValue::Null))
         : std::runtime_error(msg),
-          error_{code, std::move(msg), std::move(data)} {}
+          m_error{code, std::move(msg), std::move(data)} {}
 
-    [[nodiscard]] const ErrorObject& object() const noexcept { return error_; }
-    [[nodiscard]] int                code()   const noexcept { return error_.code; }
-    [[nodiscard]] const std::string& message() const noexcept { return error_.message; }
-    [[nodiscard]] const QJsonValue&  data()   const noexcept { return error_.data; }
+    [[nodiscard]] const ErrorObject& object(void) const noexcept { return m_error; }
+    [[nodiscard]] int                code(void)   const noexcept { return m_error.code; }
+    [[nodiscard]] const std::string& message(void) const noexcept { return m_error.message; }
+    [[nodiscard]] const QJsonValue&  data(void)   const noexcept { return m_error.data; }
 
 private:
-    ErrorObject error_;
+    ErrorObject m_error;
 };
 
 }  // namespace mcp

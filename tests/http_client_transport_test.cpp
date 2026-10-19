@@ -36,17 +36,17 @@ using namespace std::chrono_literals;
 class HttpClientTransport : public QObject {
     Q_OBJECT
 private slots:
-    void PostSingleJsonResponseIsDelivered();
-    void PostSseResponseDeliversMultipleFrames();
-    void NotificationGets202AbsorbedSilently();
-    void McpSessionIdIsCapturedAndEchoed();
-    void McpProtocolVersionHeaderIsSent();
-    void GetStreamReceivesServerInitiatedFrames();
-    void SendBeforeStartFails();
-    void IdempotentClose();
+    void PostSingleJsonResponseIsDelivered(void);
+    void PostSseResponseDeliversMultipleFrames(void);
+    void NotificationGets202AbsorbedSilently(void);
+    void McpSessionIdIsCapturedAndEchoed(void);
+    void McpProtocolVersionHeaderIsSent(void);
+    void GetStreamReceivesServerInitiatedFrames(void);
+    void SendBeforeStartFails(void);
+    void IdempotentClose(void);
 };
 
-void HttpClientTransport::PostSingleJsonResponseIsDelivered() {
+void HttpClientTransport::PostSingleJsonResponseIsDelivered(void) {
     std::mutex  mu;
     std::string observed_body;
     mcp::test::FakeHttpServer fake([&](const mcp::test::FakeHttpServer::Request& req) {
@@ -78,7 +78,7 @@ void HttpClientTransport::PostSingleJsonResponseIsDelivered() {
     transport->close();
 }
 
-void HttpClientTransport::PostSseResponseDeliversMultipleFrames() {
+void HttpClientTransport::PostSseResponseDeliversMultipleFrames(void) {
     mcp::test::FakeHttpServer fake([](const mcp::test::FakeHttpServer::Request&) {
         return mcp::test::sse_response("data: {\"a\":1}\n\ndata: {\"b\":2}\n\n");
     });
@@ -109,7 +109,7 @@ void HttpClientTransport::PostSseResponseDeliversMultipleFrames() {
     transport->close();
 }
 
-void HttpClientTransport::NotificationGets202AbsorbedSilently() {
+void HttpClientTransport::NotificationGets202AbsorbedSilently(void) {
     std::atomic<int> hits{0};
     mcp::test::FakeHttpServer fake([&](const mcp::test::FakeHttpServer::Request&) {
         ++hits;
@@ -132,7 +132,7 @@ void HttpClientTransport::NotificationGets202AbsorbedSilently() {
     transport->close();
 }
 
-void HttpClientTransport::McpSessionIdIsCapturedAndEchoed() {
+void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void) {
     std::atomic<int> first_call{0};
     std::mutex        mu;
     std::string       captured_id_on_second_call;
@@ -175,7 +175,7 @@ void HttpClientTransport::McpSessionIdIsCapturedAndEchoed() {
     transport->close();
 }
 
-void HttpClientTransport::McpProtocolVersionHeaderIsSent() {
+void HttpClientTransport::McpProtocolVersionHeaderIsSent(void) {
     std::mutex  mu;
     std::string captured_pv;
     mcp::test::FakeHttpServer fake([&](const mcp::test::FakeHttpServer::Request& req) {
@@ -205,7 +205,7 @@ void HttpClientTransport::McpProtocolVersionHeaderIsSent() {
     transport->close();
 }
 
-void HttpClientTransport::GetStreamReceivesServerInitiatedFrames() {
+void HttpClientTransport::GetStreamReceivesServerInitiatedFrames(void) {
     mcp::test::FakeHttpServer fake([](const mcp::test::FakeHttpServer::Request& req) {
         if (req.method == "GET") {
             return mcp::test::sse_response("data: {\"server-said\":\"hi\"}\n\n");
@@ -235,7 +235,7 @@ void HttpClientTransport::GetStreamReceivesServerInitiatedFrames() {
     transport->close();
 }
 
-void HttpClientTransport::SendBeforeStartFails() {
+void HttpClientTransport::SendBeforeStartFails(void) {
     mcp::HttpClientTransport::Options opts;
     opts.url = "http://127.0.0.1:1";
     opts.open_get_stream = false;
@@ -245,7 +245,7 @@ void HttpClientTransport::SendBeforeStartFails() {
     QVERIFY(ec == std::make_error_code(std::errc::not_connected));
 }
 
-void HttpClientTransport::IdempotentClose() {
+void HttpClientTransport::IdempotentClose(void) {
     mcp::HttpClientTransport::Options opts;
     opts.url = "http://127.0.0.1:1";
     opts.open_get_stream = false;

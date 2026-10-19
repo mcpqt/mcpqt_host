@@ -213,30 +213,30 @@ public:
 
     /// Start the listener thread. Blocks until the listener is bound
     /// (so `port()` is meaningful immediately on return).
-    void start();
+    void start(void);
 
     /// Stop the listener and tear down all sessions. Idempotent.
-    void stop();
+    void stop(void);
 
     /// The port the listener is actually bound to (resolves a 0 in
     /// Options::port to the OS-assigned value). Returns 0 before
     /// start().
-    [[nodiscard]] int port() const noexcept;
+    [[nodiscard]] int port(void) const noexcept;
 
     /// Number of sessions currently alive.
-    [[nodiscard]] std::size_t active_sessions() const;
+    [[nodiscard]] std::size_t active_sessions(void) const;
 
 private:
     struct SessionContext;
     struct Impl;
 
-    Implementation                                          server_info_;
-    Options                                                 opts_;
-    SessionFactory                                          factory_;
+    Implementation                                          m_server_info;
+    Options                                                 m_opts;
+    SessionFactory                                          m_factory;
 
-    std::atomic<bool>                                       started_{false};
-    std::atomic<bool>                                       stopping_{false};
-    std::unique_ptr<Impl>                                   impl_;
+    std::atomic<bool>                                       m_started{false};
+    std::atomic<bool>                                       m_stopping{false};
+    std::unique_ptr<Impl>                                   m_impl;
 };
 
 }  // namespace mcp

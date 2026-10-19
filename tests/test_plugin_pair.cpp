@@ -30,30 +30,30 @@ public:
         : mcp::PluginInterface(parent) {}
 
     void initialize(const mcp::HostInterface& host) override {
-        host_ = host;
+        m_host = host;
         // Discovery: locate test-plugin.echo's fully-qualified signature.
-        const QStringList funcs = host_.getFuncs();
+        const QStringList funcs = m_host.getFuncs();
         for (const QString& sig : funcs) {
             if (sig.startsWith(QStringLiteral("test-plugin.echo("))) {
-                target_ = sig;
+                m_target = sig;
                 break;
             }
         }
         registerPublicSlots();
     }
-    void shutdown() override {}
+    void shutdown(void) override {}
 
 public slots:
     // "test-pair.forward(QString)" — remotely calls test-plugin.echo through
     // the host, then displays the value it got back: it is logged and embedded
     // in this plugin's own return value.
     QString forward(QString message) {
-        if (target_.isEmpty()) {
+        if (m_target.isEmpty()) {
             return QStringLiteral("target echo function not found");
         }
 
         // Inter-plugin call: one positional argument, routed by the host.
-        const QString text = host_.callFunc(target_, { message }).toString();
+        const QString text = m_host.callFunc(m_target, { message }).toString();
 
         // Display the returned value (plugin-side log) and fold it into our
         // own result so it is observable by the caller too.
@@ -63,7 +63,7 @@ public slots:
     }
 
 private:
-    QString target_;
+    QString m_target;
 };
 
 #include "test_plugin_pair.moc"
