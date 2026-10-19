@@ -35,6 +35,7 @@ struct PluginManager::Instance {
     std::string       id;
     QStringList       signatures;         // fully-qualified signatures this plugin published
     QStringList       dependencies;       // declared plugin ids / function signatures
+    QHash<QString, ToolUseContent> tools; // validated metadata "Tools" entries
     /// True once this plugin owns the process-wide log sink. Pinned plugins are
     /// never unloaded: the sink executes code inside the plugin's library.
     bool              pinned = false;
@@ -312,6 +313,31 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
                                                          bool quiet) {
     auto* loader = new QPluginLoader(file);
 
+    // Parse the metadata "Tools" object: signature -> ToolUseContent. Entries
+    // are validated against the plugin's published functions after initialize.
+    QHash<QString, ToolUseContent> declared_tools;
+    {
+        const QJsonValue meta = loader->metaData().value(QLatin1String("MetaData"));
+        if (meta.isObject()) {
+            const QJsonValue tools_value =
+                meta.toObject().value(QLatin1String("Tools"));
+            if (tools_value.isObject()) {
+                const QJsonObject tools_object = tools_value.toObject();
+                for (auto it = tools_object.constBegin();
+                     it != tools_object.constEnd(); ++it) {
+                    try {
+                        declared_tools.insert(
+                            it.key(), from_json<ToolUseContent>(it.value()));
+                    } catch (const std::exception& e) {
+                        MCP_LOG_WARN("PluginManager: '" + file.toStdString() +
+                                     "' Tools entry '" + it.key().toStdString() +
+                                     "' is invalid: " + e.what());
+                    }
+                }
+            }
+        }
+    }
+
     const QStringList deps = plugin_dependencies(loader);
     if (!deps.isEmpty() && !dependencies_satisfied(deps)) {
         if (!quiet) {
@@ -396,6 +422,19 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
         }
         unload_instance(inst);
         return LoadOutcome::Failed;
+    }
+
+    // Keep only Tools entries that name a function this plugin actually
+    // published; a stale/typo'd signature is dropped with a warning.
+    for (auto it = declared_tools.constBegin();
+         it != declared_tools.constEnd(); ++it) {
+        if (!inst->signatures.contains(it.key())) {
+            MCP_LOG_WARN("PluginManager: '" + file.toStdString() +
+                         "' declares a Tool for '" + it.key().toStdString() +
+                         "', which is not a published function; ignoring");
+            continue;
+        }
+        inst->tools.insert(it.key(), it.value());
     }
 
     m_plugins.push_back(std::move(inst));
@@ -548,6 +587,30 @@ QStringList PluginManager::functions(void) const {
 
 bool PluginManager::has_function(const QString& signature) const {
     return m_registry.contains(signature);
+}
+
+std::vector<PluginTool> PluginManager::tools() const {
+    std::vector<PluginTool> out;
+    for (const auto& inst : m_plugins) {
+        for (auto it = inst->tools.constBegin(); it != inst->tools.constEnd(); ++it) {
+            out.push_back(PluginTool{ it.key(), it.value() });
+        }
+    }
+    std::sort(out.begin(), out.end(),
+              [](const PluginTool& a, const PluginTool& b) {
+                  return a.signature < b.signature;
+              });
+    return out;
+}
+
+std::optional<ToolUseContent> PluginManager::tool(const QString& signature) const {
+    for (const auto& inst : m_plugins) {
+        const auto it = inst->tools.constFind(signature);
+        if (it != inst->tools.constEnd()) {
+            return it.value();
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace mcp

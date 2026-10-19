@@ -55,8 +55,20 @@
 //       QString reverse(QString text) { return text.reversed(); }
 //   };
 //
-// The JSON metadata file (the FILE argument above) must be valid JSON and is
-// used by the host for declared dependencies; a minimal one is `{}`.
+// The JSON metadata file (the FILE argument above) must be valid JSON. It is
+// used by the host for declared dependencies, and may declare a "Tools" object
+// mapping a published function signature to a ToolUseContent JSON value (the
+// host validates the signature and exposes the mapping; it does not register
+// MCP tools yet):
+//
+//   "Tools": {
+//     "myplugin.reverse(QString)": {
+//       "type": "tool_use", "id": "reverse", "name": "reverse",
+//       "input": { "text": "..." }
+//     }
+//   }
+//
+// A minimal metadata file is `{}`.
 
 #pragma once
 

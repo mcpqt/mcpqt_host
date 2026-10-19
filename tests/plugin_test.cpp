@@ -34,6 +34,7 @@ class PluginManagerTest : public QObject {
     Q_OBJECT
 private slots:
     void LoadRegistersTypedFunctions(void);
+    void ToolsMetadataExposed(void);
     void MissingFileFails(void);
     void MissingDirectoryLoadsNothing(void);
     void UnloadClearsState(void);
@@ -70,6 +71,33 @@ void PluginManagerTest::LoadRegistersTypedFunctions(void) {
     // published as plugin functions.
     QVERIFY(!plugins.has_function("test-plugin.deleteLater()"));
     QCOMPARE(funcs.size(), 7);
+}
+
+void PluginManagerTest::ToolsMetadataExposed(void) {
+    mcp::PluginManager plugins;
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
+
+    // The plugin's metadata declares Tools keyed by function signature. Only
+    // the entry naming a published function is retained; the bogus one is
+    // dropped at load time.
+    const std::vector<mcp::PluginTool> tools = plugins.tools();
+    QCOMPARE(tools.size(), std::size_t{1});
+    QCOMPARE(tools[0].signature, QStringLiteral("test-plugin.echo(QString)"));
+    QCOMPARE(QString::fromStdString(tools[0].tool.id), QStringLiteral("echo"));
+    QCOMPARE(QString::fromStdString(tools[0].tool.name), QStringLiteral("echo"));
+    QCOMPARE(tools[0].tool.input.toObject().value(QStringLiteral("message")).toString(),
+             QStringLiteral("hi"));
+
+    const std::optional<mcp::ToolUseContent> tool =
+        plugins.tool(QStringLiteral("test-plugin.echo(QString)"));
+    QVERIFY(tool.has_value());
+    QCOMPARE(QString::fromStdString(tool->name), QStringLiteral("echo"));
+
+    QVERIFY(!plugins.tool(QStringLiteral("test-plugin.does_not_exist()")).has_value());
+
+    // Unloading removes the plugin's declared tools.
+    plugins.unload_all();
+    QVERIFY(plugins.tools().empty());
 }
 
 void PluginManagerTest::MissingFileFails(void) {

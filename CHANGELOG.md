@@ -18,8 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Metadata via Q_CLASSINFO.** A plugin declares its `id` (required),
     `version`, and `description` with `Q_CLASSINFO`; the host reads them from
     the plugin's meta-object. There are no `id()`/`version()`/`description()`
-    virtuals to implement. The metadata JSON file is now only used for
-    declared dependencies.
+    virtuals to implement. The metadata JSON file carries declared
+    dependencies and optional tool declarations.
+  - **Tool declarations in metadata.** A plugin's metadata JSON may declare a
+    `"Tools"` object mapping a published function signature to a
+    `ToolUseContent` JSON value. `PluginManager` parses and validates the
+    entries at load time (dropping signatures that are not published
+    functions) and exposes them via `tools()` / `tool(signature)`.
+    Registering them as MCP tools is a later step.
   - **Typed functions, no QVariant packing.** A plugin publishes functions by
     declaring ordinary public slots with 0–10 parameters; parameter and return
     types are normal registered QMetaTypes (the return type may be `void` or

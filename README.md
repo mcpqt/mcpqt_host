@@ -303,6 +303,25 @@ it can initialize (`"dependencies": ["other"]`); `PluginManager` defers such a
 plugin until those dependencies are satisfied. `load_directory()` retries
 deferred plugins across passes, so the directory can be scanned in any order.
 
+It may also declare a `"Tools"` object mapping a published function signature
+to a `ToolUseContent` JSON value. `PluginManager` parses these at load time and
+drops entries whose signature is not a function the plugin published. The
+mapping is exposed (not yet registered as MCP tools) via
+`PluginManager::tools()` and `PluginManager::tool(signature)`:
+
+```json
+{
+  "Tools": {
+    "hello.greet(QString)": {
+      "type": "tool_use",
+      "id": "greet",
+      "name": "greet",
+      "input": { "name": "world" }
+    }
+  }
+}
+```
+
 See `examples/hello_plugin` + `examples/cross_caller` (two plugins where one
 calls the other) and `examples/plugin_host` (loads a directory and prints the
 registered functions). The `Q_PLUGIN_METADATA` IID must be the literal

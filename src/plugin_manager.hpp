@@ -42,6 +42,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,26 @@ class QObject;
 class QPluginLoader;
 
 namespace mcp {
+
+/// One tool declaration from a plugin's metadata: a published function
+/// signature paired with the ToolUseContent that describes it. Declared in the
+/// plugin's Q_PLUGIN_METADATA JSON as a signature-keyed object:
+///
+///   "Tools": {
+///     "myplugin.reverse(QString)": {
+///       "type": "tool_use",
+///       "id": "reverse",
+///       "name": "reverse",
+///       "input": { "text": "..." }
+///     }
+///   }
+///
+/// Only entries whose signature names a function the plugin actually publishes
+/// are retained.
+struct PluginTool {
+    QString        signature;
+    ToolUseContent tool;
+};
 
 class PluginManager {
 public:
@@ -109,6 +130,16 @@ public:
 
     /// True when `signature` is currently published.
     [[nodiscard]] bool has_function(const QString& signature) const;
+
+    /// Tool declarations contributed by loaded plugins (from each plugin's
+    /// metadata "Tools" object), sorted by signature. Entries whose signature
+    /// is not a published function are dropped at load time with a warning.
+    [[nodiscard]] std::vector<PluginTool> tools() const;
+
+    /// The ToolUseContent declared for `signature`, if any loaded plugin
+    /// declared one for a published function.
+    [[nodiscard]] std::optional<ToolUseContent>
+    tool(const QString& signature) const;
 
     /// Invoke a published function. `args` holds one QVariant per declared
     /// parameter, in order. Returns the QVariant result (invalid for a void

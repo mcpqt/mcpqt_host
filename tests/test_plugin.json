@@ -1,1 +1,16 @@
-{}
+{
+    "Tools": {
+        "test-plugin.echo(QString)": {
+            "type": "tool_use",
+            "id": "echo",
+            "name": "echo",
+            "input": { "message": "hi" }
+        },
+        "test-plugin.does_not_exist()": {
+            "type": "tool_use",
+            "id": "bogus",
+            "name": "bogus",
+            "input": {}
+        }
+    }
+}
