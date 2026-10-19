@@ -24,8 +24,8 @@ target_compile_options(mcp_test_plugin PRIVATE
         -Wall -Wextra -Wpedantic>
 )
 
-# A second plugin exercising cross-plugin calls (test-pair.forward →
-# test-plugin.echo through the host registry).
+# A second plugin exercising cross-plugin calls (TestPluginPair::forward →
+# TestPlugin::echo through the host registry).
 add_library(mcp_test_plugin_pair MODULE test_plugin_pair.cpp)
 set_target_properties(mcp_test_plugin_pair PROPERTIES
     PREFIX ""

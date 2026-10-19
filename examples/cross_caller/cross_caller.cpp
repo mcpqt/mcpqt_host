@@ -8,7 +8,7 @@
 //
 // Discovery + call both go through the host:
 //   - host.getFuncs()  → signature strings of every plugin function, e.g.
-//                        "hello.greet(QString)"
+//                        "QString HelloPlugin::greet(QString)"
 //   - host.callFunc()  → invoke one by signature, one QVariant per parameter
 
 #include "plugin.hpp"
@@ -38,7 +38,7 @@ public:
         // Discover: find HelloPlugin's greet function by signature pattern.
         const QStringList funcs = m_host.getFuncs();
         for (const QString& sig : funcs) {
-            if (sig.startsWith(QStringLiteral("hello.greet("))) {
+            if (sig.startsWith(QStringLiteral("QString HelloPlugin::greet("))) {
                 m_target_greet = sig;
                 break;
             }
@@ -48,8 +48,9 @@ public:
     void shutdown(void) override {}
 
 public slots:
-    // "caller.greet_via_host(QString)" — forwards to hello.greet(QString),
-    // passing the name as the single positional argument.
+    // "QString CrossCallerPlugin::greet_via_host(QString)" — forwards to
+    // "QString HelloPlugin::greet(QString)", passing the name as the single
+    // positional argument.
     QString greet_via_host(QString name) {
         if (m_target_greet.isEmpty()) {
             return QStringLiteral("hello plugin's greet() is not loaded");

@@ -30,8 +30,8 @@ QString plugin_class_info(const QMetaObject* meta_object, const char* key) {
 }
 
 void PluginInterface::registerPublicSlots(void) {
-    const QMetaObject* mo     = metaObject();
-    const QString      prefix = plugin_class_info(mo, "id") + ".";
+    const QMetaObject* mo = metaObject();
+    const QString class_name = QString::fromLatin1(mo->className());
 
     for (int i = 0; i < mo->methodCount(); ++i) {
         const QMetaMethod method = mo->method(i);
@@ -44,9 +44,14 @@ void PluginInterface::registerPublicSlots(void) {
         // which slots are acceptable functions (return type, arity, parameter
         // types, inherited methods, duplicates); the plugin does not filter or
         // reject anything here.
+        //
+        // Signature form:
+        //   "return_type class_name::function_name(param_types)"
         if (m_host.regFunc) {
             const QString signature =
-                prefix + QString::fromLatin1(method.methodSignature());
+                QString::fromLatin1(method.typeName()) + QLatin1Char(' ') +
+                class_name + QStringLiteral("::") +
+                QString::fromLatin1(method.methodSignature());
             (void)m_host.regFunc(signature);
         }
     }

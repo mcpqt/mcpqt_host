@@ -4,8 +4,8 @@
 // A plugin used by plugin_test. Built as a MODULE library the test loads at
 // runtime. Its public slots are published by the host via meta-object
 // reflection; signatures become addressable functions, e.g.
-//   test-plugin.echo(QString), test-plugin.add(double,double),
-//   test-plugin.boom(), test-plugin.dup(), test-plugin.reset().
+//   QString TestPlugin::echo(QString), double TestPlugin::add(double,double),
+//   void TestPlugin::boom(), QString TestPlugin::dup(), void TestPlugin::reset().
 
 #include "plugin.hpp"
 

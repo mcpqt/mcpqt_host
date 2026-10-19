@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // A second plugin used by plugin_test to exercise CROSS-PLUGIN calls. Its
-// public slot `test-pair.forward(QString)` calls `test-plugin.echo(QString)`
+// public slot `QString TestPluginPair::forward(QString)` calls `QString TestPlugin::echo(QString)`
 // through the host (HostInterface::callFunc), then displays the returned value
 // in its own result.
 //
@@ -31,10 +31,10 @@ public:
 
     void initialize(const mcp::HostInterface& host) override {
         m_host = host;
-        // Discovery: locate test-plugin.echo's fully-qualified signature.
+        // Discovery: locate TestPlugin::echo's fully-qualified signature.
         const QStringList funcs = m_host.getFuncs();
         for (const QString& sig : funcs) {
-            if (sig.startsWith(QStringLiteral("test-plugin.echo("))) {
+            if (sig.startsWith(QStringLiteral("QString TestPlugin::echo("))) {
                 m_target = sig;
                 break;
             }
@@ -44,7 +44,7 @@ public:
     void shutdown(void) override {}
 
 public slots:
-    // "test-pair.forward(QString)" — remotely calls test-plugin.echo through
+    // "QString TestPluginPair::forward(QString)" — remotely calls TestPlugin::echo through
     // the host, then displays the value it got back: it is logged and embedded
     // in this plugin's own return value.
     QString forward(QString message) {
@@ -57,7 +57,7 @@ public slots:
 
         // Display the returned value (plugin-side log) and fold it into our
         // own result so it is observable by the caller too.
-        MCP_LOG_INFO("test-pair: test-plugin.echo returned '" +
+        MCP_LOG_INFO("test-pair: TestPlugin::echo returned '" +
                      text.toStdString() + "'");
         return QStringLiteral("test-pair received: %1").arg(text);
     }

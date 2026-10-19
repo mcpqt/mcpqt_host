@@ -10,7 +10,7 @@
 // Building examples/hello_plugin and examples/cross_caller produces
 // hello_plugin.so and cross_caller.so; point the host at the directory
 // containing them to try it out. Loading both demonstrates cross-plugin
-// calls: caller.greet_via_host forwards to hello.greet through the host.
+// calls: CrossCallerPlugin::greet_via_host forwards to HelloPlugin::greet.
 //
 // NOTE: functions are currently exposed only to other plugins, not as MCP
 // tools; wiring the registry to a Server's tool list is a later step.

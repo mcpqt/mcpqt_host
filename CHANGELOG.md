@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `QMetaObject` and invokes them with `QGenericArgument`, capturing the
     result through `QGenericReturnArgument`, so the plugin writes typed
     functions instead of packing arguments into a single QVariant. A function
-    is addressed by its signature, e.g. `<pluginId>.<slotSignature>`.
+    is addressed by its signature, e.g. `<return_type> <class_name>::<function_name>(<param_types>)`.
   - **Cross-plugin calls.** Each plugin receives a `HostInterface` at
     `initialize()`; through it a plugin enumerates every function the host
     knows (`getFuncs`) and invokes any of them — including functions owned by

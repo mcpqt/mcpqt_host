@@ -10,7 +10,7 @@
 //   // ... plugins call one another through the HostInterface ...
 //
 // Cross-plugin calls: every function is keyed by the fully-qualified signature
-// "<pluginId>.<slotSignature>", e.g. "hello.greet(QString)". A plugin calls
+// "<return_type> <class_name>::<function_name>(<param_types>)", e.g. "QString HelloPlugin::greet(QString)". A plugin calls
 // any other plugin's function through the HostInterface handed to it at
 // initialize() (HostInterface::callFunc), passing one QVariant per parameter.
 // The host builds the QGenericArguments and invokes the typed slot; plugins
@@ -57,7 +57,7 @@ namespace mcp {
 /// plugin's Q_PLUGIN_METADATA JSON as a signature-keyed object:
 ///
 ///   "Tools": {
-///     "myplugin.reverse(QString)": {
+///     "QString MyPlugin::reverse(QString)": {
 ///       "type": "tool_use",
 ///       "id": "reverse",
 ///       "name": "reverse",
@@ -89,7 +89,7 @@ public:
     /// Dependencies: a plugin may declare, in its metadata JSON, a
     /// `dependencies` array of fully-qualified function signatures (and/or
     /// plugin ids) that must be available before it is initialized — e.g.
-    /// `"dependencies": ["hello.greet(QString)"]`. Each entry is satisfied if
+    /// `"dependencies": ["QString HelloPlugin::greet(QString)"]`. Each entry is satisfied if
     /// a previously-loaded plugin already published that signature, or if a
     /// plugin with that id is already loaded. A plugin whose dependencies are
     /// not yet satisfiable fails to load (false); `load_directory()` retries

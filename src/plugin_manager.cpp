@@ -88,8 +88,9 @@ bool PluginManager::dependencies_satisfied(const QStringList& dependencies) cons
         }
         bool found = false;
         for (const QString& sig : funcs) {
-            // Match a fully-qualified signature exactly, or as a bare
-            // "plugin.function" prefix of one ("hello.greet" → hello.greet(QString)).
+            // Match a fully-qualified signature exactly, or as a signature
+            // without its parameter list ("QString HelloPlugin::greet" →
+            // "QString HelloPlugin::greet(QString)").
             if (sig == dep || sig.startsWith(dep + QLatin1Char('('))) {
                 found = true;
                 break;
@@ -208,15 +209,23 @@ QVariant PluginManager::call_function(const QString& signature,
 
 bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
                                   const QString& signature) {
-    const QString prefix = QString::fromStdString(inst->id) + ".";
-    if (!signature.startsWith(prefix)) {
+    const QMetaObject* mo = inst->object->metaObject();
+
+    // Signatures are "return_type class_name::function_name(param_types)".
+    // The part after the last "::" before the parameter list is the method
+    // signature moc knows; the full string is re-derived below to validate the
+    // return type and class name.
+    const qsizetype open = signature.indexOf(QLatin1Char('('));
+    const qsizetype sep  = open < 0
+                               ? qsizetype{-1}
+                               : signature.lastIndexOf(QLatin1String("::"), open);
+    if (open < 0 || sep < 0) {
         MCP_LOG_WARN("PluginManager: plugin '" + inst->id +
-                     "' tried to register foreign signature '" +
+                     "' registered malformed signature '" +
                      signature.toStdString() + "'");
         return false;
     }
-    const QByteArray slot_sig = signature.mid(prefix.size()).toUtf8();
-    const QMetaObject* mo = inst->object->metaObject();
+    const QByteArray slot_sig = signature.mid(sep + 2).toUtf8();
     const int idx = mo->indexOfMethod(slot_sig.constData());
     if (idx < 0) {
         MCP_LOG_WARN("PluginManager: plugin '" + inst->id +
@@ -238,6 +247,20 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
         // deleteLater); they are expected noise, not a load problem.
         MCP_LOG_DEBUG("PluginManager: '" + signature.toStdString() +
                       "' is inherited, not declared by the plugin");
+        return false;
+    }
+
+    // Require the canonical signature: exact return type, class name, method
+    // name, and parameter types in declaration order.
+    const QString expected =
+        QString::fromLatin1(method.typeName()) + QLatin1Char(' ') +
+        QString::fromLatin1(mo->className()) + QStringLiteral("::") +
+        QString::fromLatin1(method.methodSignature());
+    if (signature != expected) {
+        MCP_LOG_WARN("PluginManager: plugin '" + inst->id +
+                     "' registered signature '" + signature.toStdString() +
+                     "' but the canonical form is '" + expected.toStdString() +
+                     "'");
         return false;
     }
 

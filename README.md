@@ -312,7 +312,7 @@ mapping is exposed (not yet registered as MCP tools) via
 ```json
 {
   "Tools": {
-    "hello.greet(QString)": {
+    "QString HelloPlugin::greet(QString)": {
       "type": "tool_use",
       "id": "greet",
       "name": "greet",
