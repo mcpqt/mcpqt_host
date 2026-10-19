@@ -2,20 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Cross-call demo plugin. Loaded alongside examples/hello_plugin, it calls
-// HelloPlugin's public slot through the host — the plugin never knows the
+// HelloPlugin's function through the host — the plugin never knows the
 // concrete host or plugin classes, only the HostInterface callbacks and the
-// packed-QVariant convention.
+// target's signature.
 //
 // Discovery + call both go through the host:
 //   - host.getFuncs()  → signature strings of every plugin function, e.g.
-//                        "hello.greet(QVariant)"
-//   - host.callFunc()  → invoke one by its signature
+//                        "hello.greet(QString)"
+//   - host.callFunc()  → invoke one by signature, one QVariant per parameter
 
 #include "plugin.hpp"
 
 #include <QObject>
+#include <QString>
 #include <QVariant>
-#include <QVariantMap>
 
 #include <string>
 
@@ -39,7 +39,7 @@ public:
     void initialize(const mcp::HostInterface& host) override {
         host_ = host;
 
-        // Discover: find HelloPlugin's greet slot by signature pattern.
+        // Discover: find HelloPlugin's greet function by signature pattern.
         const QStringList funcs = host_.getFuncs();
         for (const QString& sig : funcs) {
             if (sig.startsWith(QStringLiteral("hello.greet("))) {
@@ -52,14 +52,13 @@ public:
     void shutdown() override {}
 
 public slots:
-    // "caller.greet_via_host(QVariant)" — forwards to hello.greet at call time
-    // (handles the case where hello_plugin loads after us).
-    QVariant greet_via_host(const QVariant& args) {
+    // "caller.greet_via_host(QString)" — forwards to hello.greet(QString),
+    // passing the name as the single positional argument.
+    QVariant greet_via_host(QString name) {
         if (target_greet_.isEmpty()) {
             return QStringLiteral("hello plugin's greet() is not loaded");
         }
-        const QVariantMap m = args.toMap();
-        return host_.callFunc(target_greet_, QVariantList{ m });
+        return host_.callFunc(target_greet_, { name });
     }
 
 private:
