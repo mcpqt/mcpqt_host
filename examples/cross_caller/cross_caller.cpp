@@ -15,7 +15,6 @@
 
 #include <QObject>
 #include <QString>
-#include <QVariant>
 
 #include <string>
 
@@ -54,11 +53,11 @@ public:
 public slots:
     // "caller.greet_via_host(QString)" — forwards to hello.greet(QString),
     // passing the name as the single positional argument.
-    QVariant greet_via_host(QString name) {
+    QString greet_via_host(QString name) {
         if (target_greet_.isEmpty()) {
             return QStringLiteral("hello plugin's greet() is not loaded");
         }
-        return host_.callFunc(target_greet_, { name });
+        return host_.callFunc(target_greet_, { name }).toString();
     }
 
 private:

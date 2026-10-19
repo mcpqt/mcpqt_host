@@ -48,7 +48,7 @@
 //           registerPublicSlots();
 //       }
 //   public slots:
-//       QVariant reverse(QString text) { return text.reversed(); }
+//       QString reverse(QString text) { return text.reversed(); }
 //   };
 //
 // The JSON metadata file (the FILE argument above) must be valid JSON; a

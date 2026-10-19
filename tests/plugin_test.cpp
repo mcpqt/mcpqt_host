@@ -14,7 +14,6 @@
 #include "plugin_manager.hpp"
 
 #include <QCoreApplication>
-#include <QMetaObject>
 #include <QMetaType>
 #include <QStringList>
 #include <QtTest/QtTest>
@@ -46,18 +45,6 @@ private slots:
     void UnloadHonorsReverseDependencies();
     void LoggingPluginClaimsAndCannotBeReplaced();
 };
-
-namespace {
-
-// Invoke a no-argument plugin slot that returns QVariant.
-QVariant invoke_slot(QObject* obj, const char* name) {
-    QVariant result;
-    const bool ok = QMetaObject::invokeMethod(
-        obj, name, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result));
-    return ok ? result : QVariant();
-}
-
-}  // namespace
 
 void PluginManagerTest::LoadRegistersTypedFunctions() {
     mcp::PluginManager plugins;
@@ -117,14 +104,16 @@ void PluginManagerTest::CallsTypedFunctions() {
     mcp::PluginManager plugins;
     QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
 
-    // QVariant echo(QString)
+    // QString echo(QString) — natural return type, not QVariant.
     const QVariant echoed = plugins.call_function(
         QStringLiteral("test-plugin.echo(QString)"), { QStringLiteral("hi") });
+    QCOMPARE(echoed.metaType(), QMetaType::fromType<QString>());
     QCOMPARE(echoed.toString(), QStringLiteral("hi"));
 
-    // QVariant add(double, double)
+    // double add(double, double) — natural return type.
     const QVariant sum = plugins.call_function(
         QStringLiteral("test-plugin.add(double,double)"), { 2.0, 40.0 });
+    QCOMPARE(sum.metaType(), QMetaType::fromType<double>());
     QCOMPARE(sum.toDouble(), 42.0);
 
     // A convertible argument (int → QString) is accepted.
@@ -132,9 +121,10 @@ void PluginManagerTest::CallsTypedFunctions() {
         QStringLiteral("test-plugin.echo(QString)"), { 7 });
     QCOMPARE(coerced.toString(), QStringLiteral("7"));
 
-    // QVariant dup()
-    QCOMPARE(plugins.call_function(QStringLiteral("test-plugin.dup()"), {}).toString(),
-             QStringLiteral("dup"));
+    // QString dup()
+    const QVariant dup = plugins.call_function(QStringLiteral("test-plugin.dup()"), {});
+    QCOMPARE(dup.metaType(), QMetaType::fromType<QString>());
+    QCOMPARE(dup.toString(), QStringLiteral("dup"));
 
     // Non-QVariant return types come back as the matching QVariant type.
     const QVariant meaning =
@@ -233,18 +223,21 @@ void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced() {
     QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_LOG_PLUGIN)));
     QVERIFY(mcp::log_sink_claimed());
 
-    QObject* logger = plugins.plugin_object("test-logger");
-    QVERIFY(logger != nullptr);
-    QVERIFY(invoke_slot(logger, "claimed").toBool());
+    QVERIFY(plugins.plugin_object("test-logger") != nullptr);
+    QVERIFY(plugins.call_function(QStringLiteral("test-logger.claimed()"), {}).toBool());
 
-    const int before = invoke_slot(logger, "count").toInt();
+    const int before =
+        plugins.call_function(QStringLiteral("test-logger.count()"), {}).toInt();
 
     // A core log event must reach the plugin's sink (the plugin decides how to
     // handle it; here it counts/stashes it).
     MCP_LOG_WARN("logging-plugin-probe-line");
-    const int after = invoke_slot(logger, "count").toInt();
+    const int after =
+        plugins.call_function(QStringLiteral("test-logger.count()"), {}).toInt();
     QVERIFY2(after >= before + 1, "logging plugin did not receive the log event");
-    QVERIFY(invoke_slot(logger, "last").toString().contains("logging-plugin-probe-line"));
+    QVERIFY(plugins.call_function(QStringLiteral("test-logger.last()"), {})
+                .toString()
+                .contains("logging-plugin-probe-line"));
 
     // Once claimed, nobody can displace the logging system.
     QVERIFY(!mcp::set_log_sink([](mcp::LogLevel, std::string_view) {}));

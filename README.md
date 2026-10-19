@@ -261,8 +261,8 @@ public:
         registerPublicSlots();     // publish every eligible public slot
     }
 public slots:
-    QVariant reverse(QString text) { return text.reversed(); }
-    void     reset()               { /* ... */ }
+    QString reverse(QString text) { return text.reversed(); }
+    void    reset()               { /* ... */ }
 };
 ```
 
@@ -288,8 +288,9 @@ void MyPlugin::initialize(const mcp::HostInterface& host) override {
     registerPublicSlots();
 }
 
-QVariant MyPlugin::greet_via_host(QString who) {
-    return host_.callFunc(target_, { who });              // one value, in order
+QString MyPlugin::greet_via_host(QString who) {
+    // callFunc returns a QVariant; convert to this function's natural type.
+    return host_.callFunc(target_, { who }).toString();   // one value, in order
 }
 ```
 

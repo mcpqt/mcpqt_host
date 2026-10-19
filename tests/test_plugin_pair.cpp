@@ -15,7 +15,6 @@
 
 #include <QObject>
 #include <QString>
-#include <QVariant>
 
 #include <string>
 
@@ -49,17 +48,16 @@ public slots:
     // "test-pair.forward(QString)" — remotely calls test-plugin.echo through
     // the host, then displays the value it got back: it is logged and embedded
     // in this plugin's own return value.
-    QVariant forward(QString message) {
+    QString forward(QString message) {
         if (target_.isEmpty()) {
             return QStringLiteral("target echo function not found");
         }
 
         // Inter-plugin call: one positional argument, routed by the host.
-        const QVariant returned = host_.callFunc(target_, { message });
+        const QString text = host_.callFunc(target_, { message }).toString();
 
         // Display the returned value (plugin-side log) and fold it into our
         // own result so it is observable by the caller too.
-        const QString text = returned.toString();
         MCP_LOG_INFO("test-pair: test-plugin.echo returned '" +
                      text.toStdString() + "'");
         return QStringLiteral("test-pair received: %1").arg(text);
