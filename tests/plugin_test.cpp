@@ -22,6 +22,9 @@
 #if !defined(MCP_TEST_PLUGIN)
 #error "MCP_TEST_PLUGIN path was not generated; the test plugin target is missing"
 #endif
+#if !defined(MCP_TEST_PLUGIN_PAIR)
+#error "MCP_TEST_PLUGIN_PAIR path was not generated; the pair plugin target is missing"
+#endif
 
 class PluginManagerTest : public QObject {
     Q_OBJECT
@@ -33,6 +36,9 @@ private slots:
     void CallsTypedFunctions();
     void VoidAndThrowingFunctions();
     void InvalidCallsThrow();
+    void DependencyGatesLoad();
+    void CrossPluginForwarding();
+    void UnloadHonorsReverseDependencies();
 };
 
 void PluginManagerTest::LoadRegistersTypedFunctions() {
@@ -135,6 +141,53 @@ void PluginManagerTest::InvalidCallsThrow() {
     QVERIFY_EXCEPTION_THROWN(
         plugins.call_function(QStringLiteral("test-plugin.echo(QString)"), {}),
         mcp::Error);
+}
+
+void PluginManagerTest::DependencyGatesLoad() {
+    mcp::PluginManager plugins;
+
+    // test-pair declares a dependency on test-plugin, so loading it first must
+    // fail (the dependency is not yet satisfiable)...
+    QVERIFY(!plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
+    QCOMPARE(plugins.plugin_count(), std::size_t{0});
+
+    // ...and loading the dependency first allows the dependent to load.
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
+    QCOMPARE(plugins.plugin_count(), std::size_t{2});
+}
+
+void PluginManagerTest::CrossPluginForwarding() {
+    mcp::PluginManager plugins;
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
+
+    QCOMPARE(plugins.plugin_ids(), (QStringList{ "test-plugin", "test-pair" }));
+    QVERIFY(plugins.has_function("test-pair.forward(QString)"));
+    QVERIFY(plugins.has_function("test-plugin.echo(QString)"));
+
+    // test-pair.forward calls test-plugin.echo through the host and surfaces
+    // the other plugin's returned value in its own result.
+    const QVariant forwarded = plugins.call_function(
+        QStringLiteral("test-pair.forward(QString)"), { QStringLiteral("cross") });
+    QCOMPARE(forwarded.toString(), QStringLiteral("test-pair received: cross"));
+}
+
+void PluginManagerTest::UnloadHonorsReverseDependencies() {
+    mcp::PluginManager plugins;
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
+    QCOMPARE(plugins.plugin_count(), std::size_t{2});
+
+    // test-plugin cannot be unloaded while test-pair (which depends on it) is
+    // loaded; unloading the dependent first is fine.
+    QVERIFY(!plugins.unload_plugin("test-plugin"));
+    QCOMPARE(plugins.plugin_count(), std::size_t{2});
+    QVERIFY(plugins.unload_plugin("test-pair"));
+    QCOMPARE(plugins.plugin_count(), std::size_t{1});
+    QVERIFY(plugins.unload_plugin("test-plugin"));
+    QCOMPARE(plugins.plugin_count(), std::size_t{0});
+    QVERIFY(plugins.functions().isEmpty());
 }
 
 int main(int argc, char** argv) {

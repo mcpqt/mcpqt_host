@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
 //
-// A second plugin used by plugin_test to exercise CROSS-PLUGIN calls. It
-// publishes its own public slot `pair.forward`, whose handler calls the
-// `test-plugin.echo` function through the host (HostInterface::callFunc).
+// A second plugin used by plugin_test to exercise CROSS-PLUGIN calls. Its
+// public slot `test-pair.forward(QString)` calls `test-plugin.echo(QString)`
+// through the host (HostInterface::callFunc), then displays the returned value
+// in its own result.
 //
-// The pair plugin must be loaded AFTER test_plugin, since its initialize()
-// records the target signature eagerly. plugin_test loads them in order.
+// The pair plugin declares a dependency on test-plugin, so the host will not
+// load it until test-plugin is available.
 
 #include "plugin.hpp"
 
 #include "log.hpp"
 
 #include <QObject>
+#include <QString>
 #include <QVariant>
-#include <QVariantMap>
 
 #include <string>
 
@@ -45,21 +46,19 @@ public:
     void shutdown() override {}
 
 public slots:
-    // "test-pair.forward(QVariant)" — remotely calls test-plugin.echo through
-    // the host, then *displays* the value it got back: it is logged and
-    // embedded in this plugin's own return value so the caller (and the test)
-    // can see that the round-trip actually returned test-plugin's data.
-    QVariant forward(const QVariant& args) {
+    // "test-pair.forward(QString)" — remotely calls test-plugin.echo through
+    // the host, then displays the value it got back: it is logged and embedded
+    // in this plugin's own return value.
+    QVariant forward(QString message) {
         if (target_.isEmpty()) {
             return QStringLiteral("target echo function not found");
         }
-        const QVariantMap m = args.toMap();
 
-        // Inter-plugin call: routed by the host to the other plugin.
-        const QVariant returned = host_.callFunc(target_, QVariantList{ m });
+        // Inter-plugin call: one positional argument, routed by the host.
+        const QVariant returned = host_.callFunc(target_, { message });
 
         // Display the returned value (plugin-side log) and fold it into our
-        // own result so it is observable by the MCP caller too.
+        // own result so it is observable by the caller too.
         const QString text = returned.toString();
         MCP_LOG_INFO("test-pair: test-plugin.echo returned '" +
                      text.toStdString() + "'");
