@@ -15,6 +15,7 @@
 
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QMetaType>
 #include <QStringList>
 #include <QtTest/QtTest>
 
@@ -70,7 +71,9 @@ void PluginManagerTest::LoadRegistersTypedFunctions() {
                                   "test-plugin.add(double,double)",
                                   "test-plugin.boom()",
                                   "test-plugin.reset()",
-                                  "test-plugin.dup()" }) {
+                                  "test-plugin.dup()",
+                                  "test-plugin.meaning()",
+                                  "test-plugin.upper(QString)" }) {
         QVERIFY2(funcs.contains(QString::fromLatin1(expected)), expected);
         QVERIFY(plugins.has_function(QString::fromLatin1(expected)));
     }
@@ -79,7 +82,7 @@ void PluginManagerTest::LoadRegistersTypedFunctions() {
     // Inherited QObject slots (deleteLater is a public void() slot) are not
     // published as plugin functions.
     QVERIFY(!plugins.has_function("test-plugin.deleteLater()"));
-    QCOMPARE(funcs.size(), 5);
+    QCOMPARE(funcs.size(), 7);
 }
 
 void PluginManagerTest::MissingFileFails() {
@@ -132,6 +135,17 @@ void PluginManagerTest::CallsTypedFunctions() {
     // QVariant dup()
     QCOMPARE(plugins.call_function(QStringLiteral("test-plugin.dup()"), {}).toString(),
              QStringLiteral("dup"));
+
+    // Non-QVariant return types come back as the matching QVariant type.
+    const QVariant meaning =
+        plugins.call_function(QStringLiteral("test-plugin.meaning()"), {});
+    QCOMPARE(meaning.metaType(), QMetaType::fromType<int>());
+    QCOMPARE(meaning.toInt(), 42);
+
+    const QVariant upper = plugins.call_function(
+        QStringLiteral("test-plugin.upper(QString)"), { QStringLiteral("abc") });
+    QCOMPARE(upper.metaType(), QMetaType::fromType<QString>());
+    QCOMPARE(upper.toString(), QStringLiteral("ABC"));
 }
 
 void PluginManagerTest::VoidAndThrowingFunctions() {

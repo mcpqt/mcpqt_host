@@ -16,12 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mcp::mcp`. (Functions are exposed to other plugins only for now; mapping
   them to MCP tools is a later step.)
   - **Typed functions, no QVariant packing.** A plugin publishes functions by
-    declaring ordinary public slots with 0–10 parameters and a `void` or
-    `QVariant` return; parameter types are normal QMetaType-registered types.
-    The host reflects the slots from the plugin's `QMetaObject` and invokes
-    them with `QGenericArgument`, so the plugin writes typed functions instead
-    of packing arguments into a single QVariant. A function is addressed by its
-    signature, e.g. `<pluginId>.<slotSignature>`.
+    declaring ordinary public slots with 0–10 parameters; parameter and return
+    types are normal registered QMetaTypes (the return type may be `void` or
+    anything else registered). The host reflects the slots from the plugin's
+    `QMetaObject` and invokes them with `QGenericArgument`, capturing the
+    result through `QGenericReturnArgument`, so the plugin writes typed
+    functions instead of packing arguments into a single QVariant. A function
+    is addressed by its signature, e.g. `<pluginId>.<slotSignature>`.
   - **Cross-plugin calls.** Each plugin receives a `HostInterface` at
     `initialize()`; through it a plugin enumerates every function the host
     knows (`getFuncs`) and invokes any of them — including functions owned by

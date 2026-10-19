@@ -8,8 +8,9 @@
 // host's PluginManager loads such plugins with QPluginLoader and registers
 // every public slot with the host:
 //
-//     void      myFunction(int a, QString b);   // 0..10 parameters, void
-//     QVariant  myFunction(double x);           // or a QVariant result
+//     void      myFunction(int a, QString b);   // 0..10 parameters
+//     QString   myFunction(double x);           // any registered QMetaType
+//                                               // return (void included)
 //
 // Parameters use ordinary types (anything with a registered QMetaType that
 // QGenericArgument can carry); they are NOT packed into a single QVariant.
@@ -146,8 +147,8 @@ public:
 protected:
     /// Publish every public slot on this plugin to the host. This does not
     /// validate or reject anything: the host decides which slots are acceptable
-    /// functions (return `void`/`QVariant`, 0..10 parameters, registered
-    /// QMetaTypes, declared by the plugin, not duplicated). Call it from
+    /// functions (0..10 parameters, a registered QMetaType return including
+    /// `void`, declared by the plugin, not duplicated). Call it from
     /// initialize() after storing `host` into `host_`.
     void registerPublicSlots();
 

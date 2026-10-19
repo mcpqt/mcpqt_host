@@ -241,10 +241,11 @@ plugins.load_directory("/opt/my-host/plugins"); // or plugins.load_file("foo.so"
 ```
 
 A plugin publishes normal typed functions as public slots — 0–10 parameters
-using ordinary QMetaType-registered types, and a `void` or `QVariant` return.
-Parameters are *not* packed into a QVariant: the host invokes the slot
-reflectively with `QGenericArgument`, so its signature is its address, e.g.
-`myplugin.reverse(QString)`.
+using ordinary QMetaType-registered types, and any registered QMetaType as the
+return type (`void` included). Parameters are *not* packed into a QVariant and
+the return value is not restricted to QVariant: the host invokes the slot
+reflectively with `QGenericArgument`/`QGenericReturnArgument`, so its signature
+is its address, e.g. `myplugin.reverse(QString)`.
 
 ```cpp
 #include <mcp/plugin.hpp>

@@ -128,7 +128,8 @@ QVariant PluginManager::invoke_method(QObject* object,
         gen[i] = QGenericArgument(converted[i].typeName(), converted[i].constData());
     }
 
-    if (method.returnMetaType() == QMetaType::fromType<void>()) {
+    const QMetaType return_type = method.returnMetaType();
+    if (return_type == QMetaType::fromType<void>()) {
         const bool ok = method.invoke(
             object, Qt::DirectConnection,
             gen[0], gen[1], gen[2], gen[3], gen[4],
@@ -141,11 +142,39 @@ QVariant PluginManager::invoke_method(QObject* object,
         return {};
     }
 
-    QVariant result;
+    // A QVariant return is already the value we want to hand back — wrapping
+    // it in another QVariant would double-wrap it. Let invoke write it directly.
+    if (return_type == QMetaType::fromType<QVariant>()) {
+        QVariant result;
+        const bool ok = method.invoke(
+            object, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result),
+            gen[0], gen[1], gen[2], gen[3], gen[4],
+            gen[5], gen[6], gen[7], gen[8], gen[9]);
+        if (!ok) {
+            throw Error{ error_code::internal_error,
+                         "failed to invoke '" +
+                             method.methodSignature().toStdString() + "'" };
+        }
+        return result;
+    }
+
+    // Any other registered QMetaType is a valid return type: allocate storage
+    // for it, hand QGenericReturnArgument that storage, then wrap the result in
+    // a QVariant for the caller.
+    void* storage = return_type.create();
+    if (storage == nullptr) {
+        throw Error{ error_code::internal_error,
+                     "cannot allocate return value of type " +
+                         std::string(return_type.name()) + " for '" +
+                         method.methodSignature().toStdString() + "'" };
+    }
+    QGenericReturnArgument return_arg(return_type.name(), storage);
     const bool ok = method.invoke(
-        object, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result),
+        object, Qt::DirectConnection, return_arg,
         gen[0], gen[1], gen[2], gen[3], gen[4],
         gen[5], gen[6], gen[7], gen[8], gen[9]);
+    QVariant result(return_type, storage);
+    return_type.destroy(storage);
     if (!ok) {
         throw Error{ error_code::internal_error,
                      "failed to invoke '" +
@@ -212,10 +241,9 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
     }
 
     const QMetaType return_type = method.returnMetaType();
-    if (return_type != QMetaType::fromType<void>() &&
-        return_type != QMetaType::fromType<QVariant>()) {
+    if (!return_type.isValid()) {
         MCP_LOG_WARN("PluginManager: '" + signature.toStdString() +
-                     "' has an unsupported return type (need void or QVariant)");
+                     "' has an unregistered return type");
         return false;
     }
     if (method.parameterCount() > Q_METAMETHOD_INVOKE_MAX_ARGS) {
