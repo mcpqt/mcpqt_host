@@ -346,6 +346,17 @@ plugin cannot take it over.
 ./build/examples/plugintester/plugintester /path/to/plugins
 ```
 
+`examples/mcp_tester` is a small interactive MCP client. Pass it a server
+binary (plus any server arguments); it spawns the process, connects over stdio,
+and offers `list`, `call`, `info`, `ping`, `help`, and `quit`. `call` prompts
+for a tool name and JSON arguments, then prints the returned content, error
+result, and any structured content.
+
+```sh
+./build/examples/mcp_tester/mcp_tester \
+    ./build/examples/calculator_server/calculator_server
+```
+
 #### Plugin-owned logging
 
 A plugin can take over SDK diagnostics entirely: it claims the log sink and

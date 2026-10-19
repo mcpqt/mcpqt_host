@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     honoring declared dependencies (including reverse dependencies on unload).
     It claims the log sink with a plain stderr dumper so SDK logging always
     goes to stderr and a logging plugin cannot take over.
+  - **Interactive MCP client (`mcp_tester`).** Spawns a server over stdio and
+    offers a menu to list tools, call a tool with JSON arguments, show server
+    info, and ping. Tool content, error results, and structured content are
+    printed.
   - **`PluginManager::unload_plugin()`** unloads a single plugin by id,
     refusing pinned plugins and plugins that another loaded plugin depends on.
   - See `examples/hello_plugin` + `examples/cross_caller` (two plugins, one

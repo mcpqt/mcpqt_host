@@ -2,6 +2,7 @@
 if(NOT WIN32)
     add_subdirectory(calculator_server)
     add_subdirectory(simple_client)
+    add_subdirectory(mcp_tester)
     add_subdirectory(mcp_notes_server)
     add_subdirectory(hello_plugin)
     add_subdirectory(cross_caller)
