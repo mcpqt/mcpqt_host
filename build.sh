@@ -5,4 +5,4 @@ set -eu
 
 cd "$(dirname "$0")"
 
-cmake --build build "$@"
+cmake --build build "$@" -j8

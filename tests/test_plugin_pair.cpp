@@ -10,6 +10,8 @@
 
 #include "plugin.hpp"
 
+#include "log.hpp"
+
 #include <QObject>
 #include <QVariant>
 #include <QVariantMap>
@@ -43,14 +45,25 @@ public:
     void shutdown() override {}
 
 public slots:
-    // "test-pair.forward(QVariant)" — forwards its `message` to
-    // test-plugin.echo through the host, returning the echoed text.
+    // "test-pair.forward(QVariant)" — remotely calls test-plugin.echo through
+    // the host, then *displays* the value it got back: it is logged and
+    // embedded in this plugin's own return value so the caller (and the test)
+    // can see that the round-trip actually returned test-plugin's data.
     QVariant forward(const QVariant& args) {
         if (target_.isEmpty()) {
             return QStringLiteral("target echo function not found");
         }
         const QVariantMap m = args.toMap();
-        return host_.callFunc(target_, m);
+
+        // Inter-plugin call: routed by the host to the other plugin.
+        const QVariant returned = host_.callFunc(target_, m);
+
+        // Display the returned value (plugin-side log) and fold it into our
+        // own result so it is observable by the MCP caller too.
+        const QString text = returned.toString();
+        MCP_LOG_INFO("test-pair: test-plugin.echo returned '" +
+                     text.toStdString() + "'");
+        return QStringLiteral("test-pair received: %1").arg(text);
     }
 
 private:

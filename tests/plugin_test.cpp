@@ -194,12 +194,16 @@ void PluginManagerTest::CrossPluginForwarding() {
     client.connect(std::move(pair.a));
     (void)client.initialize().get();
 
+    // Cross-plugin round-trip: this tool is owned by test-pair, which
+    // internally calls test-plugin.echo (a different plugin) through the host.
+    // The returned value must be test-plugin's echoed message, surfaced by
+    // test-pair in its own result.
     const auto fwd = client.call_tool("test-pair.forward",
                                       QJsonObject{ { "message", "cross" } }).get();
     QVERIFY(!fwd.is_error.value_or(false));
     QCOMPARE(fwd.content.size(), std::size_t{1});
     QCOMPARE(QString::fromStdString(std::get<mcp::TextContent>(fwd.content[0]).text),
-             QString("cross"));
+             QString("test-pair received: cross"));
 }
 
 int main(int argc, char** argv) {
