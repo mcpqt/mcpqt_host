@@ -83,12 +83,20 @@ void PluginManagerTest::ToolsMetadataExposed(void) {
     const std::vector<mcp::PluginTool> tools = plugins.tools();
     QCOMPARE(tools.size(), std::size_t{1});
     QCOMPARE(tools[0].signature, QStringLiteral("QString TestPlugin::echo(QString)"));
-    QCOMPARE(QString::fromStdString(tools[0].tool.id), QStringLiteral("echo"));
     QCOMPARE(QString::fromStdString(tools[0].tool.name), QStringLiteral("echo"));
-    QCOMPARE(tools[0].tool.input.toObject().value(QStringLiteral("message")).toString(),
-             QStringLiteral("hi"));
+    QCOMPARE(QString::fromStdString(tools[0].tool.description.value_or("")),
+             QStringLiteral("Echo back the message."));
+    const QJsonObject schema = tools[0].tool.input_schema.toObject();
+    QCOMPARE(schema.value(QStringLiteral("type")).toString(), QStringLiteral("object"));
+    QCOMPARE(schema.value(QStringLiteral("properties"))
+                 .toObject()
+                 .value(QStringLiteral("message"))
+                 .toObject()
+                 .value(QStringLiteral("type"))
+                 .toString(),
+             QStringLiteral("string"));
 
-    const std::optional<mcp::ToolUseContent> tool =
+    const std::optional<mcp::Tool> tool =
         plugins.tool(QStringLiteral("QString TestPlugin::echo(QString)"));
     QVERIFY(tool.has_value());
     QCOMPARE(QString::fromStdString(tool->name), QStringLiteral("echo"));

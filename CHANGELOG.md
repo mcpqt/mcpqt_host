@@ -21,8 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     virtuals to implement. The metadata JSON file carries declared
     dependencies and optional tool declarations.
   - **Tool declarations in metadata.** A plugin's metadata JSON may declare a
-    `"Tools"` object mapping a published function signature to a
-    `ToolUseContent` JSON value. `PluginManager` parses and validates the
+    `"Tools"` object mapping a published function signature to an MCP `Tool`
+    JSON value (name, description, inputSchema, ...). `PluginManager` parses
+    and validates the
     entries at load time (dropping signatures that are not published
     functions) and exposes them via `tools()` / `tool(signature)`.
     Registering them as MCP tools is a later step.

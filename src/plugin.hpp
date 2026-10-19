@@ -57,14 +57,18 @@
 //
 // The JSON metadata file (the FILE argument above) must be valid JSON. It is
 // used by the host for declared dependencies, and may declare a "Tools" object
-// mapping a published function signature to a ToolUseContent JSON value (the
+// mapping a published function signature to a Tool JSON value (the
 // host validates the signature and exposes the mapping; it does not register
 // MCP tools yet):
 //
 //   "Tools": {
 //     "QString MyPlugin::reverse(QString)": {
-//       "type": "tool_use", "id": "reverse", "name": "reverse",
-//       "input": { "text": "..." }
+//       "name": "reverse",
+//       "description": "Reverse a string.",
+//       "inputSchema": {
+//         "type": "object",
+//         "properties": { "text": { "type": "string" } }
+//       }
 //     }
 //   }
 //

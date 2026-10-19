@@ -304,19 +304,22 @@ plugin until those dependencies are satisfied. `load_directory()` retries
 deferred plugins across passes, so the directory can be scanned in any order.
 
 It may also declare a `"Tools"` object mapping a published function signature
-to a `ToolUseContent` JSON value. `PluginManager` parses these at load time and
-drops entries whose signature is not a function the plugin published. The
-mapping is exposed (not yet registered as MCP tools) via
-`PluginManager::tools()` and `PluginManager::tool(signature)`:
+to an MCP `Tool` JSON value (name, description, inputSchema, ...).
+`PluginManager` parses these at load time and drops entries whose signature is
+not a function the plugin published. The mapping is exposed (not yet registered
+as MCP tools) via `PluginManager::tools()` and
+`PluginManager::tool(signature)`:
 
 ```json
 {
   "Tools": {
     "QString HelloPlugin::greet(QString)": {
-      "type": "tool_use",
-      "id": "greet",
       "name": "greet",
-      "input": { "name": "world" }
+      "description": "Greet someone by name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "name": { "type": "string" } }
+      }
     }
   }
 }

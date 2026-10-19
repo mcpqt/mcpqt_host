@@ -1,16 +1,17 @@
 {
     "Tools": {
         "QString TestPlugin::echo(QString)": {
-            "type": "tool_use",
-            "id": "echo",
             "name": "echo",
-            "input": { "message": "hi" }
+            "description": "Echo back the message.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "message": { "type": "string" } },
+                "required": ["message"]
+            }
         },
         "void TestPlugin::does_not_exist()": {
-            "type": "tool_use",
-            "id": "bogus",
-            "name": "bogus",
-            "input": {}
+            "name": "does_not_exist",
+            "inputSchema": { "type": "object", "properties": {} }
         }
     }
 }

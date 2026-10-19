@@ -35,7 +35,7 @@ struct PluginManager::Instance {
     std::string       id;
     QStringList       signatures;         // fully-qualified signatures this plugin published
     QStringList       dependencies;       // declared plugin ids / function signatures
-    QHash<QString, ToolUseContent> tools; // validated metadata "Tools" entries
+    QHash<QString, Tool> tools;           // validated metadata "Tools" entries
     /// True once this plugin owns the process-wide log sink. Pinned plugins are
     /// never unloaded: the sink executes code inside the plugin's library.
     bool              pinned = false;
@@ -336,9 +336,9 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
                                                          bool quiet) {
     auto* loader = new QPluginLoader(file);
 
-    // Parse the metadata "Tools" object: signature -> ToolUseContent. Entries
+    // Parse the metadata "Tools" object: signature -> Tool. Entries
     // are validated against the plugin's published functions after initialize.
-    QHash<QString, ToolUseContent> declared_tools;
+    QHash<QString, Tool> declared_tools;
     {
         const QJsonValue meta = loader->metaData().value(QLatin1String("MetaData"));
         if (meta.isObject()) {
@@ -350,7 +350,7 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
                      it != tools_object.constEnd(); ++it) {
                     try {
                         declared_tools.insert(
-                            it.key(), from_json<ToolUseContent>(it.value()));
+                            it.key(), from_json<Tool>(it.value()));
                     } catch (const std::exception& e) {
                         MCP_LOG_WARN("PluginManager: '" + file.toStdString() +
                                      "' Tools entry '" + it.key().toStdString() +
@@ -626,7 +626,7 @@ std::vector<PluginTool> PluginManager::tools() const {
     return out;
 }
 
-std::optional<ToolUseContent> PluginManager::tool(const QString& signature) const {
+std::optional<Tool> PluginManager::tool(const QString& signature) const {
     for (const auto& inst : m_plugins) {
         const auto it = inst->tools.constFind(signature);
         if (it != inst->tools.constEnd()) {
