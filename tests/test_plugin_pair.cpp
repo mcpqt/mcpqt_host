@@ -56,7 +56,7 @@ public slots:
         const QVariantMap m = args.toMap();
 
         // Inter-plugin call: routed by the host to the other plugin.
-        const QVariant returned = host_.callFunc(target_, m);
+        const QVariant returned = host_.callFunc(target_, QVariantList{ m });
 
         // Display the returned value (plugin-side log) and fold it into our
         // own result so it is observable by the MCP caller too.

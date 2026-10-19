@@ -50,7 +50,7 @@ agents, native applications, and high-throughput servers.
 | Tasks (`tasks/get`/`result`/`list`/`cancel`, status notifications) | ✅ | ✅ | augment `tools/call` via `task` field; spec 2025-11-25 |
 | Elicitation (`elicitation/create`, form + url modes) | ✅ initiator | ✅ responder | spec 2025-11-25 |
 | OAuth 2.1 authorization (HTTP) | ✅ | ✅ | bearer + RFC 9728 protected resource metadata |
-| Plugins (functions from loadable modules) | ✅ host | — | `mcp::PluginManager` + `QPluginLoader`; public slots auto-registered as tools, cross-plugin calls via `HostInterface` |
+| Plugins (functions from loadable modules) | ✅ host | — | `mcp::PluginManager` + `QPluginLoader`; typed public slots into a cross-plugin registry via `HostInterface` (MCP tool exposure pending) |
 
 ## Quick start
 
@@ -225,26 +225,26 @@ deadlock.
 
 ### Plugins: functions from dynamically loaded modules
 
-A server can extend itself at runtime by loading Qt plugins that expose
-callable functions; `mcp::PluginManager` reflects each plugin's public slots
-into a shared function registry and registers one MCP tool per function. Each
-plugin is an ordinary Qt plugin (`QObject` + `mcp::PluginInterface`) built as
-its own `MODULE` library — it never links against the host binary.
+Plugins can extend the host at runtime. `mcp::PluginManager` loads Qt plugins,
+reflects each plugin's public slots into a shared function registry, and routes
+cross-plugin calls. Each plugin is an ordinary Qt plugin (`QObject` +
+`mcp::PluginInterface`) built as its own `MODULE` library — it never links
+against the host binary.
+
+> Functions are currently exposed only to other plugins, not as MCP tools.
 
 ```cpp
 #include <mcp/mcp.hpp>   // brings in PluginManager + PluginInterface
 
-mcp::Server server{ mcp::Implementation{ .name = "my-host", .version = "1.0" } };
-
-mcp::PluginManager plugins(server);          // must outlive `server`'s use
+mcp::PluginManager plugins;
 plugins.load_directory("/opt/my-host/plugins"); // or plugins.load_file("foo.so")
-
-server.run(std::make_unique<mcp::StdioTransport>());
 ```
 
-A plugin publishes functions by declaring public slots that follow the uniform
-calling convention `QVariant name(const QVariant& args)` — all arguments ride
-inside the one packed `QVariant`:
+A plugin publishes normal typed functions as public slots — 0–10 parameters
+using ordinary QMetaType-registered types, and a `void` or `QVariant` return.
+Parameters are *not* packed into a QVariant: the host invokes the slot
+reflectively with `QGenericArgument`, so its signature is its address, e.g.
+`myplugin.reverse(QString)`.
 
 ```cpp
 #include <mcp/plugin.hpp>
@@ -257,14 +257,11 @@ public:
     std::string id() const override { return "myplugin"; }
     void initialize(const mcp::HostInterface& host) override {
         host_ = host;              // keep the handle for later calls
-        registerPublicSlots();     // publish every QVariant(QVariant) slot
+        registerPublicSlots();     // publish every eligible public slot
     }
 public slots:
-    QVariant reverse(const QVariant& args) {
-        QString s = args.toMap().value("text").toString();
-        std::reverse(s.begin(), s.end());
-        return s;
-    }
+    QVariant reverse(QString text) { return text.reversed(); }
+    void     reset()               { /* ... */ }
 };
 ```
 
@@ -276,9 +273,10 @@ set_target_properties(myplugin PROPERTIES PREFIX "")
 target_link_libraries(myplugin PRIVATE mcp::mcp)
 ```
 
-Plugins can call functions in *other* plugins through the `HostInterface`
-they received at initialize — discovery via `getFuncs()`, invocation via
-`callFunc("pluginId.signature", packedArgs)`:
+Plugins call functions in *other* plugins through the `HostInterface` they
+received at initialize — discovery via `getFuncs()`, invocation via
+`callFunc(signature, args)` where `args` is a positional `QVariantList` with
+one value per parameter:
 
 ```cpp
 void MyPlugin::initialize(const mcp::HostInterface& host) override {
@@ -289,8 +287,8 @@ void MyPlugin::initialize(const mcp::HostInterface& host) override {
     registerPublicSlots();
 }
 
-QVariant MyPlugin::greet_via_host(const QVariant& args) {
-    return host_.callFunc(target_, args);                 // call another plugin
+QVariant MyPlugin::greet_via_host(QString who) {
+    return host_.callFunc(target_, { who });              // one value, in order
 }
 ```
 
@@ -300,12 +298,11 @@ plugin until those dependencies are satisfied. `load_directory()` retries
 deferred plugins across passes, so the directory can be scanned in any order.
 
 See `examples/hello_plugin` + `examples/cross_caller` (two plugins where one
-calls the other) and `examples/plugin_host` (a stdio host that loads a
-directory of plugins) for a complete, runnable set. The `Q_PLUGIN_METADATA`
-IID must be the literal `"ai.mcp.qt.mcp-plugin/2.0"` (it matches
-`MCP_PLUGIN_IID`). Functions whose signature collides with an already
-registered tool are skipped with a warning. Load plugins before serving;
-unloading while tool calls are in flight is not supported.
+calls the other) and `examples/plugin_host` (loads a directory and prints the
+registered functions). The `Q_PLUGIN_METADATA` IID must be the literal
+`"ai.mcp.qt.mcp-plugin/2.0"` (it matches `MCP_PLUGIN_IID`). Duplicate
+signatures are skipped with a warning. Load plugins before use; unloading while
+calls are in flight is not supported.
 
 `examples/plugintester` is a standalone interactive binary for trying plugins
 out. It scans a directory and accepts `list`, `load <name|path>`, `loadall`,

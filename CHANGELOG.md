@@ -9,20 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Plugin support (`mcp::PluginManager`).** Servers can load Qt plugins that
-  implement `mcp::PluginInterface` (header `<mcp/plugin.hpp>`) and register
-  one MCP tool per published function at load time. `PluginManager` discovers
-  plugins with `QPluginLoader` (single files or a directory), warns on
-  duplicate tool names, and unloads cleanly. Plugins are separate `MODULE`
-  libraries that link only `mcp::mcp`.
-  - **Functions, not commands.** A plugin publishes functions by declaring
-    public slots following `QVariant name(const QVariant& args)`; the host
-    reflects them from the plugin's `QMetaObject` and registers one tool per
-    function (`<pluginId>.<slotName>`).
+- **Plugin support (`mcp::PluginManager`).** The host can load Qt plugins that
+  implement `mcp::PluginInterface` (header `<mcp/plugin.hpp>`). `PluginManager`
+  discovers plugins with `QPluginLoader` (single files or a directory) and
+  unloads cleanly. Plugins are separate `MODULE` libraries that link only
+  `mcp::mcp`. (Functions are exposed to other plugins only for now; mapping
+  them to MCP tools is a later step.)
+  - **Typed functions, no QVariant packing.** A plugin publishes functions by
+    declaring ordinary public slots with 0–10 parameters and a `void` or
+    `QVariant` return; parameter types are normal QMetaType-registered types.
+    The host reflects the slots from the plugin's `QMetaObject` and invokes
+    them with `QGenericArgument`, so the plugin writes typed functions instead
+    of packing arguments into a single QVariant. A function is addressed by its
+    signature, e.g. `<pluginId>.<slotSignature>`.
   - **Cross-plugin calls.** Each plugin receives a `HostInterface` at
     `initialize()`; through it a plugin enumerates every function the host
     knows (`getFuncs`) and invokes any of them — including functions owned by
-    *other* plugins — via `callFunc`. Plugins never see each other's classes.
+    *other* plugins — via `callFunc(signature, args)`, where `args` is a
+    positional `QVariantList` with one value per parameter. Plugins never see
+    each other's classes.
   - **Declared dependencies.** A plugin's metadata JSON may list the plugins
     (or function signatures) it requires before initializing; `PluginManager`
     defers such a plugin until the dependency is satisfied, and

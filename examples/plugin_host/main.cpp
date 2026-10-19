@@ -1,56 +1,45 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
 //
-// Example plugin host: an MCP server whose tools come from plugins.
-//
-// It loads every plugin in a directory (argv[1], or $MCP_PLUGIN_DIR, or
-// ./plugins), reflects each plugin's public slots into the cross-plugin
-// function registry, registers one MCP tool per function, then serves over
-// stdio.
+// Example plugin host. It loads every plugin in a directory (argv[1], or
+// $MCP_PLUGIN_DIR, or ./plugins), reflects each plugin's public slots into the
+// cross-plugin function registry, and prints the registered signatures.
 //
 //   ./plugin_host /path/to/plugins
 //
 // Building examples/hello_plugin and examples/cross_caller produces
 // hello_plugin.so and cross_caller.so; point the host at the directory
 // containing them to try it out. Loading both demonstrates cross-plugin
-// calls: the `caller.greet_via_host` tool forwards to hello_plugin's
-// `hello.greet` function through the host.
+// calls: caller.greet_via_host forwards to hello.greet through the host.
+//
+// NOTE: functions are currently exposed only to other plugins, not as MCP
+// tools; wiring the registry to a Server's tool list is a later step.
 
 #include "mcp.hpp"
 
 #include <QString>
 
+#include <cstddef>
 #include <cstdlib>
 #include <iostream>
-#include <memory>
 
 int main(int argc, char** argv) {
     mcp::set_log_level(mcp::LogLevel::info);
-
-    mcp::Server server{ mcp::Implementation{
-        .name        = "mcp-plugin-host",
-        .version     = "0.1.0",
-        .description = "Hosts MCP tools loaded from plugins.",
-    } };
-    server.set_instructions(
-        "Tools on this server are contributed by dynamically loaded plugins.");
 
     const QString directory =
         (argc > 1)
             ? QString::fromLocal8Bit(argv[1])
             : qEnvironmentVariable("MCP_PLUGIN_DIR", QStringLiteral("plugins"));
 
-    // Declared after `server`, so it is destroyed (and unloads plugins) before
-    // the server; a plugin's registered handlers then never outlive their code.
-    mcp::PluginManager plugins{ server };
+    mcp::PluginManager plugins;
 
     const std::size_t loaded = plugins.load_directory(directory);
     std::cerr << "Loaded " << loaded << " plugin(s) from "
               << directory.toStdString() << "\n";
-    for (const std::string& tool : plugins.registered_tools()) {
-        std::cerr << "  tool: " << tool << "\n";
+    for (const QString& signature : plugins.functions()) {
+        std::cerr << "  function: " << signature.toStdString() << "\n";
     }
 
-    server.run(std::make_unique<mcp::StdioTransport>());
+    plugins.unload_all();
     return EXIT_SUCCESS;
 }

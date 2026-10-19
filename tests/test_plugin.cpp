@@ -3,14 +3,14 @@
 //
 // A plugin used by plugin_test. Built as a MODULE library the test loads at
 // runtime. Its public slots are published by the host via meta-object
-// reflection, so their signatures become MCP tools:
-//   test-plugin.echo, test-plugin.add, test-plugin.boom, test-plugin.dup.
+// reflection; signatures become addressable functions, e.g.
+//   test-plugin.echo(QString), test-plugin.add(double,double),
+//   test-plugin.boom(), test-plugin.dup(), test-plugin.reset().
 
 #include "plugin.hpp"
 
 #include <QObject>
 #include <QVariant>
-#include <QVariantMap>
 
 #include <stdexcept>
 #include <string>
@@ -34,23 +34,20 @@ public:
     void shutdown() override {}
 
 public slots:
-    // Returns whatever `message` was passed in.
-    QVariant echo(const QVariant& args) {
-        return args.toMap().value("message").toString();
-    }
+    // QVariant return, one typed QString parameter.
+    QVariant echo(QString message) { return message; }
 
-    // Adds two numbers.
-    QVariant add(const QVariant& args) {
-        const QVariantMap m = args.toMap();
-        return m.value("a").toDouble() + m.value("b").toDouble();
-    }
+    // Typed numeric parameters.
+    QVariant add(double a, double b) { return a + b; }
 
-    // Throws; the host turns this into an is_error tool result.
-    QVariant boom(const QVariant&) {
-        throw std::runtime_error("boom from plugin");
-    }
+    // void return, no parameters.
+    void reset() {}
 
-    QVariant dup(const QVariant&) { return QStringLiteral("dup"); }
+    // void return that throws; the host maps this to an error.
+    void boom() { throw std::runtime_error("boom from plugin"); }
+
+    // void return, no parameters.
+    QVariant dup() { return QStringLiteral("dup"); }
 };
 
 #include "test_plugin.moc"

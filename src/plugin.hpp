@@ -5,18 +5,24 @@
 //
 // A plugin is an ordinary Qt plugin: a QObject implementing
 // mcp::PluginInterface, marked with Q_PLUGIN_METADATA / Q_INTERFACES. The
-// host's PluginManager loads such plugins with QPluginLoader and publishes
-// every public slot that follows the uniform calling convention:
+// host's PluginManager loads such plugins with QPluginLoader and registers
+// every public slot with the host:
 //
-//     QVariant myFunction(const QVariant& packedArgs);
+//     void      myFunction(int a, QString b);   // 0..10 parameters, void
+//     QVariant  myFunction(double x);           // or a QVariant result
 //
-// All arguments ride inside the single QVariant argument and the result comes
-// back as a QVariant — the same "packed QVariant" convention as the Qt plugin
-// template. The plugin never talks to other plugins directly; everything goes
-// through the HostInterface the host hands it once at initialize():
+// Parameters use ordinary types (anything with a registered QMetaType that
+// QGenericArgument can carry); they are NOT packed into a single QVariant.
+// The host invokes the slot reflectively with the caller-supplied arguments,
+// so the plugin writes normal typed functions. A function's address is its
+// fully-qualified signature, e.g. "myplugin.reverse(QString)".
+//
+// The plugin never talks to other plugins directly; everything goes through
+// the HostInterface the host hands it once at initialize():
 //
 //     - getFuncs  enumerate every function the host currently knows
-//     - callFunc  invoke any function by its fully-qualified signature
+//     - callFunc  invoke any function by signature, passing one QVariant per
+//                 parameter (a positional QVariantList)
 //     - regFunc   publish a function (used by registerPublicSlots())
 //     - unloadSelf ask the host to tear this plugin down
 //
@@ -41,10 +47,7 @@
 //           registerPublicSlots();
 //       }
 //   public slots:
-//       QVariant reverse(const QVariant& packedArgs) {
-//           const auto map = packedArgs.toMap();
-//           return map.value("text").toString().reversed();
-//       }
+//       QVariant reverse(QString text) { return text.reversed(); }
 //   };
 //
 // The JSON metadata file (the FILE argument above) must be valid JSON; a
@@ -60,6 +63,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariant>
+#include <QVariantList>
 #include <QtPlugin>
 
 #include <functional>
@@ -76,11 +80,13 @@ struct HostInterface {
     /// "<pluginId>.<methodSignature>", e.g. "hello.greet(QVariant)".
     std::function<QStringList()> getFuncs;
 
-    /// Invoke a function by its fully-qualified signature. `packedArgs` is the
-    /// single argument passed to the target slot; the returned QVariant is the
-    /// slot's return value. Throws mcp::Error if the function is unknown or
-    /// its plugin has been unloaded. Runs synchronously on the caller's thread.
-    std::function<QVariant(const QString& signature, const QVariant& packedArgs)> callFunc;
+    /// Invoke a function by its fully-qualified signature. `args` holds one
+    /// QVariant per declared parameter, in order (positional); the host builds
+    /// the QGenericArguments and invokes the slot. Returns the slot's QVariant
+    /// result, or an invalid QVariant for a void function. Throws mcp::Error if
+    /// the function is unknown, the plugin has been unloaded, or the argument
+    /// count/types cannot be matched. Runs synchronously on the caller's thread.
+    std::function<QVariant(const QString& signature, const QVariantList& args)> callFunc;
 
     /// Publish a function under a fully-qualified signature. The host validates
     /// the signature against the calling plugin's meta-object, so this must be
@@ -138,10 +144,12 @@ public:
     virtual void shutdown() {}
 
 protected:
-    /// Publish every public slot on this plugin that matches the uniform
-    /// convention `QVariant name(const QVariant&)`. Must be called from
-    /// initialize() (after storing `host` into `host_`). Slots with any other
-    /// shape are skipped.
+    /// Publish every public slot on this plugin with 0..10 parameters and a
+    /// `void` or `QVariant` return type. Parameter types are ordinary
+    /// QMetaType-registered types; the host invokes them reflectively with
+    /// QGenericArgument, so no QVariant packing is required in the plugin.
+    /// Must be called from initialize() (after storing `host` into `host_`).
+    /// Slots that don't fit this shape are skipped with a warning.
     void registerPublicSlots();
 
     /// Stored copy of the host handle, for use after initialize().

@@ -3,43 +3,42 @@
 //
 // PluginManager: the host side of the plugin ABI. It loads Qt plugins
 // implementing PluginInterface from disk, reflects each plugin's public slots
-// into a process-wide function registry, routes cross-plugin calls, and
-// surfaces every published function as an MCP tool on a Server.
+// into a process-wide function registry, and routes cross-plugin calls.
 //
-//   mcp::Server server{ mcp::Implementation{ .name = "host", .version = "1.0" } };
-//   mcp::PluginManager plugins{ server };
-//   plugins.load_directory("/path/to/plugins");   // tools now on `server`
-//   server.run(std::make_unique<mcp::StdioTransport>());
+//   mcp::PluginManager plugins;
+//   plugins.load_directory("/path/to/plugins");
+//   // ... plugins call one another through the HostInterface ...
 //
 // Cross-plugin calls: every function is keyed by the fully-qualified signature
-// "<pluginId>.<slotSignature>", e.g. "hello.greet(QVariant)". A plugin calls
+// "<pluginId>.<slotSignature>", e.g. "hello.greet(QString)". A plugin calls
 // any other plugin's function through the HostInterface handed to it at
-// initialize() (HostInterface::callFunc). The manager owns the registry, so
-// plugins never discover or reference each other directly.
+// initialize() (HostInterface::callFunc), passing one QVariant per parameter.
+// The host builds the QGenericArguments and invokes the typed slot; plugins
+// never pack their parameters into a single QVariant.
 //
-// Lifetime: the referenced Server must outlive the PluginManager. Registered
-// tool handlers keep a weak reference to the loaded plugin, so once a plugin
-// is unloaded (or the manager destroyed) calling its tool returns an error
-// result rather than touching detached code. Loading/unloading must not race
-// with in-flight tool calls: load plugins before run(), unload after it stops.
+// NOTE: functions are exposed only to other plugins for now. Automatically
+// publishing them as MCP tools is intentionally not part of this design yet.
+//
+// Lifetime: registered calls keep a weak reference to the loaded plugin, so
+// once a plugin is unloaded (or the manager destroyed) calling one of its
+// functions reports an error rather than touching detached code.
+// Loading/unloading must not race with in-flight calls.
 //
 // Logging: a plugin can claim the process-wide diagnostic sink through
 // HostInterface::claimLogging(). The first claim wins; afterwards the core
 // rejects replacement, and the claiming plugin is pinned — unload_all() leaves
 // it loaded (its sink runs code in the plugin's library, so detaching it would
-// be unsafe). The core keeps its minimal default stderr sink as a fallback for
-// before the claim and when no logging plugin is present.
-//
-// This header lives in the core `mcp` library and depends only on Qt6::Core
-// (QPluginLoader). Plugins themselves are separate CMake targets (MODULE
-// libraries) building against `mcp::mcp`.
+// be unsafe). The core keeps its minimal default stderr sink as a fallback.
 
 #pragma once
 
 #include "plugin.hpp"
 
+#include <QHash>
 #include <QString>
 #include <QStringList>
+#include <QVariant>
+#include <QVariantList>
 
 #include <cstddef>
 #include <memory>
@@ -52,12 +51,9 @@ class QPluginLoader;
 
 namespace mcp {
 
-class Server;
-
 class PluginManager {
 public:
-    /// Manage plugins for `server`. The Server is referenced, not owned.
-    explicit PluginManager(Server& server);
+    PluginManager();
     ~PluginManager();
 
     PluginManager(const PluginManager&)            = delete;
@@ -67,17 +63,15 @@ public:
     /// failure (not a shared library, wrong interface, duplicate plugin id,
     /// a declared dependency that is not already satisfied, or
     /// initialize()/slot registration threw) the loader is cleaned up and
-    /// false is returned. Functions whose signature is already registered are
-    /// skipped (with a warning) but do not fail the load.
+    /// false is returned.
     ///
     /// Dependencies: a plugin may declare, in its metadata JSON, a
     /// `dependencies` array of fully-qualified function signatures (and/or
     /// plugin ids) that must be available before it is initialized — e.g.
-    /// `"dependencies": ["hello.greet(QVariant)"]`. Each entry is satisfied if
+    /// `"dependencies": ["hello.greet(QString)"]`. Each entry is satisfied if
     /// a previously-loaded plugin already published that signature, or if a
     /// plugin with that id is already loaded. A plugin whose dependencies are
-    /// not yet satisfiable fails to load (false), so a dependent plugin must
-    /// be loaded after the plugins it depends on. `load_directory()` retries
+    /// not yet satisfiable fails to load (false); `load_directory()` retries
     /// such plugins automatically.
     bool load_file(const QString& file);
 
@@ -92,12 +86,12 @@ public:
     /// loaded, if it is pinned (owns the log sink), or if another loaded plugin
     /// declares a dependency on it or on one of its published functions —
     /// reverse dependencies are honored so a dependent is never left dangling.
-    /// Must not be called while that plugin's tool calls are in flight.
+    /// Must not be called while that plugin's calls are in flight.
     bool unload_plugin(const std::string& id);
 
     /// Call shutdown() on every unloadable plugin and detach its shared
     /// library. Pinned plugins (those that own the log sink) are kept loaded.
-    /// Safe to call more than once. Must not be called while tool calls are in
+    /// Safe to call more than once. Must not be called while calls are in
     /// flight.
     void unload_all();
 
@@ -107,59 +101,58 @@ public:
     /// Identifiers (`PluginInterface::id()`) of the loaded plugins.
     [[nodiscard]] QStringList plugin_ids() const;
 
-    /// Names of the MCP tools registered from published functions.
-    [[nodiscard]] std::vector<std::string> registered_tools() const;
-
-    /// True when a tool with `name` was registered by a plugin function.
-    [[nodiscard]] bool has_tool(const std::string& name) const;
-
-    /// The QObject of the loaded plugin with `id`, or nullptr. Lets embedders
-    /// reach through to a plugin (e.g. to call slot-introspection or a test
-    /// plugin's custom API past the host interface).
+    /// The QObject of the loaded plugin with `id`, or nullptr.
     [[nodiscard]] QObject* plugin_object(const std::string& id) const;
+
+    /// Every published function signature, across all loaded plugins.
+    [[nodiscard]] QStringList functions() const;
+
+    /// True when `signature` is currently published.
+    [[nodiscard]] bool has_function(const QString& signature) const;
+
+    /// Invoke a published function. `args` holds one QVariant per declared
+    /// parameter, in order. Returns the QVariant result (invalid for a void
+    /// function). Throws mcp::Error on unknown functions, unloaded plugins,
+    /// arity/type mismatches, or exceptions escaping the slot.
+    [[nodiscard]] QVariant call_function(const QString& signature,
+                                         const QVariantList& args = {}) const;
 
 private:
     struct Instance;
     struct FunctionEntry;
 
-    /// Outcome of an attempt to load a single plugin file.
     enum class LoadOutcome {
         Loaded,
         UnsatisfiedDependencies,   ///< declared deps not all available yet
         Failed,                    ///< any other failure
     };
 
-    /// Parse the `dependencies` array from a plugin's metadata JSON, or return
-    /// an empty list when absent/invalid. `loader` may or may not be loaded;
-    /// metaData() works without loading the library.
+    /// Parse the `dependencies` array from a plugin's metadata JSON.
     [[nodiscard]] QStringList plugin_dependencies(const QPluginLoader* loader) const;
 
-    /// True when every entry of `dependencies` is satisfied by a loaded plugin
-    /// id or a registered function signature.
+    /// True when every entry of `dependencies` is satisfied.
     [[nodiscard]] bool dependencies_satisfied(const QStringList& dependencies) const;
 
-    /// Read a plugin's declared dependencies and, if satisfied, load it.
     LoadOutcome load_file_impl(const QString& file, bool quiet);
 
-    /// Host-side callbacks bound into the HostInterface handed to plugins.
-    QStringList                  host_get_funcs() const;
-    QVariant                     host_call_func(const QString& signature,
-                                                const QVariant& packed_args);
-    bool                         host_reg_func(const std::shared_ptr<Instance>& inst,
-                                               const QString& signature);
-    void                         host_unload_self(const std::shared_ptr<Instance>& inst,
-                                                  const QString& reason);
+    /// Invoke `method` on `object` with positional QVariant arguments.
+    [[nodiscard]] static QVariant invoke_method(QObject* object,
+                                                const QMetaMethod& method,
+                                                const QVariantList& args);
 
-    /// Remove a function's registry entry and (if this plugin owned it) the
-    /// corresponding MCP tool from `tools_`.
-    void drop_function(const QString& signature);
+    // Host-side callbacks bound into the HostInterface handed to plugins.
+    QStringList host_get_funcs() const;
+    QVariant    host_call_func(const QString& signature, const QVariantList& args) const;
+    bool        host_reg_func(const std::shared_ptr<Instance>& inst,
+                              const QString& signature);
+    void        host_unload_self(const std::shared_ptr<Instance>& inst,
+                                 const QString& reason);
 
     /// Unload a single plugin (shutdown + detach + erase from the registry).
     void unload_instance(const std::shared_ptr<Instance>& inst);
 
-    Server&                                  server_;
-    std::vector<std::shared_ptr<Instance>>   plugins_;
-    std::vector<std::string>                 tools_;
+    QHash<QString, FunctionEntry>          registry_;   // signature -> entry
+    std::vector<std::shared_ptr<Instance>> plugins_;
 };
 
 }  // namespace mcp

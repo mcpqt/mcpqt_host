@@ -20,9 +20,10 @@ namespace mcp {
 PluginInterface::PluginInterface(QObject* parent) : QObject(parent) {}
 
 void PluginInterface::registerPublicSlots() {
-    const QMetaObject* mo       = metaObject();
-    const QString      prefix   = QString::fromStdString(id()) + ".";
+    const QMetaObject* mo     = metaObject();
+    const QString      prefix = QString::fromStdString(id()) + ".";
     std::size_t        published = 0;
+    bool               saw_slot  = false;
 
     for (int i = 0; i < mo->methodCount(); ++i) {
         const QMetaMethod method = mo->method(i);
@@ -32,12 +33,42 @@ void PluginInterface::registerPublicSlots() {
         if (method.access() != QMetaMethod::Public) {
             continue;
         }
-        // Uniform calling convention: exactly one QVariant in, QVariant out.
-        if (method.parameterCount() != 1 ||
-            method.parameterMetaType(0) != QMetaType::fromType<QVariant>()) {
+        saw_slot = true;
+
+        // Return type: void or QVariant. Anything else has no defined way to
+        // be handed back through HostInterface::callFunc.
+        const QMetaType returnType = method.returnMetaType();
+        if (returnType != QMetaType::fromType<void>() &&
+            returnType != QMetaType::fromType<QVariant>()) {
+            MCP_LOG_WARN(std::string("PluginInterface(") + id() +
+                         "): skipping slot '" +
+                         method.methodSignature().toStdString() +
+                         "' — return type must be void or QVariant");
             continue;
         }
-        if (method.returnMetaType() != QMetaType::fromType<QVariant>()) {
+
+        // Parameters: QMetaMethod::invoke carries at most 10.
+        if (method.parameterCount() > Q_METAMETHOD_INVOKE_MAX_ARGS) {
+            MCP_LOG_WARN(std::string("PluginInterface(") + id() +
+                         "): skipping slot '" +
+                         method.methodSignature().toStdString() +
+                         "' — more than 10 parameters");
+            continue;
+        }
+
+        bool params_ok = true;
+        for (int p = 0; p < method.parameterCount(); ++p) {
+            if (!method.parameterMetaType(p).isValid()) {
+                MCP_LOG_WARN(std::string("PluginInterface(") + id() +
+                             "): skipping slot '" +
+                             method.methodSignature().toStdString() +
+                             "' — parameter " + std::to_string(p) +
+                             " has no registered QMetaType");
+                params_ok = false;
+                break;
+            }
+        }
+        if (!params_ok) {
             continue;
         }
 
@@ -52,10 +83,9 @@ void PluginInterface::registerPublicSlots() {
         }
     }
 
-    if (published == 0) {
+    if (saw_slot && published == 0) {
         MCP_LOG_WARN(std::string("PluginInterface(") + id() +
-                     "): registerPublicSlots() found no slot matching the "
-                     "`QVariant (const QVariant&)` convention");
+                     "): registerPublicSlots() found no publishable slot");
     }
 }
 

@@ -59,7 +59,7 @@ public slots:
             return QStringLiteral("hello plugin's greet() is not loaded");
         }
         const QVariantMap m = args.toMap();
-        return host_.callFunc(target_greet_, m);
+        return host_.callFunc(target_greet_, QVariantList{ m });
     }
 
 private:

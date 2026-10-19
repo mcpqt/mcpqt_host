@@ -109,9 +109,9 @@ void print_loaded(const mcp::PluginManager& plugins) {
         return;
     }
     std::cout << "loaded plugins: " << ids.join(QStringLiteral(", ")).toStdString() << "\n";
-    std::cout << "tools:\n";
-    for (const std::string& tool : plugins.registered_tools()) {
-        std::cout << "  " << tool << "\n";
+    std::cout << "functions:\n";
+    for (const QString& signature : plugins.functions()) {
+        std::cout << "  " << signature.toStdString() << "\n";
     }
 }
 
@@ -137,9 +137,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "warning: process log sink was already claimed\n");
     }
 
-    mcp::Server server{ mcp::Implementation{
-        .name = "plugintester", .version = "0.1.0" } };
-    mcp::PluginManager plugins{ server };
+    mcp::PluginManager plugins;
 
     const QString dir = plugin_directory(argc, argv);
     std::cout << "plugintester — plugin directory: " << dir.toStdString() << "\n";
