@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
 //
-// Demo MCP plugin. Built as a standalone MODULE library (hello_plugin.so);
-// the host (examples/plugin_host) loads it and exposes its public slots as
-// MCP tools.
+// Demo plugin. Built as a standalone MODULE library (hello_plugin.so); the
+// host (examples/plugin_host) loads it and publishes its public slots as
+// typed cross-plugin functions.
 //
 // The plugin links only mcp::mcp and Qt Core — it never sees the host binary.
 // All cross-plugin communication flows through the HostInterface handed to
@@ -12,8 +12,8 @@
 #include "plugin.hpp"
 
 #include <QObject>
+#include <QString>
 #include <QVariant>
-#include <QVariantMap>
 
 #include <string>
 
@@ -26,8 +26,8 @@ class HelloPlugin : public mcp::PluginInterface {
     Q_INTERFACES(mcp::PluginInterface)
 
 public:
-    // The plugin is a C++ object; the QVariant(QVariant) slots below are what
-    // the host publishes. `id()` prefixes the function signatures.
+    // The public slots below are ordinary typed functions; the host reflects
+    // them. `id()` prefixes the function signatures.
     explicit HelloPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
 
     std::string id() const override { return "hello"; }
@@ -43,28 +43,18 @@ public:
     void shutdown() override {}
 
 public slots:
-    // "hello.greet(QVariant)" — a single QVariant carrying the args map.
-    QVariant greet(const QVariant& args) {
-        const QVariantMap m = args.toMap();
-        const QString   name = m.value("name", QStringLiteral("world")).toString();
+    // "hello.greet(QString)"
+    QVariant greet(QString name) {
+        if (name.isEmpty()) {
+            name = QStringLiteral("world");
+        }
         return QStringLiteral("Hello, %1!").arg(name);
     }
 
-    // "hello.sum(QVariant)" — packed number args, QVariant(double) back.
-    QVariant sum(const QVariant& args) {
-        const QVariantMap m = args.toMap();
-        const double      a = m.value("a", 0.0).toDouble();
-        const double      b = m.value("b", 0.0).toDouble();
-        return a + b;
-    }
+    // "hello.sum(double,double)"
+    QVariant sum(double a, double b) { return a + b; }
 };
 
 }  // namespace
 
 #include "hello_plugin.moc"
-
-// Standard Qt plugin entry point macro family:
-//   Q_PLUGIN_METADATA    → metadata + factory for QPluginLoader
-//   Q_INTERFACES         → makes qobject_cast<PluginInterface*> work
-// Those two, plus the class above and include <QtPlugin>, are all a plugin
-// needs. (The .moc include above defines the meta-object; AUTOMOC handles it.)
