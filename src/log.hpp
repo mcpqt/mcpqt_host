@@ -29,12 +29,29 @@ enum class LogLevel : int {
 
 /// Sink signature: receives a fully-formatted line (no trailing newline).
 /// The sink is invoked synchronously from whichever thread emitted the log.
-/// The default sink writes a timestamped line to `stderr`.
+/// The default sink (the core's minimal fallback) writes a timestamped line
+/// to `stderr`.
 using LogSink = std::function<void(LogLevel, std::string_view)>;
 
-/// Replace the global log sink. Pass `nullptr` to restore the default.
-/// Thread-safe.
-void set_log_sink(LogSink sink);
+/// Replace the global log sink. Pass `nullptr` to restore the core's default
+/// fallback sink. Returns false (and leaves the sink untouched) if a sink has
+/// already been claimed via `claim_log_sink()` — a claimed sink is exclusive
+/// and cannot be replaced. Thread-safe.
+[[nodiscard]] bool set_log_sink(LogSink sink);
+
+/// Install `sink` and take exclusive ownership of process-wide logging for the
+/// remainder of the process. The first successful claim wins: subsequent
+/// `claim_log_sink()` and `set_log_sink()` calls fail, so one logging provider
+/// (typically a plugin) cannot be displaced by another. A null sink is
+/// rejected. Thread-safe.
+///
+/// The claimed sink executes code owned by the caller, so the caller must stay
+/// loaded for the process lifetime; `PluginManager` enforces this by pinning
+/// the plugin that claims logging.
+[[nodiscard]] bool claim_log_sink(LogSink sink);
+
+/// True once a sink has been claimed via `claim_log_sink()`.
+[[nodiscard]] bool log_sink_claimed() noexcept;
 
 /// Set the global minimum level. Calls below this level are dropped before
 /// any message is formatted. Thread-safe (atomic).

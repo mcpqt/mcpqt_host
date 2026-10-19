@@ -53,6 +53,7 @@
 #pragma once
 
 #include "json.hpp"
+#include "log.hpp"
 #include "protocol.hpp"
 
 #include <QObject>
@@ -90,6 +91,16 @@ struct HostInterface {
 
     /// Ask the host to tear this plugin down (shutdown + unload). Optional.
     std::function<void(const QString& reason)> unloadSelf;
+
+    /// Claim process-wide diagnostic logging: install `sink` (which decides how
+    /// each `MCP_LOG_*` event is rendered and where it goes) and take
+    /// exclusive ownership of it. Returns false if logging was already claimed.
+    /// Once claimed, no other plugin (nor `set_log_sink`) can replace the sink.
+    ///
+    /// A plugin that claims logging is "pinned": the host will not unload it,
+    /// because the installed sink runs code owned by the plugin. Call this last
+    /// in initialize(), after any setup that may fail.
+    std::function<bool(LogSink)> claimLogging;
 };
 
 /// Interface every plugin implements. The concrete plugin is a QObject (for

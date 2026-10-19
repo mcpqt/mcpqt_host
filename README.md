@@ -307,6 +307,30 @@ IID must be the literal `"ai.mcp.qt.mcp-plugin/2.0"` (it matches
 registered tool are skipped with a warning. Load plugins before serving;
 unloading while tool calls are in flight is not supported.
 
+#### Plugin-owned logging
+
+A plugin can take over SDK diagnostics entirely: it claims the log sink and
+then decides how each event is rendered and where it goes. `claimLogging` is
+exclusive — the first successful claim wins, and afterwards neither another
+plugin nor `set_log_sink()` can replace it. The core keeps a minimal
+timestamped stderr sink as a fallback for before the claim and when no logging
+plugin is present.
+
+```cpp
+void initialize(const mcp::HostInterface& host) override {
+    // Claim last: this must be the final setup step.
+    (void)host.claimLogging([](mcp::LogLevel level, std::string_view msg) {
+        // The plugin owns presentation/destination (JSON, file, syslog, ...).
+        write_json_line(level, msg);
+    });
+}
+```
+
+A claiming plugin is **pinned**: `PluginManager::unload_all()` will not detach
+it, because the installed sink runs code from the plugin's library. See
+`examples/log_plugin` for a JSON-lines implementation (writes to
+`$MCP_LOG_FILE`, else stderr).
+
 ## Building
 
 Requires a C++20 compiler and Qt 6.4+ (development packages for `Core`,

@@ -21,6 +21,11 @@ std::atomic<LogLevel> g_level{LogLevel::info};
 std::mutex   g_sink_mutex;
 LogSink      g_sink;  // empty until first call to ensure_default_sink().
 
+// Once a sink is claimed (typically by a logging plugin), it is exclusive for
+// the rest of the process: neither set_log_sink nor another claim may replace
+// it. Guarded by g_sink_mutex for writes; read lock-free by log_message().
+std::atomic<bool> g_claimed{false};
+
 void default_sink(LogLevel level, std::string_view msg) {
     // Compose the line under a single mutex so multi-thread interleaving
     // doesn't garble output. fwrite is line-buffered on stderr by default.
@@ -64,9 +69,30 @@ std::string_view to_string(LogLevel l) noexcept {
     return "?";
 }
 
-void set_log_sink(LogSink sink) {
+bool set_log_sink(LogSink sink) {
     std::lock_guard<std::mutex> lk(g_sink_mutex);
+    if (g_claimed.load(std::memory_order_relaxed)) {
+        return false;  // a claimed sink is exclusive; refuse to displace it
+    }
     g_sink = sink ? std::move(sink) : LogSink{&default_sink};
+    return true;
+}
+
+bool claim_log_sink(LogSink sink) {
+    if (!sink) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lk(g_sink_mutex);
+    if (g_claimed.load(std::memory_order_relaxed)) {
+        return false;  // someone else already owns logging
+    }
+    g_sink = std::move(sink);
+    g_claimed.store(true, std::memory_order_release);
+    return true;
+}
+
+bool log_sink_claimed() noexcept {
+    return g_claimed.load(std::memory_order_acquire);
 }
 
 void set_log_level(LogLevel level) noexcept {

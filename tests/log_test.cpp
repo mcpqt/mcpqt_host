@@ -54,14 +54,14 @@ private slots:
 void LogTest::init() {
     prev_level_ = mcp::log_level();
     mcp::set_log_level(mcp::LogLevel::trace);
-    mcp::set_log_sink([this](mcp::LogLevel lvl, std::string_view msg) {
+    (void)mcp::set_log_sink([this](mcp::LogLevel lvl, std::string_view msg) {
         std::lock_guard<std::mutex> lk(mu_);
         captured_.push_back({lvl, std::string(msg)});
     });
 }
 
 void LogTest::cleanup() {
-    mcp::set_log_sink(nullptr);  // reset to default sink
+    (void)mcp::set_log_sink(nullptr);  // reset to default sink
     mcp::set_log_level(prev_level_);
 }
 
@@ -118,7 +118,7 @@ void LogTest::ConcurrentEmittersAreSerialized() {
 }
 
 void LogTest::ResettingSinkRestoresDefault() {
-    mcp::set_log_sink(nullptr);  // restore default
+    (void)mcp::set_log_sink(nullptr);  // restore default
     // Default writes to stderr; just verify the call doesn't crash.
     MCP_LOG_INFO("after-reset");
 }

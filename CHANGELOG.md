@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (or function signatures) it requires before initializing; `PluginManager`
     defers such a plugin until the dependency is satisfied, and
     `load_directory()` retries across passes so order doesn't matter.
+  - **Plugin-owned logging (Scope A).** A plugin can claim the process-wide
+    diagnostic sink via `HostInterface::claimLogging`, deciding how each
+    `MCP_LOG_*` event is rendered and where it goes. A claim is exclusive:
+    once taken, `set_log_sink`/another claim cannot displace it, and the
+    claiming plugin is pinned so its sink code is never detached. The core
+    retains a minimal timestamped stderr sink as a fallback. See
+    `examples/log_plugin`.
   - See `examples/hello_plugin` + `examples/cross_caller` (two plugins, one
     calling the other) and `examples/plugin_host`, plus the `plugin_test`
     suite.

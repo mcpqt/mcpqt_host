@@ -23,6 +23,13 @@
 // result rather than touching detached code. Loading/unloading must not race
 // with in-flight tool calls: load plugins before run(), unload after it stops.
 //
+// Logging: a plugin can claim the process-wide diagnostic sink through
+// HostInterface::claimLogging(). The first claim wins; afterwards the core
+// rejects replacement, and the claiming plugin is pinned — unload_all() leaves
+// it loaded (its sink runs code in the plugin's library, so detaching it would
+// be unsafe). The core keeps its minimal default stderr sink as a fallback for
+// before the claim and when no logging plugin is present.
+//
 // This header lives in the core `mcp` library and depends only on Qt6::Core
 // (QPluginLoader). Plugins themselves are separate CMake targets (MODULE
 // libraries) building against `mcp::mcp`.

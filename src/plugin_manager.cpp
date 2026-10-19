@@ -87,6 +87,9 @@ struct PluginManager::Instance {
     QString           path;
     std::string       id;
     QStringList       signatures;         // fully-qualified signatures this plugin published
+    /// True once this plugin owns the process-wide log sink. Pinned plugins are
+    /// never unloaded: the sink executes code inside the plugin's library.
+    bool              pinned = false;
 };
 
 /// One published function: the method on the owning plugin plus the metadata
@@ -264,6 +267,14 @@ void PluginManager::drop_function(const QString& signature) {
 }
 
 void PluginManager::unload_instance(const std::shared_ptr<Instance>& inst) {
+    if (inst->pinned) {
+        // Pinned plugins own the log sink; detaching the library would leave
+        // the sink pointing at unmapped code. Keep it loaded for the process
+        // lifetime (the loader is intentionally not destroyed).
+        MCP_LOG_WARN("PluginManager: refusing to unload pinned plugin '" +
+                     inst->id + "' (it owns the log sink)");
+        return;
+    }
     for (const QString& signature : inst->signatures) {
         const QString tool_name = tool_name_for(signature);
         tools_.erase(std::remove(tools_.begin(), tools_.end(),
@@ -395,12 +406,28 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
     host.callFunc  = [this](const QString& sig, const QVariant& args) { return host_call_func(sig, args); };
     host.regFunc   = [this, inst](const QString& sig) { return host_reg_func(inst, sig); };
     host.unloadSelf = [this, inst](const QString& reason) { host_unload_self(inst, reason); };
+    host.claimLogging = [inst](LogSink sink) {
+        // Claim the process-wide sink; on success the plugin becomes pinned so
+        // its sink code cannot be detached while in use.
+        if (!claim_log_sink(std::move(sink))) {
+            return false;
+        }
+        inst->pinned = true;
+        return true;
+    };
 
     try {
         iface->initialize(host);
     } catch (const std::exception& e) {
         MCP_LOG_WARN("PluginManager: initialising '" + file.toStdString() +
                      "' threw: " + e.what());
+        if (inst->pinned) {
+            // It already claimed logging; its sink code must stay resident.
+            // Keep the instance rather than unloading (which unload_instance
+            // would refuse anyway) so this->signatures/tools stay consistent.
+            plugins_.push_back(std::move(inst));
+            return LoadOutcome::Failed;
+        }
         unload_instance(inst);
         return LoadOutcome::Failed;
     }
@@ -468,11 +495,16 @@ std::size_t PluginManager::load_directory(const QString& directory) {
 }
 
 void PluginManager::unload_all() {
-    for (auto& inst : plugins_) {
-        unload_instance(inst);
+    // Unload everything except pinned instances (which own the log sink and
+    // must stay resident). Their registered tools stay registered too.
+    for (auto it = plugins_.begin(); it != plugins_.end();) {
+        if ((*it)->pinned) {
+            ++it;
+            continue;
+        }
+        unload_instance(*it);
+        it = plugins_.erase(it);
     }
-    plugins_.clear();
-    tools_.clear();
 }
 
 std::size_t PluginManager::plugin_count() const { return plugins_.size(); }
