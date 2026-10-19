@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     claiming plugin is pinned so its sink code is never detached. The core
     retains a minimal timestamped stderr sink as a fallback. See
     `examples/log_plugin`.
+  - **Interactive plugin tester (`plugintester`).** A standalone binary that
+    scans a plugin directory and lets you `load`/`unload` plugins at runtime,
+    honoring declared dependencies (including reverse dependencies on unload).
+    It claims the log sink with a plain stderr dumper so SDK logging always
+    goes to stderr and a logging plugin cannot take over.
+  - **`PluginManager::unload_plugin()`** unloads a single plugin by id,
+    refusing pinned plugins and plugins that another loaded plugin depends on.
   - See `examples/hello_plugin` + `examples/cross_caller` (two plugins, one
     calling the other) and `examples/plugin_host`, plus the `plugin_test`
     suite.

@@ -307,6 +307,18 @@ IID must be the literal `"ai.mcp.qt.mcp-plugin/2.0"` (it matches
 registered tool are skipped with a warning. Load plugins before serving;
 unloading while tool calls are in flight is not supported.
 
+`examples/plugintester` is a standalone interactive binary for trying plugins
+out. It scans a directory and accepts `list`, `load <name|path>`, `loadall`,
+`unload <plugin-id>`, `loaded`, `help`, and `quit`. Loading honors declared
+dependencies; `unload_plugin()` refuses to remove a plugin that another loaded
+plugin depends on (and refuses pinned ones). The tester claims the log sink
+with a plain stderr dumper, so SDK logging always goes to stderr and a logging
+plugin cannot take it over.
+
+```sh
+./build/examples/plugintester/plugintester /path/to/plugins
+```
+
 #### Plugin-owned logging
 
 A plugin can take over SDK diagnostics entirely: it claims the log sink and

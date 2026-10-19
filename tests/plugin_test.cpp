@@ -54,6 +54,7 @@ private slots:
     void DependencyGatesLoad();
     void EndToEndToolCalls();
     void CrossPluginForwarding();
+    void UnloadHonorsReverseDependencies();
     void LoggingPluginClaimsAndCannotBeReplaced();
 };
 
@@ -223,6 +224,30 @@ void PluginManagerTest::CrossPluginForwarding() {
     QCOMPARE(fwd.content.size(), std::size_t{1});
     QCOMPARE(QString::fromStdString(std::get<mcp::TextContent>(fwd.content[0]).text),
              QString("test-pair received: cross"));
+}
+
+void PluginManagerTest::UnloadHonorsReverseDependencies() {
+    mcp::Server        server{ host_impl() };
+    mcp::PluginManager plugins{ server };
+
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
+    QCOMPARE(plugins.plugin_count(), std::size_t{2});
+
+    // test-pair declares a dependency on test-plugin, so test-plugin cannot be
+    // unloaded while test-pair is loaded.
+    QVERIFY(!plugins.unload_plugin("test-plugin"));
+    QCOMPARE(plugins.plugin_count(), std::size_t{2});
+
+    // Unloading the dependent first is fine; then the dependency can go.
+    QVERIFY(plugins.unload_plugin("test-pair"));
+    QCOMPARE(plugins.plugin_count(), std::size_t{1});
+    QVERIFY(plugins.unload_plugin("test-plugin"));
+    QCOMPARE(plugins.plugin_count(), std::size_t{0});
+    QVERIFY(plugins.registered_tools().empty());
+
+    // Unknown ids are rejected.
+    QVERIFY(!plugins.unload_plugin("does-not-exist"));
 }
 
 void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced() {

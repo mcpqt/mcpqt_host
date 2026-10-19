@@ -87,6 +87,7 @@ struct PluginManager::Instance {
     QString           path;
     std::string       id;
     QStringList       signatures;         // fully-qualified signatures this plugin published
+    QStringList       dependencies;       // declared plugin ids / function signatures
     /// True once this plugin owns the process-wide log sink. Pinned plugins are
     /// never unloaded: the sink executes code inside the plugin's library.
     bool              pinned = false;
@@ -400,6 +401,7 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
     inst->object       = obj;
     inst->path         = file;
     inst->id           = id;
+    inst->dependencies = deps;
 
     HostInterface host;
     host.getFuncs  = [this] { return host_get_funcs(); };
@@ -492,6 +494,59 @@ std::size_t PluginManager::load_directory(const QString& directory) {
                      "' — dependencies were never satisfiable");
     }
     return loaded;
+}
+
+bool PluginManager::unload_plugin(const std::string& id) {
+    std::shared_ptr<Instance> target;
+    for (const auto& inst : plugins_) {
+        if (inst->id == id) {
+            target = inst;
+            break;
+        }
+    }
+    if (!target) {
+        MCP_LOG_WARN("PluginManager: cannot unload unknown plugin '" + id + "'");
+        return false;
+    }
+    if (target->pinned) {
+        MCP_LOG_WARN("PluginManager: refusing to unload pinned plugin '" + id + "'");
+        return false;
+    }
+
+    // Honor reverse dependencies: refuse to unload a plugin that another
+    // loaded plugin requires (by id or by one of its function signatures).
+    const QString target_id = QString::fromStdString(target->id);
+    for (const auto& other : plugins_) {
+        if (other.get() == target.get()) {
+            continue;
+        }
+        for (const QString& dep : other->dependencies) {
+            bool conflict = (dep == target_id);
+            if (!conflict) {
+                for (const QString& sig : target->signatures) {
+                    if (sig == dep || sig.startsWith(dep + QLatin1Char('('))) {
+                        conflict = true;
+                        break;
+                    }
+                }
+            }
+            if (conflict) {
+                MCP_LOG_WARN("PluginManager: refusing to unload '" + id +
+                             "': plugin '" + other->id + "' depends on '" +
+                             dep.toStdString() + "'");
+                return false;
+            }
+        }
+    }
+
+    unload_instance(target);
+    plugins_.erase(std::remove_if(plugins_.begin(), plugins_.end(),
+                                  [&target](const std::shared_ptr<Instance>& p) {
+                                      return p.get() == target.get();
+                                  }),
+                   plugins_.end());
+    MCP_LOG_INFO("PluginManager: unloaded plugin '" + id + "'");
+    return true;
 }
 
 void PluginManager::unload_all() {

@@ -88,8 +88,17 @@ public:
     /// missing/empty).
     std::size_t load_directory(const QString& directory);
 
-    /// Call shutdown() on every plugin and detach its shared library. Safe to
-    /// call more than once. Must not be called while tool calls are in flight.
+    /// Unload a single plugin by its id. Returns false if no such plugin is
+    /// loaded, if it is pinned (owns the log sink), or if another loaded plugin
+    /// declares a dependency on it or on one of its published functions —
+    /// reverse dependencies are honored so a dependent is never left dangling.
+    /// Must not be called while that plugin's tool calls are in flight.
+    bool unload_plugin(const std::string& id);
+
+    /// Call shutdown() on every unloadable plugin and detach its shared
+    /// library. Pinned plugins (those that own the log sink) are kept loaded.
+    /// Safe to call more than once. Must not be called while tool calls are in
+    /// flight.
     void unload_all();
 
     /// Number of currently loaded plugins.
