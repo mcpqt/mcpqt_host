@@ -20,20 +20,17 @@ namespace {
 
 class HelloPlugin : public mcp::PluginInterface {
     Q_OBJECT
+    Q_CLASSINFO("id", "hello")
+    Q_CLASSINFO("version", "1.0.0")
+    Q_CLASSINFO("description", "Demo plugin contributing a greeting and a sum function.")
     // The IID string must match MCP_PLUGIN_IID in <plugin.hpp>.
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "hello_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 
 public:
     // The public slots below are ordinary typed functions; the host reflects
-    // them. `id()` prefixes the function signatures.
+    // them. The Q_CLASSINFO("id") prefixes the function signatures.
     explicit HelloPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
-
-    std::string id() const override { return "hello"; }
-    std::string version() const override { return "1.0.0"; }
-    std::string description() const override {
-        return "Demo plugin contributing a greeting and a sum function.";
-    }
 
     void initialize(const mcp::HostInterface& host) override {
         host_ = host;

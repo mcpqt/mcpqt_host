@@ -22,18 +22,15 @@ namespace {
 
 class CrossCallerPlugin : public mcp::PluginInterface {
     Q_OBJECT
+    Q_CLASSINFO("id", "caller")
+    Q_CLASSINFO("version", "1.0.0")
+    Q_CLASSINFO("description", "Demonstrates calling another plugin's function via the host.")
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "cross_caller.json")
     Q_INTERFACES(mcp::PluginInterface)
 
 public:
     explicit CrossCallerPlugin(QObject* parent = nullptr)
         : mcp::PluginInterface(parent) {}
-
-    std::string id() const override { return "caller"; }
-    std::string version() const override { return "1.0.0"; }
-    std::string description() const override {
-        return "Demonstrates calling another plugin's function via the host.";
-    }
 
     void initialize(const mcp::HostInterface& host) override {
         host_ = host;

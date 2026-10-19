@@ -30,17 +30,14 @@ namespace {
 
 class LogPlugin : public mcp::PluginInterface {
     Q_OBJECT
+    Q_CLASSINFO("id", "logging")
+    Q_CLASSINFO("version", "1.0.0")
+    Q_CLASSINFO("description", "Owns SDK diagnostic logging; renders events as JSON lines.")
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "log_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 
 public:
     explicit LogPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
-
-    std::string id() const override { return "logging"; }
-    std::string version() const override { return "1.0.0"; }
-    std::string description() const override {
-        return "Owns SDK diagnostic logging; renders events as JSON lines.";
-    }
 
     void initialize(const mcp::HostInterface& host) override {
         host_ = host;

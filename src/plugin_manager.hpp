@@ -98,7 +98,7 @@ public:
     /// Number of currently loaded plugins.
     [[nodiscard]] std::size_t plugin_count() const;
 
-    /// Identifiers (`PluginInterface::id()`) of the loaded plugins.
+    /// Identifiers of the loaded plugins (their Q_CLASSINFO("id")).
     [[nodiscard]] QStringList plugin_ids() const;
 
     /// The QObject of the loaded plugin with `id`, or nullptr.

@@ -37,12 +37,16 @@
 //
 //   class MyPlugin : public mcp::PluginInterface {
 //       Q_OBJECT
+//       // Plugin metadata lives in Q_CLASSINFO; "id" is required and prefixes
+//       // every function signature. "version"/"description" are optional.
+//       Q_CLASSINFO("id", "myplugin")
+//       Q_CLASSINFO("version", "1.0.0")
+//       Q_CLASSINFO("description", "What this plugin does.")
 //       // The IID literal must match MCP_PLUGIN_IID below (moc does not
 //       // expand the macro inside Q_PLUGIN_METADATA).
 //       Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "myplugin.json")
 //       Q_INTERFACES(mcp::PluginInterface)
 //   public:
-//       std::string id() const override { return "myplugin"; }
 //       void initialize(const mcp::HostInterface& host) override {
 //           host_ = host;
 //           registerPublicSlots();
@@ -51,8 +55,8 @@
 //       QString reverse(QString text) { return text.reversed(); }
 //   };
 //
-// The JSON metadata file (the FILE argument above) must be valid JSON; a
-// minimal one is `{ "id": "myplugin", "version": "1.0.0" }`.
+// The JSON metadata file (the FILE argument above) must be valid JSON and is
+// used by the host for declared dependencies; a minimal one is `{}`.
 
 #pragma once
 
@@ -78,7 +82,7 @@ namespace mcp {
 struct HostInterface {
     /// Enumerate every function currently registered with the host, across all
     /// loaded plugins. Each entry is a fully-qualified signature of the form
-    /// "<pluginId>.<methodSignature>", e.g. "hello.greet(QVariant)".
+    /// "<pluginId>.<methodSignature>", e.g. "hello.greet(QString)".
     std::function<QStringList()> getFuncs;
 
     /// Invoke a function by its fully-qualified signature. `args` holds one
@@ -126,14 +130,6 @@ public:
     PluginInterface& operator=(const PluginInterface&) = delete;
     ~PluginInterface() override                        = default;
 
-    /// Stable, non-empty identifier for the plugin (e.g. "myplugin"). Prefixes
-    /// every function signature this plugin publishes.
-    virtual std::string id() const = 0;
-
-    /// Optional version and one-line description.
-    virtual std::string version() const { return {}; }
-    virtual std::string description() const { return {}; }
-
     /// Called once after the plugin is loaded and cast, before any of its
     /// functions becomes visible to other plugins. Call registerPublicSlots()
     /// (or host.regFunc directly) from here. Keep it cheap and exception-safe:
@@ -155,6 +151,11 @@ protected:
     /// Stored copy of the host handle, for use after initialize().
     HostInterface host_;
 };
+
+/// Read a Q_CLASSINFO value (e.g. "id", "version", "description") from a
+/// plugin's meta-object. Returns an empty QString when the key is absent.
+[[nodiscard]] QString plugin_class_info(const QMetaObject* meta_object,
+                                        const char*         key);
 
 }  // namespace mcp
 

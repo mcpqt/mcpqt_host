@@ -252,10 +252,14 @@ is its address, e.g. `myplugin.reverse(QString)`.
 
 class MyPlugin : public mcp::PluginInterface {
     Q_OBJECT
+    // Plugin metadata comes from Q_CLASSINFO; "id" is required and prefixes
+    // every published signature. "version"/"description" are optional.
+    Q_CLASSINFO("id", "myplugin")
+    Q_CLASSINFO("version", "1.0.0")
+    Q_CLASSINFO("description", "Example plugin.")
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "myplugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 public:
-    std::string id() const override { return "myplugin"; }
     void initialize(const mcp::HostInterface& host) override {
         host_ = host;              // keep the handle for later calls
         registerPublicSlots();     // publish every eligible public slot

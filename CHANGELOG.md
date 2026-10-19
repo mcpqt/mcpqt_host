@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unloads cleanly. Plugins are separate `MODULE` libraries that link only
   `mcp::mcp`. (Functions are exposed to other plugins only for now; mapping
   them to MCP tools is a later step.)
+  - **Metadata via Q_CLASSINFO.** A plugin declares its `id` (required),
+    `version`, and `description` with `Q_CLASSINFO`; the host reads them from
+    the plugin's meta-object. There are no `id()`/`version()`/`description()`
+    virtuals to implement. The metadata JSON file is now only used for
+    declared dependencies.
   - **Typed functions, no QVariant packing.** A plugin publishes functions by
     declaring ordinary public slots with 0–10 parameters; parameter and return
     types are normal registered QMetaTypes (the return type may be `void` or

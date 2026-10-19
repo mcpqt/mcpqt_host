@@ -340,7 +340,15 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
         return LoadOutcome::Failed;
     }
 
-    const std::string id = iface->id();
+    const QString id_q = plugin_class_info(obj->metaObject(), "id");
+    if (id_q.isEmpty()) {
+        MCP_LOG_WARN("PluginManager: '" + file.toStdString() +
+                     "' has no Q_CLASSINFO(\"id\"); rejecting");
+        loader->unload();
+        delete loader;
+        return LoadOutcome::Failed;
+    }
+    const std::string id = id_q.toStdString();
     for (const auto& existing : plugins_) {
         if (existing->id == id) {
             MCP_LOG_WARN("PluginManager: plugin id '" + id +

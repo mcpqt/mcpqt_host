@@ -1,7 +1,1 @@
-{
-    "id": "logging",
-    "version": "1.0.0",
-    "name": "Logging Plugin",
-    "description": "Claims SDK diagnostic logging and renders JSON lines.",
-    "dependencies": []
-}
+{}

@@ -17,15 +17,14 @@
 
 class TestPlugin : public mcp::PluginInterface {
     Q_OBJECT
+    Q_CLASSINFO("id", "test-plugin")
+    Q_CLASSINFO("version", "9.9.9")
     // IID must match MCP_PLUGIN_IID in <plugin.hpp>.
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "test_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 
 public:
     explicit TestPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
-
-    std::string id() const override { return "test-plugin"; }
-    std::string version() const override { return "9.9.9"; }
 
     void initialize(const mcp::HostInterface& host) override {
         host_ = host;
