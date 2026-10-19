@@ -97,7 +97,7 @@ void print_help() {
         << "  load <name|path>     load one plugin (dependency-aware)\n"
         << "  loadall              load every plugin in the directory\n"
         << "  unload <plugin-id>   unload one plugin (respects reverse deps)\n"
-        << "  loaded               show loaded plugin ids and tools\n"
+        << "  loaded               show loaded plugin ids and functions\n"
         << "  help                 show this help\n"
         << "  quit                 exit\n";
 }

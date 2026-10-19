@@ -76,6 +76,10 @@ void PluginManagerTest::LoadRegistersTypedFunctions() {
     }
     // The old packed convention is gone.
     QVERIFY(!plugins.has_function("test-plugin.echo(QVariant)"));
+    // Inherited QObject slots (deleteLater is a public void() slot) are not
+    // published as plugin functions.
+    QVERIFY(!plugins.has_function("test-plugin.deleteLater()"));
+    QCOMPARE(funcs.size(), 5);
 }
 
 void PluginManagerTest::MissingFileFails() {

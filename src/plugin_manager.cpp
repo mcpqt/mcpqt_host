@@ -201,6 +201,13 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
                      "' is not a public slot");
         return false;
     }
+    // Reject inherited QObject slots (e.g. deleteLater) and other base-class
+    // methods: only functions declared by the plugin itself are publishable.
+    if (method.enclosingMetaObject() != mo) {
+        MCP_LOG_WARN("PluginManager: '" + signature.toStdString() +
+                     "' is inherited, not declared by the plugin");
+        return false;
+    }
 
     const QMetaType return_type = method.returnMetaType();
     if (return_type != QMetaType::fromType<void>() &&

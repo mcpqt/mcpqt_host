@@ -33,6 +33,11 @@ void PluginInterface::registerPublicSlots() {
         if (method.access() != QMetaMethod::Public) {
             continue;
         }
+        // Only the plugin's own slots — not inherited ones such as
+        // QObject::deleteLater(), which is also a public void() slot.
+        if (method.enclosingMetaObject() != mo) {
+            continue;
+        }
         saw_slot = true;
 
         // Return type: void or QVariant. Anything else has no defined way to
