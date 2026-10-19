@@ -14,6 +14,7 @@
 #include "plugin_manager.hpp"
 
 #include <QCoreApplication>
+#include <QMetaObject>
 #include <QStringList>
 #include <QtTest/QtTest>
 
@@ -24,6 +25,9 @@
 #endif
 #if !defined(MCP_TEST_PLUGIN_PAIR)
 #error "MCP_TEST_PLUGIN_PAIR path was not generated; the pair plugin target is missing"
+#endif
+#if !defined(MCP_TEST_LOG_PLUGIN)
+#error "MCP_TEST_LOG_PLUGIN path was not generated; the log plugin target is missing"
 #endif
 
 class PluginManagerTest : public QObject {
@@ -39,7 +43,20 @@ private slots:
     void DependencyGatesLoad();
     void CrossPluginForwarding();
     void UnloadHonorsReverseDependencies();
+    void LoggingPluginClaimsAndCannotBeReplaced();
 };
+
+namespace {
+
+// Invoke a no-argument plugin slot that returns QVariant.
+QVariant invoke_slot(QObject* obj, const char* name) {
+    QVariant result;
+    const bool ok = QMetaObject::invokeMethod(
+        obj, name, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result));
+    return ok ? result : QVariant();
+}
+
+}  // namespace
 
 void PluginManagerTest::LoadRegistersTypedFunctions() {
     mcp::PluginManager plugins;
@@ -188,6 +205,38 @@ void PluginManagerTest::UnloadHonorsReverseDependencies() {
     QVERIFY(plugins.unload_plugin("test-plugin"));
     QCOMPARE(plugins.plugin_count(), std::size_t{0});
     QVERIFY(plugins.functions().isEmpty());
+}
+
+void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced() {
+    // Runs last (declaration order): it claims the process-wide sink.
+    QVERIFY(!mcp::log_sink_claimed());
+
+    mcp::PluginManager plugins;
+    QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_LOG_PLUGIN)));
+    QVERIFY(mcp::log_sink_claimed());
+
+    QObject* logger = plugins.plugin_object("test-logger");
+    QVERIFY(logger != nullptr);
+    QVERIFY(invoke_slot(logger, "claimed").toBool());
+
+    const int before = invoke_slot(logger, "count").toInt();
+
+    // A core log event must reach the plugin's sink (the plugin decides how to
+    // handle it; here it counts/stashes it).
+    MCP_LOG_WARN("logging-plugin-probe-line");
+    const int after = invoke_slot(logger, "count").toInt();
+    QVERIFY2(after >= before + 1, "logging plugin did not receive the log event");
+    QVERIFY(invoke_slot(logger, "last").toString().contains("logging-plugin-probe-line"));
+
+    // Once claimed, nobody can displace the logging system.
+    QVERIFY(!mcp::set_log_sink([](mcp::LogLevel, std::string_view) {}));
+    QVERIFY(!mcp::claim_log_sink([](mcp::LogLevel, std::string_view) {}));
+
+    // The claiming plugin is pinned: unload_all() must not detach it.
+    plugins.unload_all();
+    QCOMPARE(plugins.plugin_count(), std::size_t{1});
+    QVERIFY(plugins.plugin_object("test-logger") != nullptr);
+    QVERIFY(mcp::log_sink_claimed());
 }
 
 int main(int argc, char** argv) {

@@ -41,15 +41,13 @@ public:
 
 public slots:
     // Number of log events this plugin has received via its sink.
-    QVariant count(const QVariant&) {
-        return count_.load(std::memory_order_relaxed);
-    }
+    QVariant count() { return count_.load(std::memory_order_relaxed); }
 
     // Whether the claim succeeded.
-    QVariant claimed(const QVariant&) { return claimed_; }
+    QVariant claimed() { return claimed_; }
 
     // The most recent message the sink received.
-    QVariant last(const QVariant&) {
+    QVariant last() {
         std::lock_guard<std::mutex> lk(mu_);
         return QString::fromStdString(last_);
     }
