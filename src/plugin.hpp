@@ -144,12 +144,11 @@ public:
     virtual void shutdown() {}
 
 protected:
-    /// Publish every public slot on this plugin with 0..10 parameters and a
-    /// `void` or `QVariant` return type. Parameter types are ordinary
-    /// QMetaType-registered types; the host invokes them reflectively with
-    /// QGenericArgument, so no QVariant packing is required in the plugin.
-    /// Must be called from initialize() (after storing `host` into `host_`).
-    /// Slots that don't fit this shape are skipped with a warning.
+    /// Publish every public slot on this plugin to the host. This does not
+    /// validate or reject anything: the host decides which slots are acceptable
+    /// functions (return `void`/`QVariant`, 0..10 parameters, registered
+    /// QMetaTypes, declared by the plugin, not duplicated). Call it from
+    /// initialize() after storing `host` into `host_`.
     void registerPublicSlots();
 
     /// Stored copy of the host handle, for use after initialize().

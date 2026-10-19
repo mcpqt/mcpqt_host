@@ -300,9 +300,11 @@ deferred plugins across passes, so the directory can be scanned in any order.
 See `examples/hello_plugin` + `examples/cross_caller` (two plugins where one
 calls the other) and `examples/plugin_host` (loads a directory and prints the
 registered functions). The `Q_PLUGIN_METADATA` IID must be the literal
-`"ai.mcp.qt.mcp-plugin/2.0"` (it matches `MCP_PLUGIN_IID`). Duplicate
-signatures are skipped with a warning. Load plugins before use; unloading while
-calls are in flight is not supported.
+`"ai.mcp.qt.mcp-plugin/2.0"` (it matches `MCP_PLUGIN_IID`). `registerPublicSlots()`
+publishes every public slot and performs no filtering; the host is the sole
+authority on what is accepted (return type, arity, parameter types, inherited
+methods, duplicates) and warns about rejected functions. Load plugins before
+use; unloading while calls are in flight is not supported.
 
 `examples/plugintester` is a standalone interactive binary for trying plugins
 out. It scans a directory and accepts `list`, `load <name|path>`, `loadall`,

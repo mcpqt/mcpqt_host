@@ -204,8 +204,10 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
     // Reject inherited QObject slots (e.g. deleteLater) and other base-class
     // methods: only functions declared by the plugin itself are publishable.
     if (method.enclosingMetaObject() != mo) {
-        MCP_LOG_WARN("PluginManager: '" + signature.toStdString() +
-                     "' is inherited, not declared by the plugin");
+        // Every plugin also inherits QObject's public slots (e.g.
+        // deleteLater); they are expected noise, not a load problem.
+        MCP_LOG_DEBUG("PluginManager: '" + signature.toStdString() +
+                      "' is inherited, not declared by the plugin");
         return false;
     }
 
