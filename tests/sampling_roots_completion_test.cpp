@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Phase 3 integration tests: server-initiated sampling, roots,
 // completion. The interesting one is sampling — it exercises the

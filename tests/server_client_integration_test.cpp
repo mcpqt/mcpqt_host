@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // End-to-end tests using Server + Client over an in-memory transport pair.
 // These exercise the full path: Client → Session → Transport → Session →

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Tiny blocking HTTP/1.1 client used by tests that need byte-level control
 // (asserting on status codes and raw bodies/headers) against a running

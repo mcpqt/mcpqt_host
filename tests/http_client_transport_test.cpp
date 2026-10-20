@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Tests for HttpClientTransport. Each test stands up an in-process
 // FakeHttpServer as a stand-in for a real MCP server and points the

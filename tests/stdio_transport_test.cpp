@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Pipe-based tests for StdioTransport. Each test wires up a pair of
 // pipes as if we were sitting between two processes, then drives the

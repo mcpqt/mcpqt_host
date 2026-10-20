@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Phase 4a tests: elicitation. Cover both wire-shape round-trips and
 // the server-initiated-with-handler integration path.

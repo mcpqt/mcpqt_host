@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Minimal in-process HTTP/1.1 server used by the HTTP transport tests as a
 // stand-in MCP endpoint.

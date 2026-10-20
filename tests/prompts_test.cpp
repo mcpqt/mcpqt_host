@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Tests for the prompts surface added in Phase 2: list_prompts,
 // get_prompt, plus the protocol types PromptArgument, Prompt,

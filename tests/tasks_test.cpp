@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Phase 4b tests: tasks. Cover wire-shape round-trips and the full
 // "client task-augments a tools/call → server runs handler async →

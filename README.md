@@ -8,7 +8,7 @@ A modular C++20 [Model Context Protocol](https://modelcontextprotocol.io) (MCP)
 > API may still see refinements before 1.0.
 
 [![CI](https://github.com/Neumann-Labs/mcp-cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/Neumann-Labs/mcp-cpp/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
 
 ## Why
 
@@ -503,4 +503,4 @@ target_link_libraries(my_app PRIVATE mcp::mcp)   # or mcp::http for HTTP
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+GNU Affero General Public License v3.0 (`AGPL-3.0-only`) — see [LICENSE](LICENSE).

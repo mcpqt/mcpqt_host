@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // PluginManager: the host side of the plugin ABI. It loads Qt plugins
 // implementing PluginInterface from disk, reflects each plugin's public slots

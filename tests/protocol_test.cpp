@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Round-trip and shape tests for the protocol types. The strategy: for each
 // type, build a non-trivial value, serialize to JSON, compare to a reference

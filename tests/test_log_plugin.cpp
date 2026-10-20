@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Test logging plugin (Scope A). Claims the process-wide log sink so the test
 // can verify that (a) the plugin receives the core's log events and decides

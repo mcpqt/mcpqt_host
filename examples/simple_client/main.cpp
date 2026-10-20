@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Minimal MCP client. Spawns a server (with any server arguments) as a child
 // process, drives an end-to-end conversation, and prints results:

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// SPDX-License-Identifier: Apache-2.0
 //
 // Tests for the Session dispatcher. Each test stands up a paired
 // in-memory transport, drives one Session as the "client" and either
