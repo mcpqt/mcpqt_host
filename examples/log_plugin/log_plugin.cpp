@@ -49,13 +49,14 @@ public:
         }
         m_output = m_file != nullptr ? m_file : stderr;
 
-        // Claim last: this must be the final step so a setup failure above
-        // cannot leave a claimed sink pointing at a half-initialised plugin.
-        const bool ok = m_host.claimLogging(
-            [this](mcp::LogLevel level, std::string_view msg) {
-                write(level, msg);
-            });
-        if (!ok) {
+        // Publish our functions, then claim logging by handing the host the
+        // canonical signature of our log sink slot. A plugin can only claim
+        // once; the host pins the plugin that owns the sink.
+        registerPublicSlots();
+        const QVariant ok = m_host.callFunc(
+            QStringLiteral("bool mcp::Host::claimLogging(QString)"),
+            {QStringLiteral("void LogPlugin::log(int,QString)")});
+        if (!ok.toBool()) {
             qWarning(
                 "logging plugin: log sink already claimed; not taking over");
         } else {
@@ -73,6 +74,14 @@ public:
             m_file = nullptr;
             m_output = stderr;
         }
+    }
+
+public slots:
+    // The host invokes this for every diagnostic log event after claimLogging.
+    // Signature must be exactly "void <Class>::log(int, QString)".
+    void log(int level, QString message) {
+        const std::string text = message.toStdString();
+        write(static_cast<mcp::LogLevel>(level), text);
     }
 
 private:

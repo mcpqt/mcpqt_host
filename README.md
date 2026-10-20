@@ -371,21 +371,31 @@ result, and any structured content.
 #### Plugin-owned logging
 
 A plugin can take over SDK diagnostics entirely: it claims the log sink and
-then decides how each event is rendered and where it goes. `claimLogging` is
-exclusive — the first successful claim wins, and afterwards neither another
-plugin nor `set_log_sink()` can replace it. The core keeps a minimal
-timestamped stderr sink as a fallback for before the claim and when no logging
-plugin is present.
+then decides how each event is rendered and where it goes. Logging is a host
+service in the function registry (see `getFuncs()`), called like any other
+function:
 
 ```cpp
 void initialize(const mcp::HostInterface& host) override {
-    // Claim last: this must be the final setup step.
-    (void)host.claimLogging([](mcp::LogLevel level, std::string_view msg) {
-        // The plugin owns presentation/destination (JSON, file, syslog, ...).
-        write_json_line(level, msg);
-    });
+    m_host = host;
+    registerPublicSlots();  // publishes the sink slot below
+
+    // Claim last: hand the host the canonical signature of our sink.
+    (void)m_host.callFunc("bool mcp::Host::claimLogging(QString)",
+                          {"void MyPlugin::log(int,QString)"});
 }
+
+public slots:
+    void log(int level, QString message) {
+        // The plugin owns presentation/destination (JSON, file, syslog, ...).
+        write_json_line(static_cast<mcp::LogLevel>(level), message);
+    }
 ```
+
+The claim is exclusive — the first successful claim wins, and afterwards
+neither another plugin nor `set_log_sink()` can replace it. The core keeps a
+minimal timestamped stderr sink as a fallback for before the claim and when no
+logging plugin is present.
 
 A claiming plugin is **pinned**: `PluginManager::unload_all()` will not detach
 it, because the installed sink runs code from the plugin's library. See

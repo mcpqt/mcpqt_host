@@ -95,19 +95,34 @@ namespace mcp {
 /// interaction — including cross-plugin function calls — flows through these
 /// callbacks. Copy it into a member (as `m_host`) if you need it later.
 struct HostInterface {
-    /// Enumerate every function currently registered with the host, across all
-    /// loaded plugins. Each entry is a fully-qualified signature of the form
+    /// Enumerate every function the host currently knows: functions published
+    /// by loaded plugins plus the host's own services. Each entry is a
+    /// fully-qualified signature of the form
     /// "<return_type> <class_name>::<function_name>(<param_types>)", e.g.
     /// "QString HelloPlugin::greet(QString)".
+    ///
+    /// Host services (always present):
+    ///   "bool mcp::Host::claimLogging(QString)"
+    ///   "QVariant mcp::Host::elicit(QVariant)"
     std::function<QStringList()> getFuncs;
 
     /// Invoke a function by its fully-qualified signature. `args` holds one
-    /// QVariant per declared parameter, in order (positional); the host builds
-    /// the QGenericArguments and invokes the slot. Returns the slot's QVariant
-    /// result, or an invalid QVariant for a void function. Throws mcp::Error if
-    /// the function is unknown, the plugin has been unloaded, or the argument
-    /// count/types cannot be matched. Runs synchronously on the caller's
-    /// thread.
+    /// QVariant per declared parameter, in order (positional); host functions
+    /// and plugin slots are both dispatched here. Returns the function's
+    /// QVariant result, or an invalid QVariant for a void function. Throws
+    /// mcp::Error if the function is unknown, the plugin has been unloaded, or
+    /// the argument count/types cannot be matched. Runs synchronously on the
+    /// caller's thread.
+    ///
+    /// Host services:
+    ///   - claimLogging takes the canonical signature of a published
+    ///     `void <Class>::log(int, QString)` function and installs it as the
+    ///     process-wide diagnostic sink (returns bool; the owning plugin is
+    ///     pinned).
+    ///   - elicit takes a JSON-encoded ElicitRequestParams
+    ///     (`mcp::to_json(params)`) and returns a JSON-encoded ElicitResult
+    ///     (`mcp::from_json<ElicitResult>`); it is only valid while a server is
+    ///     dispatching a plugin call.
     std::function<QVariant(const QString& signature, const QVariantList& args)>
         callFunc;
 
@@ -119,24 +134,8 @@ struct HostInterface {
     /// registered. `registerPublicSlots()` drives this automatically.
     std::function<bool(const QString& signature)> regFunc;
 
-    /// Ask the connected client to elicit user input. Blocks until the client
-    /// answers and returns its result. Only valid while a plugin function is
-    /// being invoked by a server session (the host routes the request to that
-    /// session); throws mcp::Error otherwise.
-    std::function<ElicitResult(const ElicitRequestParams&)> elicit;
-
     /// Ask the host to tear this plugin down (shutdown + unload). Optional.
     std::function<void(const QString& reason)> unloadSelf;
-
-    /// Claim process-wide diagnostic logging: install `sink` (which decides how
-    /// each `MCP_LOG_*` event is rendered and where it goes) and take
-    /// exclusive ownership of it. Returns false if logging was already claimed.
-    /// Once claimed, no other plugin (nor `set_log_sink`) can replace the sink.
-    ///
-    /// A plugin that claims logging is "pinned": the host will not unload it,
-    /// because the installed sink runs code owned by the plugin. Call this last
-    /// in initialize(), after any setup that may fail.
-    std::function<bool(LogSink)> claimLogging;
 };
 
 /// Interface every plugin implements. The concrete plugin is a QObject (for

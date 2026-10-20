@@ -35,7 +35,7 @@ struct PluginManager::Instance {
     std::string id;
     QStringList signatures;  // fully-qualified signatures this plugin published
     QStringList dependencies;    // declared plugin ids / function signatures
-    QHash<QString, Tool> tools;            // validated metadata "Tools" entries
+    QHash<QString, Tool> tools;  // validated metadata "Tools" entries
     QHash<QString, PluginResource> resources;  // validated "Resources" entries
     /// True once this plugin owns the process-wide log sink. Pinned plugins are
     /// never unloaded: the sink executes code inside the plugin's library.
@@ -46,6 +46,7 @@ struct PluginManager::Instance {
 struct PluginManager::FunctionEntry {
     std::weak_ptr<Instance> owner;
     QMetaMethod method;
+    HostFunction host_function;  // set for host services
 };
 
 namespace {
@@ -89,8 +90,7 @@ CallToolResult variant_to_tool_result(const QVariant& out) {
         result.content = {TextContent{.text = json.toString().toStdString()}};
     } else if (json.isObject() || json.isArray()) {
         result.structured_content = json;
-        result.content = {
-            TextContent{.text = mcp::dump(json)}};
+        result.content = {TextContent{.text = mcp::dump(json)}};
     } else {
         result.content = {TextContent{.text = mcp::dump(json)}};
     }
@@ -99,7 +99,9 @@ CallToolResult variant_to_tool_result(const QVariant& out) {
 
 }  // namespace
 
-PluginManager::PluginManager(void) = default;
+PluginManager::PluginManager(void) {
+    install_host_functions();
+}
 
 PluginManager::~PluginManager() {
     unload_all();
@@ -111,7 +113,97 @@ QStringList PluginManager::host_get_funcs(void) const {
 
 QVariant PluginManager::host_call_func(const QString& signature,
                                        const QVariantList& args) const {
-    return call_function(signature, args);
+    return dispatch(signature, args);
+}
+
+void PluginManager::register_host_function(const QString& signature,
+                                           HostFunction fn) {
+    FunctionEntry entry;
+    entry.host_function = std::move(fn);
+    m_registry.insert(signature, std::move(entry));
+}
+
+void PluginManager::install_host_functions(void) {
+    // Claim the process-wide diagnostic sink. The argument is the canonical
+    // signature of a published void <Class>::log(int, QString) function; the
+    // host pins the plugin that owns it and invokes it for every log event.
+    register_host_function(
+        QStringLiteral("bool mcp::Host::claimLogging(QString)"),
+        [this](const QVariantList& args) -> QVariant {
+            if (args.size() != 1) {
+                throw Error{error_code::invalid_params,
+                            "claimLogging expects the sink function signature"};
+            }
+            const QString sink_signature = args[0].toString();
+            const auto it = m_registry.constFind(sink_signature);
+            if (it == m_registry.constEnd() || it->host_function) {
+                throw Error{error_code::invalid_params,
+                            "claimLogging: '" + sink_signature.toStdString() +
+                                "' is not a plugin function"};
+            }
+            const auto owner = it->owner.lock();
+            if (!owner) {
+                throw Error{error_code::internal_error,
+                            "claimLogging: the sink's plugin is not loaded"};
+            }
+            const QMetaMethod method = it->method;
+            if (method.parameterCount() != 2 ||
+                method.parameterMetaType(0) != QMetaType::fromType<int>() ||
+                method.parameterMetaType(1) != QMetaType::fromType<QString>() ||
+                method.returnMetaType() != QMetaType::fromType<void>()) {
+                throw Error{error_code::invalid_params,
+                            "claimLogging: sink must be "
+                            "'void <Class>::log(int, QString)'"};
+            }
+
+            QObject* const object = owner->object;
+            const LogSink sink = [object, method](LogLevel level,
+                                                  std::string_view msg) {
+                static thread_local bool in_sink = false;
+                if (in_sink) {
+                    return;  // never recurse into the sink
+                }
+                in_sink = true;
+                try {
+                    (void)invoke_method(
+                        object, method,
+                        {QVariant(static_cast<int>(level)),
+                         QString::fromUtf8(msg.data(),
+                                           static_cast<int>(msg.size()))});
+                } catch (...) {
+                    // Logging must never throw.
+                }
+                in_sink = false;
+            };
+
+            if (!claim_log_sink(sink)) {
+                return false;
+            }
+            owner->pinned = true;
+            return true;
+        });
+
+    // Elicit through the session currently dispatching a plugin call. The
+    // request and result are exchanged as JSON (ElicitRequestParams /
+    // ElicitResult) so no custom metatypes cross the plugin boundary.
+    register_host_function(
+        QStringLiteral("QVariant mcp::Host::elicit(QVariant)"),
+        [](const QVariantList& args) -> QVariant {
+            if (args.size() != 1) {
+                throw Error{error_code::invalid_params,
+                            "elicit expects a JSON ElicitRequestParams"};
+            }
+            const ElicitRequestParams params =
+                from_json<ElicitRequestParams>(args[0].value<QJsonValue>());
+            Server* server = current_server();
+            if (server == nullptr) {
+                throw Error{error_code::internal_error,
+                            "elicit is only available while a server is "
+                            "dispatching a plugin call"};
+            }
+            const ElicitResult result = server->elicit(params).get();
+            return QVariant::fromValue(to_json(result));
+        });
 }
 
 QStringList
@@ -244,18 +336,27 @@ QVariant PluginManager::invoke_method(QObject* object,
 
 QVariant PluginManager::call_function(const QString& signature,
                                       const QVariantList& args) const {
+    return dispatch(signature, args);
+}
+
+QVariant PluginManager::dispatch(const QString& signature,
+                                 const QVariantList& args) const {
     const auto it = m_registry.constFind(signature);
     if (it == m_registry.constEnd()) {
         throw Error{error_code::method_not_found,
                     "unknown function: " + signature.toStdString()};
     }
-    const auto owner = it->owner.lock();
-    if (!owner) {
-        throw Error{error_code::internal_error,
-                    "function's plugin is no longer loaded: " +
-                        signature.toStdString()};
-    }
+
     try {
+        if (it->host_function) {
+            return it->host_function(args);
+        }
+        const auto owner = it->owner.lock();
+        if (!owner) {
+            throw Error{error_code::internal_error,
+                        "function's plugin is no longer loaded: " +
+                            signature.toStdString()};
+        }
         return invoke_method(owner->object, it->method, args);
     } catch (const Error&) {
         throw;
@@ -346,7 +447,7 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
         return false;
     }
 
-    m_registry.insert(signature, FunctionEntry{inst, method});
+    m_registry.insert(signature, FunctionEntry{inst, method, {}});
     inst->signatures.append(signature);
     return true;
 }
@@ -438,7 +539,8 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
                     const QJsonObject o = it.value().toObject();
                     PluginResource entry;
                     entry.uri = it.key();
-                    entry.signature = o.value(QLatin1String("signature")).toString();
+                    entry.signature =
+                        o.value(QLatin1String("signature")).toString();
                     if (entry.signature.isEmpty()) {
                         MCP_LOG_WARN("PluginManager: '" + file.toStdString() +
                                      "' resource '" + it.key().toStdString() +
@@ -446,19 +548,25 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
                         continue;
                     }
                     entry.resource.uri = entry.uri.toStdString();
-                    entry.resource.name =
-                        o.value(QLatin1String("name")).toString(entry.uri).toStdString();
+                    entry.resource.name = o.value(QLatin1String("name"))
+                                              .toString(entry.uri)
+                                              .toStdString();
                     if (o.contains(QLatin1String("title"))) {
-                        entry.resource.title =
-                            o.value(QLatin1String("title")).toString().toStdString();
+                        entry.resource.title = o.value(QLatin1String("title"))
+                                                   .toString()
+                                                   .toStdString();
                     }
                     if (o.contains(QLatin1String("description"))) {
                         entry.resource.description =
-                            o.value(QLatin1String("description")).toString().toStdString();
+                            o.value(QLatin1String("description"))
+                                .toString()
+                                .toStdString();
                     }
                     if (o.contains(QLatin1String("mimeType"))) {
                         entry.resource.mime_type =
-                            o.value(QLatin1String("mimeType")).toString().toStdString();
+                            o.value(QLatin1String("mimeType"))
+                                .toString()
+                                .toStdString();
                     }
                     declared_resources.insert(entry.uri, entry);
                 }
@@ -533,22 +641,6 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
     };
     host.unloadSelf = [this, inst](const QString& reason) {
         host_unload_self(inst, reason);
-    };
-    host.claimLogging = [inst](LogSink sink) {
-        if (!claim_log_sink(std::move(sink))) {
-            return false;
-        }
-        inst->pinned = true;
-        return true;
-    };
-    host.elicit = [](const ElicitRequestParams& params) -> ElicitResult {
-        Server* server = current_server();
-        if (server == nullptr) {
-            throw Error{error_code::internal_error,
-                        "elicitation is only available while a server is "
-                        "dispatching a plugin call"};
-        }
-        return server->elicit(params).get();
     };
 
     try {
@@ -773,7 +865,6 @@ std::optional<Tool> PluginManager::tool(const QString& signature) const {
     return std::nullopt;
 }
 
-
 std::vector<PluginResource> PluginManager::resources(void) const {
     std::vector<PluginResource> out;
     for (const auto& inst : m_plugins) {
@@ -789,7 +880,8 @@ std::vector<PluginResource> PluginManager::resources(void) const {
     return out;
 }
 
-std::optional<PluginResource> PluginManager::resource(const QString& uri) const {
+std::optional<PluginResource>
+PluginManager::resource(const QString& uri) const {
     for (const auto& inst : m_plugins) {
         const auto it = inst->resources.constFind(uri);
         if (it != inst->resources.constEnd()) {
@@ -833,11 +925,10 @@ std::size_t PluginManager::register_tools(Server& server) const {
                         value = QVariant(type);
                     }
                     if (value.metaType() != type && !value.convert(type)) {
-                        return error_result(
-                            "argument '" + name.toStdString() + "' for " +
-                            signature.toStdString() +
-                            " cannot be converted to " +
-                            std::string(type.name()));
+                        return error_result("argument '" + name.toStdString() +
+                                            "' for " + signature.toStdString() +
+                                            " cannot be converted to " +
+                                            std::string(type.name()));
                     }
                     positional.append(value);
                 }
@@ -865,9 +956,9 @@ std::size_t PluginManager::register_tools(Server& server) const {
             }
             const QMetaMethod method = entry->method;
             if (method.parameterCount() > 1) {
-                MCP_LOG_WARN("PluginManager: resource '" +
-                             resource.uri.toStdString() +
-                             "' reader takes more than one parameter; skipping");
+                MCP_LOG_WARN(
+                    "PluginManager: resource '" + resource.uri.toStdString() +
+                    "' reader takes more than one parameter; skipping");
                 continue;
             }
             if (method.parameterCount() == 1 &&

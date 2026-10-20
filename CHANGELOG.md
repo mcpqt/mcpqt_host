@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (plugin-first server)
 
+- **Host services are registry functions.** `claimLogging` and `elicit` are no
+  longer members of `HostInterface`. They are listed by `getFuncs()` as
+  `bool mcp::Host::claimLogging(QString)` and
+  `QVariant mcp::Host::elicit(QVariant)` and invoked through `callFunc`.
+  claimLogging takes the canonical signature of the plugin's own
+  `void <Class>::log(int, QString)` sink; elicit exchanges JSON-encoded
+  ElicitRequestParams/ElicitResult.
 - **The project is now an MCP server built from plugins** rather than an SDK
   with example servers. Two primary targets replace the example servers:
   `mcp_stdio_server` (stdio) and `mcp_http_server` (Streamable HTTP). Both load
@@ -67,8 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     defers such a plugin until the dependency is satisfied, and
     `load_directory()` retries across passes so order doesn't matter.
   - **Plugin-owned logging (Scope A).** A plugin can claim the process-wide
-    diagnostic sink via `HostInterface::claimLogging`, deciding how each
-    `MCP_LOG_*` event is rendered and where it goes. A claim is exclusive:
+    diagnostic sink by calling the host function
+    `bool mcp::Host::claimLogging(QString)` with the canonical signature of its
+    own `void log(int, QString)` slot, deciding how each `MCP_LOG_*` event is
+    rendered and where it goes. A claim is exclusive:
     once taken, `set_log_sink`/another claim cannot displace it, and the
     claiming plugin is pinned so its sink code is never detached. The core
     retains a minimal timestamped stderr sink as a fallback. See

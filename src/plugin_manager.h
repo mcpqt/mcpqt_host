@@ -24,11 +24,13 @@
 // functions reports an error rather than touching detached code.
 // Loading/unloading must not race with in-flight calls.
 //
-// Logging: a plugin can claim the process-wide diagnostic sink through
-// HostInterface::claimLogging(). The first claim wins; afterwards the core
-// rejects replacement, and the claiming plugin is pinned — unload_all() leaves
-// it loaded (its sink runs code in the plugin's library, so detaching it would
-// be unsafe). The core keeps its minimal default stderr sink as a fallback.
+// Logging: a plugin claims the process-wide diagnostic sink through the host
+// function "bool mcp::Host::claimLogging(QString)" (listed by getFuncs()),
+// passing the canonical signature of its own void log(int, QString) slot. The
+// first claim wins; afterwards the core rejects replacement, and the claiming
+// plugin is pinned — unload_all() leaves it loaded (its sink runs code in the
+// plugin's library, so detaching it would be unsafe). The core keeps its
+// minimal default stderr sink as a fallback.
 
 #pragma once
 
@@ -92,9 +94,9 @@ struct PluginTool {
 /// The reader takes an optional single QString (the URI) and returns the
 /// resource text (QString, or any value converted to JSON text).
 struct PluginResource {
-    QString  uri;
+    QString uri;
     Resource resource;
-    QString  signature;
+    QString signature;
 };
 
 class PluginManager {
@@ -169,7 +171,8 @@ public:
     [[nodiscard]] std::vector<PluginResource> resources() const;
 
     /// The resource descriptor declared for `uri`, if any.
-    [[nodiscard]] std::optional<PluginResource> resource(const QString& uri) const;
+    [[nodiscard]] std::optional<PluginResource>
+    resource(const QString& uri) const;
 
     /// Register every declared tool and resource on `server`, mapping incoming
     /// JSON arguments to function parameters by name. May be called once per
@@ -207,6 +210,17 @@ private:
     [[nodiscard]] static QVariant invoke_method(QObject* object,
                                                 const QMetaMethod& method,
                                                 const QVariantList& args);
+
+    /// A host-provided function (e.g. claimLogging/elicit) in the registry.
+    using HostFunction = std::function<QVariant(const QVariantList& args)>;
+
+    /// Register the built-in host services (claimLogging, elicit).
+    void install_host_functions(void);
+    void register_host_function(const QString& signature, HostFunction fn);
+
+    /// Dispatch to a plugin slot or a host function by signature.
+    [[nodiscard]] QVariant dispatch(const QString& signature,
+                                    const QVariantList& args) const;
 
     // Host-side callbacks bound into the HostInterface handed to plugins.
     QStringList host_get_funcs(void) const;

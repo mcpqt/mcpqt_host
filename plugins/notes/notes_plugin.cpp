@@ -433,12 +433,8 @@ public slots:
         const bool is_glob = k.find_first_of("*%") != std::string::npos;
 
         if (is_glob || !confirm) {
-            if (!m_host.elicit) {
-                throw std::runtime_error(
-                    "notes/delete: elicitation is unavailable");
-            }
-            const mcp::ElicitResult result =
-                m_host.elicit(mcp::ElicitFormRequestParams{
+            const mcp::ElicitRequestParams params =
+                mcp::ElicitFormRequestParams{
                     .message = "Delete note(s) matching key \"" + k +
                                "\"? This cannot be undone.",
                     .requested_schema =
@@ -455,7 +451,12 @@ public slots:
                              }},
                             {"required", QJsonArray{"confirm"}},
                         },
-                });
+                };
+            const QVariant encoded = m_host.callFunc(
+                QStringLiteral("QVariant mcp::Host::elicit(QVariant)"),
+                {QVariant::fromValue(mcp::to_json(params))});
+            const mcp::ElicitResult result =
+                mcp::from_json<mcp::ElicitResult>(encoded.value<QJsonValue>());
             const bool accepted = result.action == mcp::ElicitAction::accept &&
                                   result.content.has_value() &&
                                   result.content->toObject()

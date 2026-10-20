@@ -28,17 +28,25 @@ public:
 
     void initialize(const mcp::HostInterface& host) override {
         m_host = host;
-        m_claimed =
-            m_host.claimLogging([this](mcp::LogLevel, std::string_view msg) {
-                m_count.fetch_add(1, std::memory_order_relaxed);
-                std::lock_guard<std::mutex> lk(m_mu);
-                m_last.assign(msg.data(), msg.size());
-            });
         registerPublicSlots();
+        m_claimed =
+            m_host
+                .callFunc(
+                    QStringLiteral("bool mcp::Host::claimLogging(QString)"),
+                    {QStringLiteral("void TestLogPlugin::log(int,QString)")})
+                .toBool();
     }
     void shutdown(void) override {}
 
 public slots:
+    // Sink invoked by the host after claimLogging.
+    void log(int level, QString message) {
+        (void)level;
+        m_count.fetch_add(1, std::memory_order_relaxed);
+        std::lock_guard<std::mutex> lk(m_mu);
+        m_last = message.toStdString();
+    }
+
     // Number of log events this plugin has received via its sink.
     int count(void) { return m_count.load(std::memory_order_relaxed); }
 
