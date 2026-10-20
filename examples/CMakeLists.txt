@@ -1,14 +1,11 @@
-# stdio examples are POSIX-only (StdioTransport / posix_spawn).
+# Client/tooling examples. The MCP servers themselves live in ../server and
+# their functionality lives in ../plugins.
 if(NOT WIN32)
-    add_subdirectory(calculator_server)
     add_subdirectory(simple_client)
     add_subdirectory(mcp_tester)
-    add_subdirectory(mcp_notes_server)
     add_subdirectory(hello_plugin)
     add_subdirectory(cross_caller)
     add_subdirectory(log_plugin)
     add_subdirectory(plugin_host)
     add_subdirectory(plugintester)
 endif()
-add_subdirectory(http_calculator_server)
-add_subdirectory(http_echo_server)

@@ -1,0 +1,56 @@
+{
+    "Tools": {
+        "double CalculatorPlugin::add(double,double)": {
+            "name": "add",
+            "title": "Add",
+            "description": "Returns a + b.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "a": { "type": "number", "description": "left operand" },
+                    "b": { "type": "number", "description": "right operand" }
+                },
+                "required": ["a", "b"]
+            }
+        },
+        "double CalculatorPlugin::subtract(double,double)": {
+            "name": "subtract",
+            "title": "Subtract",
+            "description": "Returns a - b.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "a": { "type": "number", "description": "left operand" },
+                    "b": { "type": "number", "description": "right operand" }
+                },
+                "required": ["a", "b"]
+            }
+        },
+        "double CalculatorPlugin::multiply(double,double)": {
+            "name": "multiply",
+            "title": "Multiply",
+            "description": "Returns a * b.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "a": { "type": "number", "description": "left operand" },
+                    "b": { "type": "number", "description": "right operand" }
+                },
+                "required": ["a", "b"]
+            }
+        },
+        "double CalculatorPlugin::divide(double,double)": {
+            "name": "divide",
+            "title": "Divide",
+            "description": "Returns a / b. Reports an error result on b == 0.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "a": { "type": "number", "description": "left operand" },
+                    "b": { "type": "number", "description": "right operand" }
+                },
+                "required": ["a", "b"]
+            }
+        }
+    }
+}

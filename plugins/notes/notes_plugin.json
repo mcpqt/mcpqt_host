@@ -1,0 +1,87 @@
+{
+    "Tools": {
+        "QString NotesPlugin::write(QString,QString,QString)": {
+            "name": "notes/write",
+            "title": "Write or update a note",
+            "description": "UPSERT a note under `key`. `value` is the note body; `tags` is optional comma-separated.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "key": { "type": "string", "description": "stable identifier; max 256 chars" },
+                    "value": { "type": "string", "description": "free-form note body" },
+                    "tags": { "type": "string", "description": "comma-separated, lowercased tags" }
+                },
+                "required": ["key", "value"]
+            }
+        },
+        "QVariant NotesPlugin::read(QString)": {
+            "name": "notes/read",
+            "title": "Read a note by key",
+            "description": "Fetch a single note. Returns the value plus tags and timestamps.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "key": { "type": "string" }
+                },
+                "required": ["key"]
+            }
+        },
+        "QVariant NotesPlugin::list(QString,QString,int)": {
+            "name": "notes/list",
+            "title": "List notes",
+            "description": "List note keys, optionally filtered by tag or key prefix. Sorted by updatedAt DESC.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "tag": { "type": "string", "description": "filter to notes tagged this" },
+                    "prefix": { "type": "string", "description": "filter to keys with this prefix" },
+                    "limit": { "type": "integer", "description": "default 50; max 1000" }
+                }
+            }
+        },
+        "QVariant NotesPlugin::search(QString,int)": {
+            "name": "notes/search",
+            "title": "Full-text search",
+            "description": "BM25-ranked FTS5 search over key+value+tags. Matches are highlighted in the `snippet` field.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "FTS5 query - words match anywhere in key/value/tags" },
+                    "limit": { "type": "integer", "description": "default 25; max 200" }
+                },
+                "required": ["query"]
+            }
+        },
+        "QString NotesPlugin::remove(QString,bool)": {
+            "name": "notes/delete",
+            "title": "Delete a note",
+            "description": "Removes a note. Glob (e.g. `db.*`) deletes are routed through MCP elicitation for human confirmation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "key": { "type": "string", "description": "exact key, or a `*` glob" },
+                    "confirm": { "type": "boolean", "description": "skip the elicitation prompt for non-glob keys" }
+                },
+                "required": ["key"]
+            }
+        },
+        "QVariant NotesPlugin::info()": {
+            "name": "notes/info",
+            "title": "Server info",
+            "description": "Report db path, note count, and SQLite version.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    "Resources": {
+        "notes://all": {
+            "name": "all-notes",
+            "title": "All notes",
+            "description": "Every note as a JSON document",
+            "mimeType": "application/json",
+            "signature": "QString NotesPlugin::readAll(QString)"
+        }
+    }
+}

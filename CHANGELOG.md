@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (plugin-first server)
+
+- **The project is now an MCP server built from plugins** rather than an SDK
+  with example servers. Two primary targets replace the example servers:
+  `mcp_stdio_server` (stdio) and `mcp_http_server` (Streamable HTTP). Both load
+  one or more plugin files or directories and register each plugin's declared
+  tools and resources.
+- **Example servers ported to plugins:** `plugins/calculator` (add, subtract,
+  multiply, divide), `plugins/echo`, and `plugins/notes` (SQLite/FTS5
+  scratchpad with the `notes://all` resource and elicitation-confirmed
+  deletes). Configure notes with `MCP_NOTES_DB` / `MCP_NOTES_READONLY`.
+- **PluginManager tool/resource bridge:** `register_tools(Server&)` maps
+  incoming JSON arguments to typed function parameters by name and registers
+  the metadata `Tools` and `Resources`. `HostInterface::elicit` routes
+  elicitation to the session that is dispatching the call (works for stdio and
+  per-session HTTP servers).
+- **Removed** `examples/calculator_server`, `examples/http_calculator_server`,
+  `examples/http_echo_server`, and `examples/mcp_notes_server`. The
+  calculator/notes subprocess tests now drive `mcp_stdio_server` with the
+  corresponding plugin modules.
+
 ### Added
 
 - **Plugin support (`mcp::PluginManager`).** The host can load Qt plugins that

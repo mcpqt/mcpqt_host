@@ -53,6 +53,8 @@ class QPluginLoader;
 
 namespace mcp {
 
+class Server;
+
 /// One tool declaration from a plugin's metadata: a published function
 /// signature paired with the MCP Tool descriptor. Declared in the
 /// plugin's Q_PLUGIN_METADATA JSON as a signature-keyed object:
@@ -73,6 +75,27 @@ namespace mcp {
 struct PluginTool {
     QString signature;
     Tool tool;
+};
+
+/// One resource declaration from a plugin's metadata: the resource descriptor
+/// plus the signature of the published function that renders it. Declared as a
+/// URI-keyed object:
+///
+///   "Resources": {
+///     "notes://all": {
+///       "name": "all-notes",
+///       "description": "Every note as JSON",
+///       "mimeType": "application/json",
+///       "signature": "QString NotesPlugin::readAll(QString)"
+///     }
+///   }
+///
+/// The reader takes an optional single QString (the URI) and returns the
+/// resource text (QString, or any value converted to JSON text).
+struct PluginResource {
+    QString  uri;
+    Resource resource;
+    QString  signature;
 };
 
 class PluginManager {
@@ -142,6 +165,17 @@ public:
     /// The Tool declared for `signature`, if any loaded plugin
     /// declared one for a published function.
     [[nodiscard]] std::optional<Tool> tool(const QString& signature) const;
+
+    /// Resource declarations contributed by loaded plugins.
+    [[nodiscard]] std::vector<PluginResource> resources() const;
+
+    /// The resource descriptor declared for `uri`, if any.
+    [[nodiscard]] std::optional<PluginResource> resource(const QString& uri) const;
+
+    /// Register every declared tool and resource on `server`, mapping incoming
+    /// JSON arguments to function parameters by name. May be called once per
+    /// Server (e.g. per HTTP session); returns the number of registrations.
+    std::size_t register_tools(Server& server) const;
 
     /// Invoke a published function. `args` holds one QVariant per declared
     /// parameter, in order. Returns the QVariant result (invalid for a void

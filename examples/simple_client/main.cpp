@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
 //
-// Minimal MCP client. Spawns the calculator_server example as a child
-// process, drives an end-to-end conversation, and prints results. Run
-// from the build directory:
+// Minimal MCP client. Spawns a server (with any server arguments) as a child
+// process, drives an end-to-end conversation, and prints results:
 //
-//     ./examples/simple_client/simple_client
-//         ./examples/calculator_server/calculator_server
+//     ./examples/simple_client/simple_client \
+//         ./build/server/mcp_stdio_server \
+//         ./build/plugins/calculator/calculator_plugin.so
 
 #include "mcp.h"
 
@@ -20,6 +20,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 extern char** environ;
 
@@ -42,7 +43,7 @@ struct Subprocess {
     }
 };
 
-std::unique_ptr<Subprocess> spawn(const char* path) {
+std::unique_ptr<Subprocess> spawn(char** argv) {
     int in_pipe[2];
     int out_pipe[2];
     if (::pipe(in_pipe) != 0)
@@ -61,9 +62,15 @@ std::unique_ptr<Subprocess> spawn(const char* path) {
     posix_spawn_file_actions_addclose(&act, out_pipe[0]);
     posix_spawn_file_actions_addclose(&act, out_pipe[1]);
 
+    std::vector<char*> child_argv;
+    for (char** p = argv; *p != nullptr; ++p) {
+        child_argv.push_back(*p);
+    }
+    child_argv.push_back(nullptr);
+
     pid_t pid = -1;
-    char* const argv[] = {const_cast<char*>(path), nullptr};
-    int rc = ::posix_spawn(&pid, path, &act, nullptr, argv, environ);
+    int rc =
+        ::posix_spawn(&pid, argv[0], &act, nullptr, child_argv.data(), environ);
     posix_spawn_file_actions_destroy(&act);
     ::close(in_pipe[0]);
     ::close(out_pipe[1]);
@@ -87,7 +94,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    auto sp = spawn(argv[1]);
+    auto sp = spawn(argv + 1);
     if (!sp) {
         std::fprintf(stderr, "failed to spawn %s\n", argv[1]);
         return 1;

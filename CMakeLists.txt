@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(mcp-cpp
     VERSION 0.1.0
-    DESCRIPTION "C++20 SDK for the Model Context Protocol"
+    DESCRIPTION "C++20 MCP server built from plugins"
     HOMEPAGE_URL "https://github.com/Neumann-Labs/mcp-cpp"
     LANGUAGES CXX
 )
@@ -131,10 +131,14 @@ mcp_target_warnings(mcp)
 # the optional mcp-http target.
 add_subdirectory(src)
 
+# Plugins and the two MCP server front-ends (stdio / Streamable HTTP).
+add_subdirectory(plugins)
+add_subdirectory(server)
+
 # ----- Tests / examples ----------------------------------------------------
 
-# Examples first so the calculator_server target exists when tests pick
-# it up for the subprocess integration test.
+# Examples are client/tooling helpers; the servers and plugins are already
+# added above.
 if(MCP_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()

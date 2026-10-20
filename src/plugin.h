@@ -120,6 +120,12 @@ struct HostInterface {
     /// registered. `registerPublicSlots()` drives this automatically.
     std::function<bool(const QString& signature)> regFunc;
 
+    /// Ask the connected client to elicit user input. Blocks until the client
+    /// answers and returns its result. Only valid while a plugin function is
+    /// being invoked by a server session (the host routes the request to that
+    /// session); throws mcp::Error otherwise.
+    std::function<ElicitResult(const ElicitRequestParams&)> elicit;
+
     /// Ask the host to tear this plugin down (shutdown + unload). Optional.
     std::function<void(const QString& reason)> unloadSelf;
 

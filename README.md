@@ -1,7 +1,8 @@
 # mcp-cpp
 
-A modern C++20 SDK for the [Model Context Protocol](https://modelcontextprotocol.io)
-(MCP), targeting protocol revision **2025-11-25**.
+A modular C++20 [Model Context Protocol](https://modelcontextprotocol.io) (MCP)
+**server** built from dynamically loaded plugins, targeting protocol revision
+**2025-11-25**.
 
 > **Status:** beta. The wire format is locked to the official MCP spec; the C++
 > API may still see refinements before 1.0.
@@ -12,9 +13,10 @@ A modern C++20 SDK for the [Model Context Protocol](https://modelcontextprotocol
 ## Why
 
 LLM applications increasingly need a uniform way to talk to tool, resource, and
-prompt providers. MCP is that protocol; this SDK aims to be a clean, fast,
-spec-faithful C++ implementation suitable for embedding in editors, IDEs,
-agents, native applications, and high-throughput servers.
+prompt providers. MCP is that protocol. This project is a fast, spec-faithful
+C++ server whose functionality lives in loadable plugins, on top of a small
+core library (transports, sessions, protocol types) that plugins and servers
+share.
 
 **Design goals:**
 
@@ -154,29 +156,37 @@ auto info = client.initialize().get();
 auto out  = client.call_tool("add", {{"a", 1}, {"b", 2}}).get();
 ```
 
-Both `examples/http_calculator_server` (binds 127.0.0.1:8080 by
-default) and the stdio `examples/calculator_server` ship with the
-build.
+### Servers and plugins
 
-### A non-trivial demo: persistent notes for the assistant
+Two server front-ends are built (they are primary targets, not examples):
 
-`examples/mcp_notes_server` is a SQLite + FTS5 scratchpad that gives
-Claude (or any MCP client) persistent, full-text-searchable memory
-across sessions. Plug it into Claude Desktop / Claude Code and ask
-"save my Postgres prod connection string under db.prod" — it's
-there next time you open a chat. Search "postgres" and you get a
-BM25-ranked snippet hit. Glob deletes go through the spec's
-elicitation primitive so the human gets a yes/no prompt before
-anything is wiped.
+- `mcp_stdio_server [plugin-path ...]` — stdio server (POSIX).
+- `mcp_http_server [--host H] [--port P] [--path PATH] [plugin-path ...]` —
+  Streamable HTTP server (defaults `127.0.0.1:8848/mcp`; set `MCP_TOKEN` to
+  require a bearer token).
 
-Build it (`libsqlite3-dev` on Linux, ships with macOS):
+Each path may be a plugin file or a directory. With no paths they use
+`$MCP_PLUGIN_DIR` (default `./plugins`). Plugin modules live under `plugins/`:
 
+- `calculator` — add, subtract, multiply, divide.
+- `echo` — echo text.
+- `notes` — persistent SQLite + FTS5 scratchpad with full-text search and a
+  `notes://all` resource. Configure with `MCP_NOTES_DB` and
+  `MCP_NOTES_READONLY`.
+
+Plugins declare their MCP `Tools` and `Resources` in their metadata JSON; the
+server registers them at startup (per session for HTTP) and routes
+elicitation back to the requesting session.
+
+```sh
+cmake -S . -B build && cmake --build build
+
+# stdio server with the calculator plugin
+./build/server/mcp_stdio_server ./build/plugins/calculator/calculator_plugin.so
+
+# HTTP server with the echo plugin
+./build/server/mcp_http_server --port 8080 ./build/plugins/echo/echo_plugin.so
 ```
-cmake -S . -B build -DMCP_BUILD_EXAMPLES=ON
-cmake --build build --target mcp_notes_server
-```
-
-See `examples/mcp_notes_server/README.md` for the wire-up.
 
 ### Server-initiated LLM calls (sampling)
 
@@ -354,7 +364,8 @@ result, and any structured content.
 
 ```sh
 ./build/examples/mcp_tester/mcp_tester \
-    ./build/examples/calculator_server/calculator_server
+    ./build/server/mcp_stdio_server \
+    ./build/plugins/calculator/calculator_plugin.so
 ```
 
 #### Plugin-owned logging

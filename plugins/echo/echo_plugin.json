@@ -1,0 +1,16 @@
+{
+    "Tools": {
+        "QString EchoPlugin::echo(QString)": {
+            "name": "echo",
+            "title": "Echo",
+            "description": "Echoes the provided text back.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "text": { "type": "string", "description": "text to echo back" }
+                },
+                "required": ["text"]
+            }
+        }
+    }
+}

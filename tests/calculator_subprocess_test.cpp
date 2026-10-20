@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
 //
-// End-to-end test that spawns the `calculator_server` example as a real
-// subprocess and drives it via pipes — proving the library works against
-// itself across a process boundary using real stdio framing. The server
-// path is plumbed in via the `MCP_CALCULATOR_SERVER` env var that
-// CMakeLists.txt sets when registering this test.
+// End-to-end test that spawns `mcp_stdio_server` with the calculator plugin
+// as a real subprocess and drives it via pipes — proving the server and
+// plugin work across a process boundary using real stdio framing. The server
+// and plugin paths are baked into test_binary_paths.h by CMake.
 
 #include "client.h"
 #include "error.h"
@@ -58,12 +57,13 @@ struct Subprocess {
     }
 };
 
-// posix_spawn the calculator binary, returning pipes for stdio.
+// posix_spawn the stdio server with the calculator plugin, returning pipes.
 std::unique_ptr<Subprocess> spawn_calculator(void) {
-#if !defined(MCP_TEST_CALCULATOR_SERVER)
+#if !defined(MCP_TEST_STDIO_SERVER) || !defined(MCP_TEST_CALCULATOR_PLUGIN)
     return nullptr;
 #else
-    const char* path = MCP_TEST_CALCULATOR_SERVER;
+    const char* path = MCP_TEST_STDIO_SERVER;
+    const char* plugin = MCP_TEST_CALCULATOR_PLUGIN;
 
     int in_pipe[2];   // client writes to in_pipe[1], server reads in_pipe[0]
     int out_pipe[2];  // server writes to out_pipe[1], client reads out_pipe[0]
@@ -88,7 +88,8 @@ std::unique_ptr<Subprocess> spawn_calculator(void) {
     posix_spawn_file_actions_addclose(&actions, out_pipe[1]);
 
     pid_t pid = -1;
-    char* argv[] = {const_cast<char*>(path), nullptr};
+    char* argv[] = {const_cast<char*>(path), const_cast<char*>(plugin),
+                    nullptr};
     int rc = ::posix_spawn(&pid, path, &actions, nullptr, argv, environ);
     posix_spawn_file_actions_destroy(&actions);
 
@@ -119,8 +120,8 @@ private slots:
 };
 
 void CalculatorSubprocess::EndToEnd(void) {
-#if !defined(MCP_TEST_CALCULATOR_SERVER)
-    QSKIP("calculator_server not built; skipping subprocess test");
+#if !defined(MCP_TEST_STDIO_SERVER) || !defined(MCP_TEST_CALCULATOR_PLUGIN)
+    QSKIP("stdio server or calculator plugin not built; skipping");
 #else
     auto sp = spawn_calculator();
     QVERIFY(sp != nullptr);
@@ -139,7 +140,7 @@ void CalculatorSubprocess::EndToEnd(void) {
 
     auto info = client.initialize().get();
     QCOMPARE(info.protocol_version, mcp::kLatestProtocolVersion);
-    QCOMPARE(info.server_info.name, std::string{"mcp-cpp-calculator"});
+    QCOMPARE(info.server_info.name, std::string{"mcp-server"});
     QVERIFY(info.capabilities.tools.has_value());
 
     auto tools = client.list_tools().get();

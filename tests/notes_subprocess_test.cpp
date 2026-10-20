@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
 //
-// End-to-end test that spawns the `mcp_notes_server` example as a real
-// subprocess and drives it via pipes. Mirrors calculator_subprocess_test
-// but exercises the SQLite/FTS5 demo: write → read → list → search →
-// delete (no elicitation prompt for non-glob keys).
+// End-to-end test that spawns `mcp_stdio_server` with the notes plugin as a
+// real subprocess and drives it via pipes. Exercises the SQLite/FTS5 tools,
+// the notes://all resource, and elicitation-confirmed deletes.
 
 #include "client.h"
 #include "error.h"
@@ -62,6 +61,7 @@ struct Subprocess {
 };
 
 std::unique_ptr<Subprocess> spawn_notes(const std::string& binary,
+                                        const std::string& plugin,
                                         const std::string& db_path) {
     int in_pipe[2];
     int out_pipe[2];
@@ -82,19 +82,18 @@ std::unique_ptr<Subprocess> spawn_notes(const std::string& binary,
     posix_spawn_file_actions_addclose(&actions, out_pipe[0]);
     posix_spawn_file_actions_addclose(&actions, out_pipe[1]);
 
+    // The notes plugin reads its database path from the environment.
+    ::setenv("MCP_NOTES_DB", db_path.c_str(), 1);
+    ::unsetenv("MCP_NOTES_READONLY");
+
     pid_t pid = -1;
-    char arg0[] = "mcp_notes_server";
-    char flag_db[] = "--db";
-    std::string db = db_path;  // mutable storage for argv
     char* argv[] = {
         const_cast<char*>(binary.c_str()),
-        flag_db,
-        db.data(),
+        const_cast<char*>(plugin.c_str()),
         nullptr,
     };
     const int rc =
         ::posix_spawn(&pid, binary.c_str(), &actions, nullptr, argv, environ);
-    (void)arg0;
     posix_spawn_file_actions_destroy(&actions);
 
     ::close(in_pipe[0]);
@@ -123,10 +122,11 @@ private slots:
 };
 
 void NotesSubprocess::EndToEnd(void) {
-#if !defined(MCP_TEST_NOTES_SERVER)
-    QSKIP("mcp_notes_server not built (no SQLite3); skipping");
+#if !defined(MCP_TEST_STDIO_SERVER) || !defined(MCP_TEST_NOTES_PLUGIN)
+    QSKIP("stdio server or notes plugin not built; skipping");
 #else
-    const char* path = MCP_TEST_NOTES_SERVER;
+    const char* server = MCP_TEST_STDIO_SERVER;
+    const char* plugin = MCP_TEST_NOTES_PLUGIN;
 
     // Use a unique tempfile per test so we don't collide with state
     // from a prior run.
@@ -137,7 +137,7 @@ void NotesSubprocess::EndToEnd(void) {
     std::error_code ec;
     fs::remove(db_path, ec);
 
-    auto sp = spawn_notes(path, db_path);
+    auto sp = spawn_notes(server, plugin, db_path);
     QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
@@ -153,7 +153,7 @@ void NotesSubprocess::EndToEnd(void) {
     client.connect(std::move(transport));
 
     auto info = client.initialize().get();
-    QCOMPARE(info.server_info.name, std::string{"mcp-notes"});
+    QCOMPARE(info.server_info.name, std::string{"mcp-server"});
     QVERIFY(info.capabilities.tools.has_value());
     QVERIFY(info.capabilities.resources.has_value());
 
@@ -179,8 +179,9 @@ void NotesSubprocess::EndToEnd(void) {
             client.call_tool("notes/read", QJsonObject{{"key", "db.prod"}})
                 .get();
         QVERIFY(!out.is_error.value_or(false));
-        QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-                 std::string{"postgres://prod.example/main"});
+        QVERIFY(out.structured_content.has_value());
+        QCOMPARE((*out.structured_content)["value"].toString(),
+                 QStringLiteral("postgres://prod.example/main"));
     }
 
     // list — should see exactly one note
@@ -239,12 +240,13 @@ void NotesSubprocess::EndToEnd(void) {
 }
 
 void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
-#if !defined(MCP_TEST_NOTES_SERVER)
-    QSKIP("mcp_notes_server not built; skipping");
+#if !defined(MCP_TEST_STDIO_SERVER) || !defined(MCP_TEST_NOTES_PLUGIN)
+    QSKIP("stdio server or notes plugin not built; skipping");
 #else
     // notes/delete with confirm omitted routes through elicitation;
     // declining the elicitation should leave the row in place.
-    const char* path = MCP_TEST_NOTES_SERVER;
+    const char* server = MCP_TEST_STDIO_SERVER;
+    const char* plugin = MCP_TEST_NOTES_PLUGIN;
 
     const auto db_path =
         (fs::temp_directory_path() /
@@ -253,7 +255,7 @@ void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
     std::error_code ec;
     fs::remove(db_path, ec);
 
-    auto sp = spawn_notes(path, db_path);
+    auto sp = spawn_notes(server, plugin, db_path);
     QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
