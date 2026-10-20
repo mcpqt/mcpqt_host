@@ -3,6 +3,8 @@
 
 #include "log.h"
 
+#include <QByteArray>
+#include <QString>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -18,7 +20,7 @@ namespace mcp::test {
 struct Endpoint {
     std::mutex mu;
     std::condition_variable cv;
-    std::deque<std::string> q;
+    std::deque<QByteArray> q;
     bool closed = false;
 };
 
@@ -90,12 +92,12 @@ void InMemoryTransport::close(void) {
         try {
             m_on_close();
         } catch (const std::exception& e) {
-            MCP_LOG_ERROR(std::string{"on_close threw: "} + e.what());
+            MCP_LOG_ERROR(QStringLiteral("on_close threw: ") + e.what());
         }
     }
 }
 
-std::error_code InMemoryTransport::send(std::string_view frame) {
+std::error_code InMemoryTransport::send(QByteArrayView frame) {
     if (!m_started.load(std::memory_order_acquire) ||
         m_closed.load(std::memory_order_acquire)) {
         return std::make_error_code(std::errc::not_connected);
@@ -105,7 +107,7 @@ std::error_code InMemoryTransport::send(std::string_view frame) {
     if (peer.closed) {
         return std::make_error_code(std::errc::not_connected);
     }
-    peer.q.emplace_back(frame);
+    peer.q.emplace_back(frame.toByteArray());
     peer.cv.notify_one();
     return {};
 }
@@ -119,7 +121,7 @@ void InMemoryTransport::run_dispatch(void) {
     auto& ours = endpoint_for(*m_ch, m_side);
     bool peer_initiated_close = false;
     while (true) {
-        std::string frame;
+        QByteArray frame;
         {
             std::unique_lock<std::mutex> lk(ours.mu);
             ours.cv.wait(lk, [&] { return ours.closed || !ours.q.empty(); });
@@ -138,7 +140,7 @@ void InMemoryTransport::run_dispatch(void) {
             try {
                 m_on_message(std::move(frame));
             } catch (const std::exception& e) {
-                MCP_LOG_ERROR(std::string{"on_message threw: "} + e.what());
+                MCP_LOG_ERROR(QStringLiteral("on_message threw: ") + e.what());
             }
         }
     }
@@ -148,7 +150,7 @@ void InMemoryTransport::run_dispatch(void) {
             try {
                 m_on_close();
             } catch (const std::exception& e) {
-                MCP_LOG_ERROR(std::string{"on_close threw: "} + e.what());
+                MCP_LOG_ERROR(QStringLiteral("on_close threw: ") + e.what());
             }
         }
     }

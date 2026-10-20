@@ -59,9 +59,9 @@ struct Subprocess {
     }
 };
 
-std::unique_ptr<Subprocess> spawn_notes(const std::string& binary,
-                                        const std::string& plugin,
-                                        const std::string& db_path) {
+std::unique_ptr<Subprocess> spawn_notes(const QString& binary,
+                                        const QString& plugin,
+                                        const QString& db_path) {
     int in_pipe[2];
     int out_pipe[2];
     if (::pipe(in_pipe) != 0)
@@ -82,17 +82,20 @@ std::unique_ptr<Subprocess> spawn_notes(const std::string& binary,
     posix_spawn_file_actions_addclose(&actions, out_pipe[1]);
 
     // The notes plugin reads its database path from the environment.
-    ::setenv("MCP_NOTES_DB", db_path.c_str(), 1);
+    const std::string db_std = db_path.toStdString();
+    const std::string binary_std = binary.toStdString();
+    const std::string plugin_std = plugin.toStdString();
+    ::setenv("MCP_NOTES_DB", db_std.c_str(), 1);
     ::unsetenv("MCP_NOTES_READONLY");
 
     pid_t pid = -1;
     char* argv[] = {
-        const_cast<char*>(binary.c_str()),
-        const_cast<char*>(plugin.c_str()),
+        const_cast<char*>(binary_std.c_str()),
+        const_cast<char*>(plugin_std.c_str()),
         nullptr,
     };
-    const int rc =
-        ::posix_spawn(&pid, binary.c_str(), &actions, nullptr, argv, environ);
+    const int rc = ::posix_spawn(&pid, binary_std.c_str(), &actions, nullptr,
+                                 argv, environ);
     posix_spawn_file_actions_destroy(&actions);
 
     ::close(in_pipe[0]);
@@ -131,12 +134,13 @@ void NotesSubprocess::EndToEnd(void) {
     // from a prior run.
     const auto db_path =
         (fs::temp_directory_path() /
-         ("mcp-notes-test-" + std::to_string(::getpid()) + ".db"))
+         ("mcp-notes-test-" + QString::number(::getpid()) + ".db")
+             .toStdString())
             .string();
     std::error_code ec;
     fs::remove(db_path, ec);
 
-    auto sp = spawn_notes(server, plugin, db_path);
+    auto sp = spawn_notes(server, plugin, QString::fromStdString(db_path));
     QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
@@ -152,7 +156,7 @@ void NotesSubprocess::EndToEnd(void) {
     client.connect(std::move(transport));
 
     auto info = client.initialize().get();
-    QCOMPARE(info.server_info.name, std::string{"mcp-server"});
+    QCOMPARE(info.server_info.name, QString{"mcp-server"});
     QVERIFY(info.capabilities.tools.has_value());
     QVERIFY(info.capabilities.resources.has_value());
 
@@ -201,8 +205,7 @@ void NotesSubprocess::EndToEnd(void) {
         QVERIFY(out.structured_content.has_value());
         const auto matches = (*out.structured_content)["matches"];
         QCOMPARE(matches.toArray().size(), std::size_t{1});
-        QVERIFY(matches[0]["snippet"].toString().toStdString().find(
-                    "postgres") != std::string::npos);
+        QVERIFY(matches[0]["snippet"].toString().contains("postgres"));
     }
 
     // resource read
@@ -210,7 +213,7 @@ void NotesSubprocess::EndToEnd(void) {
         auto res = client.read_resource("notes://all").get();
         QCOMPARE(res.contents.size(), std::size_t{1});
         const auto& tc = std::get<mcp::TextResourceContents>(res.contents[0]);
-        QVERIFY(tc.text.find("db.prod") != std::string::npos);
+        QVERIFY(tc.text.contains("db.prod"));
     }
 
     // delete with confirm=true (no elicitation needed)
@@ -249,12 +252,13 @@ void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
 
     const auto db_path =
         (fs::temp_directory_path() /
-         ("mcp-notes-elicit-" + std::to_string(::getpid()) + ".db"))
+         ("mcp-notes-elicit-" + QString::number(::getpid()) + ".db")
+             .toStdString())
             .string();
     std::error_code ec;
     fs::remove(db_path, ec);
 
-    auto sp = spawn_notes(server, plugin, db_path);
+    auto sp = spawn_notes(server, plugin, QString::fromStdString(db_path));
     QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
@@ -288,8 +292,8 @@ void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
     auto del =
         client.call_tool("notes/delete", QJsonObject{{"key", "k1"}}).get();
     QVERIFY(del.is_error.value_or(false));
-    QVERIFY(std::get<mcp::TextContent>(del.content[0]).text.find("cancelled") !=
-            std::string::npos);
+    QVERIFY(
+        std::get<mcp::TextContent>(del.content[0]).text.contains("cancelled"));
 
     // Note should still be there.
     auto info = client.call_tool("notes/info", QJsonObject{}).get();
@@ -312,3 +316,4 @@ int main(int argc, char** argv) {
 }
 
 #include "notes_subprocess_test.moc"
+#include <QString>

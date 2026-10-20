@@ -35,6 +35,10 @@
 
 #include "transport.h"
 
+#include <QByteArray>
+#include <QByteArrayView>
+#include <QHash>
+#include <QString>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -54,17 +58,17 @@ class HttpClientTransport final : public Transport {
 public:
     struct Options {
         /// Endpoint URL, e.g. "http://localhost:8080/mcp".
-        std::string url;
+        QString url;
 
         /// MCP protocol version sent on every request via the
         /// `MCP-Protocol-Version` header. Defaults to the latest spec
         /// version this SDK supports.
-        std::string protocol_version = "2025-11-25";
+        QString protocol_version = "2025-11-25";
 
         /// Optional pre-existing session id (resume case). Leave empty
         /// for a fresh session — the server will assign one on the
         /// initialize response, and we'll capture it.
-        std::optional<std::string> session_id;
+        QString session_id;
 
         /// Connect timeout (TCP handshake + TLS).
         std::chrono::milliseconds connect_timeout{10'000};
@@ -73,7 +77,7 @@ public:
         std::chrono::milliseconds request_timeout{30'000};
 
         /// Extra HTTP headers attached to every outbound request.
-        std::unordered_map<std::string, std::string> extra_headers;
+        QHash<QString, QString> extra_headers;
 
         /// If true, open a long-lived GET stream on `start()` so the
         /// server can push requests and notifications. If false, the
@@ -90,7 +94,7 @@ public:
         // application is expected to obtain a token (via Protected
         // Resource Metadata discovery + AS interaction) and supply
         // it here.
-        std::optional<std::string> access_token;
+        QString access_token;
 
         /// Hook fired when the server replies 401/403 to a request.
         /// Receives the raw `WWW-Authenticate` header value (may be
@@ -99,7 +103,7 @@ public:
         /// After this fires, the offending POST has already failed
         /// and the transport delivers an error to the caller; the
         /// callback is purely a side-channel notification.
-        std::function<void(int status, std::string_view www_authenticate)>
+        std::function<void(int status, const QString& www_authenticate)>
             on_unauthorized;
     };
 
@@ -115,7 +119,7 @@ public:
     void start(void) override;
     void close(void) override;
 
-    [[nodiscard]] std::error_code send(std::string_view frame) override;
+    [[nodiscard]] std::error_code send(QByteArrayView frame) override;
     [[nodiscard]] bool is_open(void) const noexcept override {
         return m_started.load(std::memory_order_acquire) &&
                !m_closed.load(std::memory_order_acquire);
@@ -125,21 +129,21 @@ public:
 
     /// The negotiated `Mcp-Session-Id`, or empty if none has been
     /// established yet (the server may opt out).
-    [[nodiscard]] std::optional<std::string> session_id(void) const;
+    [[nodiscard]] QString session_id(void) const;
 
     /// Update the `Authorization: Bearer` token used on every
     /// subsequent request — the obvious recovery path from an
     /// `on_unauthorized` callback. Pass an empty string to drop the
     /// header entirely. Thread-safe.
-    void set_access_token(std::string token);
+    void set_access_token(QString token);
 
     /// Read the current access token. Thread-safe.
-    [[nodiscard]] std::string access_token(void) const;
+    [[nodiscard]] QString access_token(void) const;
 
 private:
     void worker_loop(void);
-    void process_send(std::string frame);
-    void deliver_frame(std::string raw);
+    void process_send(QByteArray frame);
+    void deliver_frame(QByteArray raw);
     void deliver_error(std::error_code ec) noexcept;
     void fire_close(void) noexcept;
     void run_get_stream(void) noexcept;
@@ -158,7 +162,7 @@ private:
     // round-trip would otherwise wedge later sends).
     std::mutex m_out_mu;
     std::condition_variable m_out_cv;
-    std::deque<std::string> m_out;
+    std::deque<QByteArray> m_out;
     std::thread m_worker;
 
     // Track in-flight per-send threads so close() can drain.
@@ -174,14 +178,14 @@ private:
     // cv until a session id has been negotiated (or close fires).
     mutable std::mutex m_session_id_mu;
     std::condition_variable m_session_id_cv;
-    std::optional<std::string> m_session_id;
+    QString m_session_id;
 
     // SSE resumability state (spec: server emits `id:` lines, client
     // sends `Last-Event-ID` on reconnect and honours `retry:` for
     // backoff). Updated by drain_sse on every event; read by the GET
     // worker on reconnect.
     mutable std::mutex m_get_mu_state;
-    std::string m_last_event_id;
+    QString m_last_event_id;
     std::optional<int> m_next_retry_ms;
 
     // Mutable access token. The constructor seeds this from
@@ -189,7 +193,7 @@ private:
     // taken on every outbound request, so this is hot-ish — but
     // contention is bounded by the number of in-flight POSTs.
     mutable std::mutex m_auth_mu;
-    std::string m_access_token;
+    QString m_access_token;
 
     // on_unauthorized firing-flag. Multiple in-flight POSTs that all
     // hit a 401/403 would otherwise each fire the callback,

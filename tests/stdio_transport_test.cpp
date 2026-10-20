@@ -65,9 +65,9 @@ struct PipeHarness {
             ::close(from_transport_r);
     }
 
-    void write_to_transport(std::string_view s) {
-        const char* p = s.data();
-        std::size_t left = s.size();
+    void write_to_transport(QByteArray s) {
+        const char* p = s.constData();
+        std::size_t left = static_cast<std::size_t>(s.size());
         while (left > 0) {
             ssize_t n = ::write(to_transport_w, p, left);
             QVERIFY(n > 0);
@@ -78,8 +78,8 @@ struct PipeHarness {
 
     /// Read up to `n` bytes from the transport's stdout pipe. Returns
     /// whatever was available; will block waiting for at least one byte.
-    std::string read_from_transport(std::size_t n = 4096) {
-        std::string out;
+    QByteArray read_from_transport(std::size_t n = 4096) {
+        QByteArray out;
         out.resize(n);
         ssize_t got = ::read(from_transport_r, out.data(), n);
         if (got <= 0)
@@ -100,11 +100,11 @@ struct PipeHarness {
 struct Sink {
     std::mutex mu;
     std::condition_variable cv;
-    std::vector<std::string> messages;
-    std::vector<std::error_code> errors;
+    QList<QByteArray> messages;
+    QList<std::error_code> errors;
     bool closed = false;
 
-    void on_message(std::string m) {
+    void on_message(QByteArray m) {
         std::lock_guard<std::mutex> lk(mu);
         messages.push_back(std::move(m));
         cv.notify_all();
@@ -157,16 +157,16 @@ void StdioTransport::DeliversWholeFrame(void) {
     Sink sink;
     PipeHarness h;
     h.transport->on_message(
-        [&](std::string s) { sink.on_message(std::move(s)); });
+        [&](QByteArray s) { sink.on_message(std::move(s)); });
     h.transport->on_close([&] { sink.on_close(); });
     h.transport->start();
 
     h.write_to_transport(
-        std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"} + "\n");
+        QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"x"})") + '\n');
 
     QVERIFY(sink.wait_for_messages(1));
     QCOMPARE(sink.messages.front(),
-             std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"});
+             QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"x"})"));
 }
 
 void StdioTransport::SplitsMultipleFramesByNewline(void) {
@@ -176,15 +176,15 @@ void StdioTransport::SplitsMultipleFramesByNewline(void) {
     Sink sink;
     PipeHarness h;
     h.transport->on_message(
-        [&](std::string s) { sink.on_message(std::move(s)); });
+        [&](QByteArray s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
     h.write_to_transport("a\nb\nc\n");
 
     QVERIFY(sink.wait_for_messages(3));
-    QCOMPARE(sink.messages[0], std::string{"a"});
-    QCOMPARE(sink.messages[1], std::string{"b"});
-    QCOMPARE(sink.messages[2], std::string{"c"});
+    QCOMPARE(sink.messages[0], QByteArray("a"));
+    QCOMPARE(sink.messages[1], QByteArray("b"));
+    QCOMPARE(sink.messages[2], QByteArray("c"));
 }
 
 void StdioTransport::BuffersAcrossReads(void) {
@@ -194,15 +194,15 @@ void StdioTransport::BuffersAcrossReads(void) {
     Sink sink;
     PipeHarness h;
     h.transport->on_message(
-        [&](std::string s) { sink.on_message(std::move(s)); });
+        [&](QByteArray s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
     h.write_to_transport("part");
     h.write_to_transport("ial\nthen-next\n");
 
     QVERIFY(sink.wait_for_messages(2));
-    QCOMPARE(sink.messages[0], std::string{"partial"});
-    QCOMPARE(sink.messages[1], std::string{"then-next"});
+    QCOMPARE(sink.messages[0], QByteArray("partial"));
+    QCOMPARE(sink.messages[1], QByteArray("then-next"));
 }
 
 void StdioTransport::IgnoresEmptyLines(void) {
@@ -212,14 +212,14 @@ void StdioTransport::IgnoresEmptyLines(void) {
     Sink sink;
     PipeHarness h;
     h.transport->on_message(
-        [&](std::string s) { sink.on_message(std::move(s)); });
+        [&](QByteArray s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
     h.write_to_transport("\n\nhi\n\n");
 
     QVERIFY(sink.wait_for_messages(1));
     QCOMPARE(sink.messages.size(), std::size_t{1});
-    QCOMPARE(sink.messages[0], std::string{"hi"});
+    QCOMPARE(sink.messages[0], QByteArray("hi"));
 }
 
 void StdioTransport::SendWritesNewlineDelimitedFrames(void) {
@@ -231,7 +231,7 @@ void StdioTransport::SendWritesNewlineDelimitedFrames(void) {
 
     auto out = h.read_from_transport();
     QCOMPARE(out,
-             std::string{R"({"jsonrpc":"2.0","id":7,"method":"y"})"} + "\n");
+             QByteArray(R"({"jsonrpc":"2.0","id":7,"method":"y"})") + '\n');
 }
 
 void StdioTransport::RejectsFramesWithEmbeddedNewline(void) {
@@ -252,9 +252,9 @@ void StdioTransport::ConcurrentSendsAreSerialized(void) {
     ts.reserve(kThreads);
     for (int t = 0; t < kThreads; ++t) {
         ts.emplace_back([&, t]() {
-            std::string msg = "thread-" + std::to_string(t);
+            QString msg = "thread-" + QString::number(t);
             for (int i = 0; i < kPer; ++i) {
-                QVERIFY(!h.transport->send(msg));
+                QVERIFY(!h.transport->send(msg.toUtf8()));
             }
         });
     }
@@ -263,7 +263,7 @@ void StdioTransport::ConcurrentSendsAreSerialized(void) {
 
     // Drain everything the transport wrote, line by line, and verify
     // every frame is one of the expected strings (no torn writes).
-    std::string accumulated;
+    QByteArray accumulated;
     while (true) {
         // Tiny non-blocking poll: read whatever's there, with a short
         // budget. We rely on the writes having completed before joins.
@@ -276,18 +276,18 @@ void StdioTransport::ConcurrentSendsAreSerialized(void) {
         ssize_t n = ::read(h.from_transport_r, buf, sizeof(buf));
         if (n <= 0)
             break;
-        accumulated.append(buf, static_cast<std::size_t>(n));
+        accumulated.append(buf, static_cast<qsizetype>(n));
     }
 
     int frame_count = 0;
-    std::size_t pos = 0;
+    qsizetype pos = 0;
     while (pos < accumulated.size()) {
-        std::size_t nl = accumulated.find('\n', pos);
-        if (nl == std::string::npos)
+        const qsizetype nl = accumulated.indexOf('\n', pos);
+        if (nl == -1)
             break;
-        const std::string frame = accumulated.substr(pos, nl - pos);
-        QVERIFY(frame.starts_with("thread-"));
-        QCOMPARE(frame.find('\n'), std::string::npos);
+        const QByteArray frame = accumulated.mid(pos, nl - pos);
+        QVERIFY(frame.startsWith("thread-"));
+        QCOMPARE(frame.contains('\n'), false);
         pos = nl + 1;
         ++frame_count;
     }
@@ -364,7 +364,7 @@ void StdioTransport::OversizedFrameTriggersErrorAndClose(void) {
     transport->on_close([&] { sink.on_close(); });
     transport->start();
 
-    std::string oversized(64, 'x');  // no newline; exceeds max_frame_bytes=16
+    QByteArray oversized(64, 'x');  // no newline; exceeds max_frame_bytes=16
     ssize_t n = ::write(t2[1], oversized.data(), oversized.size());
     QCOMPARE(static_cast<std::size_t>(n), oversized.size());
 
@@ -393,3 +393,5 @@ int main(int argc, char** argv) {
 }
 
 #include "stdio_transport_test.moc"
+#include <QList>
+#include <QString>

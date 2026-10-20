@@ -38,6 +38,8 @@
 #include "protocol.h"
 #include "server.h"
 
+#include <QList>
+#include <QString>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -65,7 +67,7 @@ public:
     struct Options {
         /// Bind address. Default to loopback so a misconfigured server
         /// is not accidentally exposed to the network.
-        std::string host = "127.0.0.1";
+        QString host = "127.0.0.1";
 
         /// 0 = OS-assigned port; useful for tests. After start() the
         /// effective port is queryable via `port()`.
@@ -73,13 +75,13 @@ public:
 
         /// Single endpoint path. POST + GET + DELETE on this path are
         /// the spec's Streamable HTTP surface; other paths get 404.
-        std::string path = "/mcp";
+        QString path = "/mcp";
 
         /// Origin allowlist. Empty means "reject every cross-origin
         /// request that sets an Origin header" — DNS-rebinding
         /// hardening. To accept all origins explicitly, set this to
         /// {"*"} (not recommended in production).
-        std::vector<std::string> allowed_origins = {};
+        QList<QString> allowed_origins = {};
 
         /// Idle session timeout. RESERVED — not currently enforced.
         /// No reaper reads this: `last_seen` is stamped on each request
@@ -117,10 +119,10 @@ public:
             BearerStatus status = BearerStatus::invalid_token;
             /// For `insufficient_scope` only: space-separated scope
             /// string echoed as `scope="..."` in the 403 challenge.
-            std::string required_scopes = {};
+            QString required_scopes = {};
         };
         using BearerValidator =
-            std::function<BearerOutcome(std::string_view token)>;
+            std::function<BearerOutcome(const QString& token)>;
         BearerValidator bearer_validator = {};
 
         /// Realm name used in the WWW-Authenticate challenge. Optional;
@@ -128,7 +130,7 @@ public:
         /// character (CR/LF specifically) — those would smuggle into
         /// the response header. The SDK rejects bad realm strings at
         /// `start()`.
-        std::string auth_realm = "mcp";
+        QString auth_realm = "mcp";
 
         /// Optional Protected Resource Metadata document (RFC 9728).
         /// When set, the host serves it as `application/json` at
@@ -143,7 +145,7 @@ public:
         /// the WWW-Authenticate challenge so the client can discover
         /// the authorization server. Same control-char restriction
         /// as `auth_realm`.
-        std::string resource_metadata_url = {};
+        QString resource_metadata_url = {};
 
         /// When `bearer_validator` is set and the host binds anything
         /// other than a loopback address, the SDK refuses to start

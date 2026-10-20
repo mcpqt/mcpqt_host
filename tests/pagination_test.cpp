@@ -61,7 +61,7 @@ void Pagination::ToolsListReturnsPagesWithCursor(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(3);
         for (int i = 0; i < 7; ++i) {
-            s.tool("t" + std::to_string(i), QJsonObject{{"type", "object"}},
+            s.tool("t" + QString::number(i), QJsonObject{{"type", "object"}},
                    [](const Json&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
@@ -72,8 +72,8 @@ void Pagination::ToolsListReturnsPagesWithCursor(void) {
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    std::set<std::string> seen;
-    std::optional<std::string> cursor;
+    std::set<QString> seen;
+    QString cursor;
     int pages = 0;
     do {
         auto res = client.list_tools(cursor).get();
@@ -83,7 +83,7 @@ void Pagination::ToolsListReturnsPagesWithCursor(void) {
         cursor = res.next_cursor;
         ++pages;
         QVERIFY(pages < 10);
-    } while (cursor.has_value());
+    } while (!cursor.isNull());
 
     QVERIFY(pages >= 3);
     QCOMPARE(seen.size(), std::size_t{7});
@@ -94,7 +94,7 @@ void Pagination::NoPaginationByDefault(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         for (int i = 0; i < 5; ++i) {
-            s.tool("t" + std::to_string(i), QJsonObject{{"type", "object"}},
+            s.tool("t" + QString::number(i), QJsonObject{{"type", "object"}},
                    [](const Json&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
@@ -107,7 +107,7 @@ void Pagination::NoPaginationByDefault(void) {
 
     auto res = client.list_tools().get();
     QCOMPARE(res.tools.size(), std::size_t{5});
-    QVERIFY(!(res.next_cursor.has_value()));
+    QVERIFY(res.next_cursor.isNull());
     client.disconnect();
 }
 
@@ -118,10 +118,10 @@ void Pagination::ResourcesPaginate(void) {
         for (int i = 0; i < 5; ++i) {
             s.resource(
                 mcp::Resource{
-                    .uri = "file:///x" + std::to_string(i),
-                    .name = "n" + std::to_string(i),
+                    .uri = "file:///x" + QString::number(i),
+                    .name = "n" + QString::number(i),
                 },
-                [](const std::string& uri) {
+                [](const QString& uri) {
                     return mcp::ReadResourceResult{
                         .contents = {mcp::TextResourceContents{.uri = uri,
                                                                .text = "y"}},
@@ -135,7 +135,7 @@ void Pagination::ResourcesPaginate(void) {
     (void)client.initialize().get();
 
     int total = 0;
-    std::optional<std::string> cursor;
+    QString cursor;
     int pages = 0;
     do {
         auto res = client.list_resources(cursor).get();
@@ -143,7 +143,7 @@ void Pagination::ResourcesPaginate(void) {
         cursor = res.next_cursor;
         ++pages;
         QVERIFY(pages < 10);
-    } while (cursor.has_value());
+    } while (!cursor.isNull());
 
     QCOMPARE(total, 5);
     client.disconnect();
@@ -154,7 +154,7 @@ void Pagination::MalformedCursorRejected(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);
         for (int i = 0; i < 5; ++i) {
-            s.tool("t" + std::to_string(i), QJsonObject{{"type", "object"}},
+            s.tool("t" + QString::number(i), QJsonObject{{"type", "object"}},
                    [](const Json&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
@@ -165,7 +165,7 @@ void Pagination::MalformedCursorRejected(void) {
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    auto fut = client.list_tools(std::string{"not-a-number"});
+    auto fut = client.list_tools(QString{"not-a-number"});
     try {
         (void)fut.get();
         QFAIL("expected Error for bad cursor");
@@ -186,3 +186,4 @@ int main(int argc, char** argv) {
 }
 
 #include "pagination_test.moc"
+#include <QString>

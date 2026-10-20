@@ -22,6 +22,8 @@
 
 #include "transport.h"
 
+#include <QByteArrayView>
+#include <QString>
 #include <atomic>
 #include <cstddef>
 #include <mutex>
@@ -57,7 +59,7 @@ public:
     void start(void) override;
     void close(void) override;
 
-    [[nodiscard]] std::error_code send(std::string_view frame) override;
+    [[nodiscard]] std::error_code send(QByteArrayView frame) override;
     [[nodiscard]] bool is_open(void) const noexcept override {
         return m_running.load(std::memory_order_acquire);
     }

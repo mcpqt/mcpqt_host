@@ -97,7 +97,7 @@ void Elicitation::UrlParamsRoundTrip(void) {
     QCOMPARE(j["mode"], mcp::test::jv("url"));
     QCOMPARE(j["url"], mcp::test::jv("https://example.com/auth?session=xyz"));
     auto back = mcp::from_json<mcp::ElicitUrlRequestParams>(j);
-    QCOMPARE(back.elicitation_id, std::string{"abc-123"});
+    QCOMPARE(back.elicitation_id, QString{"abc-123"});
 }
 
 void Elicitation::VariantTagDispatch(void) {
@@ -162,7 +162,7 @@ void Elicitation::CompleteNotificationParamsRoundTrip(void) {
     QCOMPARE(j["elicitationId"], mcp::test::jv("abc"));
     QCOMPARE(mcp::from_json<mcp::ElicitationCompleteNotificationParams>(j)
                  .elicitation_id,
-             std::string{"abc"});
+             QString{"abc"});
 }
 
 // -------------------------------------------------------------------------
@@ -208,9 +208,8 @@ void ElicitationIntegration::FormModeRoundTripThroughClient(void) {
                    }
                    const QJsonObject co = er.content->toObject();
                    const QJsonValue nv = co.value(QStringLiteral("name"));
-                   const std::string nm = nv.isString()
-                                              ? nv.toString().toStdString()
-                                              : std::string{"<none>"};
+                   const QString nm =
+                       nv.isString() ? nv.toString() : QString{"<none>"};
                    return mcp::CallToolResult{
                        .content = {mcp::TextContent{.text = "hi " + nm}},
                    };
@@ -219,7 +218,7 @@ void ElicitationIntegration::FormModeRoundTripThroughClient(void) {
 
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     bool held_form = false;
-    std::string got_message;
+    QString got_message;
     client.connect(std::move(p.a));
     client.set_elicitation_handler(
         [&](const mcp::ElicitRequestParams& req) -> mcp::ElicitResult {
@@ -246,9 +245,9 @@ void ElicitationIntegration::FormModeRoundTripThroughClient(void) {
     QVERIFY(!out.is_error.value_or(false));
     QCOMPARE(out.content.size(), std::size_t{1});
     QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"hi Ada"});
+             QString{"hi Ada"});
     QVERIFY(held_form);
-    QCOMPARE(got_message, std::string{"name?"});
+    QCOMPARE(got_message, QString{"name?"});
 
     client.disconnect();
 }
@@ -285,7 +284,7 @@ void ElicitationIntegration::DeclineCarriesThrough(void) {
 
     auto out = client.call_tool("touch").get();
     QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"declined"});
+             QString{"declined"});
 
     client.disconnect();
 }
@@ -323,7 +322,7 @@ void ElicitationIntegration::MissingHandlerYieldsError(void) {
     auto out = client.call_tool("touch").get();
     QVERIFY(out.is_error.value_or(false));
     QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"no-elicit"});
+             QString{"no-elicit"});
 
     client.disconnect();
 }
@@ -338,8 +337,8 @@ void ElicitationIntegration::UrlModeNotificationDeliversToClient(void) {
                    if (ec) {
                        return mcp::CallToolResult{
                            .content = {mcp::TextContent{
-                               .text = std::string{"notify failed: "} +
-                                       ec.message(),
+                               .text = QStringLiteral("notify failed: ") +
+                                       ec.message().c_str(),
                            }},
                            .is_error = true,
                        };
@@ -350,11 +349,11 @@ void ElicitationIntegration::UrlModeNotificationDeliversToClient(void) {
                });
     });
 
-    std::promise<std::string> got;
+    std::promise<QString> got;
     auto fut = got.get_future();
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
-    client.set_elicitation_complete_handler([&](std::string id) {
+    client.set_elicitation_complete_handler([&](QString id) {
         try {
             got.set_value(std::move(id));
         } catch (...) {
@@ -365,10 +364,10 @@ void ElicitationIntegration::UrlModeNotificationDeliversToClient(void) {
     auto out = client.call_tool("kick").get();
     QVERIFY(!out.is_error.value_or(false));
     QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"kicked"});
+             QString{"kicked"});
 
     QCOMPARE(fut.wait_for(2s), std::future_status::ready);
-    QCOMPARE(fut.get(), std::string{"eid-77"});
+    QCOMPARE(fut.get(), QString{"eid-77"});
 
     client.disconnect();
 }
@@ -405,12 +404,12 @@ void ElicitationIntegration::UrlModeFullRoundTripWithCompletion(void) {
                });
     });
 
-    std::promise<std::string> completion_p;
+    std::promise<QString> completion_p;
     auto completion_fut = completion_p.get_future();
 
     bool got_url_mode_request = false;
-    std::string got_elicitation_id;
-    std::string got_url;
+    QString got_elicitation_id;
+    QString got_url;
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     client.set_elicitation_handler(
@@ -423,7 +422,7 @@ void ElicitationIntegration::UrlModeFullRoundTripWithCompletion(void) {
             }
             return mcp::ElicitResult{.action = mcp::ElicitAction::accept};
         });
-    client.set_elicitation_complete_handler([&](std::string id) {
+    client.set_elicitation_complete_handler([&](QString id) {
         try {
             completion_p.set_value(std::move(id));
         } catch (...) {
@@ -434,11 +433,11 @@ void ElicitationIntegration::UrlModeFullRoundTripWithCompletion(void) {
     auto out = client.call_tool("oauth_kickoff").get();
     QVERIFY(!out.is_error.value_or(false));
     QVERIFY(got_url_mode_request);
-    QCOMPARE(got_elicitation_id, std::string{"eid-url-1"});
-    QVERIFY(got_url.find("idp.example") != std::string::npos);
+    QCOMPARE(got_elicitation_id, QString{"eid-url-1"});
+    QVERIFY(got_url.contains("idp.example"));
 
     QCOMPARE(completion_fut.wait_for(2s), std::future_status::ready);
-    QCOMPARE(completion_fut.get(), std::string{"eid-url-1"});
+    QCOMPARE(completion_fut.get(), QString{"eid-url-1"});
 
     client.disconnect();
 }
@@ -451,11 +450,11 @@ void ElicitationIntegration::ServerReceivesElicitationComplete(void) {
     //   server's set_elicitation_complete_handler fires with id.
     auto p = mcp::test::make_in_memory_pair();
 
-    std::promise<std::string> server_got;
+    std::promise<QString> server_got;
     auto server_fut = server_got.get_future();
 
     ServerThread srv(std::move(p.b), [&](mcp::Server& s) {
-        s.set_elicitation_complete_handler([&](std::string id) {
+        s.set_elicitation_complete_handler([&](QString id) {
             try {
                 server_got.set_value(std::move(id));
             } catch (...) {
@@ -472,7 +471,7 @@ void ElicitationIntegration::ServerReceivesElicitationComplete(void) {
                              QString::fromStdString(ec.message())));
 
     QCOMPARE(server_fut.wait_for(2s), std::future_status::ready);
-    QCOMPARE(server_fut.get(), std::string{"eid-from-client"});
+    QCOMPARE(server_fut.get(), QString{"eid-from-client"});
 
     client.disconnect();
 }
@@ -500,7 +499,7 @@ void ElicitationIntegration::CapabilityActuallyAdvertisedOnInitialize(void) {
             } catch (...) {
             }
             return mcp::to_json(mcp::InitializeResult{
-                .protocol_version = std::string{mcp::kLatestProtocolVersion},
+                .protocol_version = QString{mcp::kLatestProtocolVersion},
                 .capabilities = mcp::ServerCapabilities{},
                 .server_info =
                     mcp::Implementation{
@@ -550,7 +549,7 @@ void ElicitationIntegration::NarrowedCapabilityOverrideKeepsOtherDerivedCaps(
             } catch (...) {
             }
             return mcp::to_json(mcp::InitializeResult{
-                .protocol_version = std::string{mcp::kLatestProtocolVersion},
+                .protocol_version = QString{mcp::kLatestProtocolVersion},
                 .capabilities = mcp::ServerCapabilities{},
                 .server_info =
                     mcp::Implementation{
@@ -631,3 +630,4 @@ int main(int argc, char** argv) {
 }
 
 #include "elicitation_test.moc"
+#include <QString>

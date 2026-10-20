@@ -111,30 +111,30 @@ void print_help(void) {
 
 void print_content(const mcp::ContentBlock& block) {
     if (const auto* text = std::get_if<mcp::TextContent>(&block)) {
-        std::cout << text->text;
+        std::cout << text->text.toStdString();
         return;
     }
     if (const auto* image = std::get_if<mcp::ImageContent>(&block)) {
-        std::cout << "[image " << image->mime_type << ", " << image->data.size()
-                  << " base64 bytes]";
+        std::cout << "[image " << image->mime_type.toStdString() << ", "
+                  << image->data.size() << " base64 bytes]";
         return;
     }
     if (const auto* audio = std::get_if<mcp::AudioContent>(&block)) {
-        std::cout << "[audio " << audio->mime_type << ", " << audio->data.size()
-                  << " base64 bytes]";
+        std::cout << "[audio " << audio->mime_type.toStdString() << ", "
+                  << audio->data.size() << " base64 bytes]";
         return;
     }
-    std::cout << mcp::dump(mcp::to_json(block));
+    std::cout << mcp::dump(mcp::to_json(block)).toStdString();
 }
 
 void print_result(const mcp::CallToolResult& result) {
     if (result.is_error.value_or(false)) {
         std::cout << "error: ";
     }
-    if (result.content.empty()) {
+    if (result.content.isEmpty()) {
         std::cout << "(no content)";
     } else {
-        for (std::size_t i = 0; i < result.content.size(); ++i) {
+        for (qsizetype i = 0; i < result.content.size(); ++i) {
             if (i != 0) {
                 std::cout << "\n  ";
             }
@@ -143,21 +143,22 @@ void print_result(const mcp::CallToolResult& result) {
     }
     std::cout << "\n";
     if (result.structured_content.has_value()) {
-        std::cout << "structured: " << mcp::dump(*result.structured_content)
+        std::cout << "structured: "
+                  << mcp::dump(*result.structured_content).toStdString()
                   << "\n";
     }
 }
 
 void list_tools(mcp::Client& client) {
     const mcp::ListToolsResult tools = client.list_tools().get();
-    if (tools.tools.empty()) {
+    if (tools.tools.isEmpty()) {
         std::cout << "(server exposes no tools)\n";
         return;
     }
     for (const mcp::Tool& tool : tools.tools) {
-        std::cout << "  - " << tool.name;
-        if (tool.description.has_value() && !tool.description->empty()) {
-            std::cout << " — " << *tool.description;
+        std::cout << "  - " << tool.name.toStdString();
+        if (!tool.description.isNull() && !tool.description.isEmpty()) {
+            std::cout << " — " << tool.description.toStdString();
         }
         std::cout << "\n";
     }
@@ -169,10 +170,11 @@ void show_info(const mcp::Client& client) {
         std::cout << "(not initialized)\n";
         return;
     }
-    std::cout << "server: " << info->server_info.name << " "
-              << info->server_info.version << "\n";
-    if (info->instructions.has_value()) {
-        std::cout << "instructions: " << *info->instructions << "\n";
+    std::cout << "server: " << info->server_info.name.toStdString() << " "
+              << info->server_info.version.toStdString() << "\n";
+    if (!info->instructions.isNull()) {
+        std::cout << "instructions: " << info->instructions.toStdString()
+                  << "\n";
     }
 }
 
@@ -205,7 +207,8 @@ void call_tool(mcp::Client& client) {
     }
 
     try {
-        const mcp::CallToolResult result = client.call_tool(name, args).get();
+        const mcp::CallToolResult result =
+            client.call_tool(QString::fromStdString(name), args).get();
         print_result(result);
     } catch (const std::exception& e) {
         std::cout << "call failed: " << e.what() << "\n";
@@ -239,8 +242,8 @@ int main(int argc, char** argv) {
 
     try {
         const mcp::InitializeResult info = client.initialize().get();
-        std::cout << "connected to " << info.server_info.name << " "
-                  << info.server_info.version << "\n";
+        std::cout << "connected to " << info.server_info.name.toStdString()
+                  << " " << info.server_info.version.toStdString() << "\n";
     } catch (const std::exception& e) {
         std::fprintf(stderr, "initialize failed: %s\n", e.what());
         return 1;

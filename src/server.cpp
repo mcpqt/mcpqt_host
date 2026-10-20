@@ -7,6 +7,9 @@
 #include "session.h"
 #include "transport.h"
 
+#include <QHash>
+#include <QList>
+#include <QString>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -34,7 +37,7 @@ namespace detail {
 // same wall-clock second otherwise produce identical
 // `lastUpdatedAt` values, which makes it look to clients like
 // no transition happened.
-inline std::string iso_utc_now(void) {
+inline QString iso_utc_now(void) {
     using clock = std::chrono::system_clock;
     const auto now = clock::now();
     const auto t = clock::to_time_t(now);
@@ -53,19 +56,19 @@ inline std::string iso_utc_now(void) {
         std::snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d.%03lldZ",
                       tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
                       tm.tm_min, tm.tm_sec, static_cast<long long>(ms));
-    return std::string{buf, static_cast<std::size_t>(n)};
+    return QString::fromLatin1(buf, n);
 }
 
 // 128-bit hex token. Per-call seeded — not cryptographic, but
 // non-adversarial unguessability is sufficient: task ids only
 // need to be unique within a single Server lifetime.
-inline std::string mint_task_id(void) {
+inline QString mint_task_id(void) {
     std::random_device rd;
     std::mt19937_64 rng{(static_cast<std::uint64_t>(rd()) << 32) ^ rd()};
     std::uniform_int_distribution<std::uint64_t> dist;
     std::ostringstream os;
     os << std::hex << dist(rng) << dist(rng);
-    return os.str();
+    return QString::fromStdString(os.str());
 }
 
 // =====================================================================
@@ -87,34 +90,34 @@ public:
 
     /// Mark a task as completed and stash its result payload. Wakes
     /// any tasks/result waiter and notifies the StatusListener.
-    void complete(const std::string& id, Json result);
+    void complete(const QString& id, Json result);
 
     /// Mark a task as failed with the given message.
-    void fail(const std::string& id, std::string message);
+    void fail(const QString& id, QString message);
 
     /// Cooperative cancel: marks the task cancelled and wakes
     /// waiters. Returns the cancelled-projection of the task, or
     /// std::nullopt if no such task. Per spec, cancelling an already
     /// terminal task is a no-op (we just return its current state).
-    std::optional<Task> cancel(const std::string& id);
+    std::optional<Task> cancel(const QString& id);
 
     /// Snapshot the task envelope by id.
-    [[nodiscard]] std::optional<Task> get(const std::string& id) const;
+    [[nodiscard]] std::optional<Task> get(const QString& id) const;
 
     /// Block until the named task hits a terminal status, or `timeout`
     /// elapses. Returns the final result payload on completed, throws
     /// Error on failed/cancelled, or returns std::nullopt if the task
     /// wasn't terminal in time.
-    std::optional<Json> wait_result(const std::string& id,
+    std::optional<Json> wait_result(const QString& id,
                                     std::chrono::milliseconds timeout);
 
     /// Paginated listing in creation order.
-    [[nodiscard]] ListTasksResult list(std::optional<std::string> cursor,
+    [[nodiscard]] ListTasksResult list(QString cursor,
                                        std::size_t page_size) const;
 
     /// Read the cooperative cancellation flag for a task. Returns
     /// false if the task isn't known.
-    [[nodiscard]] bool is_cancelled(const std::string& id) const;
+    [[nodiscard]] bool is_cancelled(const QString& id) const;
 
     /// Set once at startup; called on every task transition with a
     /// projection of the current task.
@@ -145,7 +148,7 @@ private:
     struct Entry {
         Task task;
         std::optional<Json> result;
-        std::optional<std::string> error;
+        QString error;
         std::atomic<bool> cancelled{false};
         std::chrono::steady_clock::time_point created_steady;
     };
@@ -155,18 +158,17 @@ private:
                s == TaskStatus::cancelled;
     }
 
-    void touch_locked(Entry& e, TaskStatus new_status,
-                      std::optional<std::string> message) {
+    void touch_locked(Entry& e, TaskStatus new_status, QString message) {
         e.task.status = new_status;
         e.task.last_updated_at = iso_utc_now();
-        if (message.has_value())
-            e.task.status_message = std::move(*message);
+        if (!message.isNull())
+            e.task.status_message = message;
     }
 
     mutable std::mutex m_mu;
     std::condition_variable m_cv;
-    std::unordered_map<std::string, std::unique_ptr<Entry>> m_entries;
-    std::vector<std::string> m_order;
+    std::map<QString, std::unique_ptr<Entry>> m_entries;
+    QList<QString> m_order;
     StatusListener m_listener;
     std::atomic<bool> m_shutting_down{false};
 
@@ -204,7 +206,7 @@ Task TaskStore::create(std::optional<std::int64_t> ttl_ms) {
     return projection;
 }
 
-void TaskStore::complete(const std::string& id, Json result) {
+void TaskStore::complete(const QString& id, Json result) {
     Task projection;
     StatusListener listener_copy;
     bool fire_notify = false;
@@ -228,10 +230,10 @@ void TaskStore::complete(const std::string& id, Json result) {
             // could; treat as if the worker observed cancellation.
             // (We still update the timestamp / status here because
             // the task wasn't yet in a terminal state.)
-            touch_locked(e, TaskStatus::cancelled, std::string{"cancelled"});
+            touch_locked(e, TaskStatus::cancelled, QString{"cancelled"});
         } else {
             e.result = std::move(result);
-            touch_locked(e, TaskStatus::completed, std::nullopt);
+            touch_locked(e, TaskStatus::completed, QString());
         }
         projection = e.task;
         listener_copy = m_listener;
@@ -244,7 +246,7 @@ void TaskStore::complete(const std::string& id, Json result) {
     }
 }
 
-void TaskStore::fail(const std::string& id, std::string message) {
+void TaskStore::fail(const QString& id, QString message) {
     Task projection;
     StatusListener listener_copy;
     {
@@ -265,7 +267,7 @@ void TaskStore::fail(const std::string& id, std::string message) {
         listener_copy(projection);
 }
 
-std::optional<Task> TaskStore::cancel(const std::string& id) {
+std::optional<Task> TaskStore::cancel(const QString& id) {
     Task projection;
     StatusListener listener_copy;
     bool fire_listener = false;
@@ -285,7 +287,7 @@ std::optional<Task> TaskStore::cancel(const std::string& id) {
             listener_copy = m_listener;
         } else {
             e.cancelled.store(true, std::memory_order_release);
-            touch_locked(e, TaskStatus::cancelled, std::string{"cancelled"});
+            touch_locked(e, TaskStatus::cancelled, QString{"cancelled"});
             projection = e.task;
             listener_copy = m_listener;
             fire_listener = true;
@@ -299,7 +301,7 @@ std::optional<Task> TaskStore::cancel(const std::string& id) {
     return projection;
 }
 
-std::optional<Task> TaskStore::get(const std::string& id) const {
+std::optional<Task> TaskStore::get(const QString& id) const {
     std::lock_guard<std::mutex> lk(m_mu);
     auto it = m_entries.find(id);
     if (it == m_entries.end())
@@ -307,7 +309,7 @@ std::optional<Task> TaskStore::get(const std::string& id) const {
     return it->second->task;
 }
 
-bool TaskStore::is_cancelled(const std::string& id) const {
+bool TaskStore::is_cancelled(const QString& id) const {
     std::lock_guard<std::mutex> lk(m_mu);
     auto it = m_entries.find(id);
     if (it == m_entries.end())
@@ -315,7 +317,7 @@ bool TaskStore::is_cancelled(const std::string& id) const {
     return it->second->cancelled.load(std::memory_order_acquire);
 }
 
-std::optional<Json> TaskStore::wait_result(const std::string& id,
+std::optional<Json> TaskStore::wait_result(const QString& id,
                                            std::chrono::milliseconds timeout) {
     std::unique_lock<std::mutex> lk(m_mu);
     if (!m_cv.wait_for(lk, timeout, [&] {
@@ -344,9 +346,10 @@ std::optional<Json> TaskStore::wait_result(const std::string& id,
         throw Error{error_code::internal_error,
                     "task completed without a result payload"};
     case TaskStatus::failed:
-        throw Error{error_code::internal_error,
-                    "task failed: " +
-                        e.error.value_or(std::string{"<no message>"})};
+        throw Error{
+            error_code::internal_error,
+            QStringLiteral("task failed: ") +
+                (e.error.isNull() ? QStringLiteral("<no message>") : e.error)};
     case TaskStatus::cancelled:
         throw Error{error_code::invalid_request, "task cancelled: " + id};
     default:
@@ -356,43 +359,46 @@ std::optional<Json> TaskStore::wait_result(const std::string& id,
     }
 }
 
-ListTasksResult TaskStore::list(std::optional<std::string> cursor,
-                                std::size_t page_size) const {
+ListTasksResult TaskStore::list(QString cursor, std::size_t page_size) const {
     std::lock_guard<std::mutex> lk(m_mu);
 
-    std::size_t offset = 0;
-    if (cursor.has_value() && !cursor->empty()) {
+    qsizetype offset = 0;
+    if (!cursor.isNull() && !cursor.isEmpty()) {
         // Same strict cursor format as paginate(): decimal digits only.
-        const auto& s = *cursor;
-        for (char c : s) {
+        const QString& text = cursor;
+        for (const QChar ch : text) {
+            const ushort c = ch.unicode();
             if (c < '0' || c > '9') {
                 throw Error{error_code::invalid_params,
-                            "invalid pagination cursor: " + s};
+                            "invalid pagination cursor: " + text};
             }
         }
-        try {
-            offset = static_cast<std::size_t>(std::stoull(s));
-        } catch (...) {
+        bool ok = false;
+        const qulonglong parsed_offset = text.toULongLong(&ok);
+        if (!ok) {
             throw Error{error_code::invalid_params,
-                        "invalid pagination cursor: " + s};
+                        "invalid pagination cursor: " + text};
         }
+        offset = static_cast<qsizetype>(parsed_offset);
     }
 
     ListTasksResult out;
     if (offset >= m_order.size())
         return out;
 
-    const std::size_t end = (page_size == 0)
-                                ? m_order.size()
-                                : std::min(m_order.size(), offset + page_size);
+    const qsizetype end =
+        (page_size == 0)
+            ? m_order.size()
+            : std::min<qsizetype>(m_order.size(),
+                                  offset + static_cast<qsizetype>(page_size));
     out.tasks.reserve(end - offset);
-    for (std::size_t i = offset; i < end; ++i) {
+    for (qsizetype i = offset; i < end; ++i) {
         auto it = m_entries.find(m_order[i]);
         if (it != m_entries.end())
             out.tasks.push_back(it->second->task);
     }
     if (end < m_order.size())
-        out.next_cursor = std::to_string(end);
+        out.next_cursor = QString::number(end);
     return out;
 }
 
@@ -489,7 +495,7 @@ Server::~Server() {
         m_tasks->shutdown();
 }
 
-Server& Server::set_instructions(std::string s) {
+Server& Server::set_instructions(QString s) {
     m_instructions = std::move(s);
     return *this;
 }
@@ -507,24 +513,25 @@ namespace {
 // leading/trailing whitespace, no overflow. std::stoull accepts "-1"
 // (silently wrapping to UINT64_MAX) and trailing junk like "1abc",
 // neither of which we want to treat as a valid offset.
-std::size_t decode_cursor(const std::optional<std::string>& cursor) {
-    if (!cursor.has_value() || cursor->empty())
+std::size_t decode_cursor(const QString& cursor) {
+    if (cursor.isNull() || cursor.isEmpty())
         return 0;
-    const auto& s = *cursor;
-    if (s.size() > 20) {  // longer than UINT64_MAX's decimal length
+    const QString& text = cursor;
+    if (text.size() > 20) {  // longer than UINT64_MAX's decimal length
         throw Error{error_code::invalid_params,
-                    "invalid pagination cursor: " + s};
+                    "invalid pagination cursor: " + text};
     }
     std::uint64_t value = 0;
-    for (char c : s) {
+    for (const QChar ch : text) {
+        const ushort c = ch.unicode();
         if (c < '0' || c > '9') {
             throw Error{error_code::invalid_params,
-                        "invalid pagination cursor: " + s};
+                        "invalid pagination cursor: " + text};
         }
         const std::uint64_t digit = static_cast<std::uint64_t>(c - '0');
         if (value > (std::numeric_limits<std::uint64_t>::max() - digit) / 10) {
             throw Error{error_code::invalid_params,
-                        "invalid pagination cursor: " + s};
+                        "invalid pagination cursor: " + text};
         }
         value = value * 10 + digit;
     }
@@ -536,26 +543,25 @@ std::size_t decode_cursor(const std::optional<std::string>& cursor) {
 // nextCursor; otherwise returns a slice of size page_size and a
 // `nextCursor` for the next call.
 template <typename T>
-std::pair<std::vector<T>, std::optional<std::string>>
-paginate(const std::vector<T>& items, std::size_t offset,
-         std::size_t page_size) {
-    if (offset >= items.size())
-        return {{}, std::nullopt};
-    if (page_size == 0 || offset + page_size >= items.size()) {
+std::pair<QList<T>, QString> paginate(const QList<T>& items, std::size_t offset,
+                                      std::size_t page_size) {
+    if (offset >= static_cast<std::size_t>(items.size()))
+        return {{}, {}};
+    if (page_size == 0 ||
+        offset + page_size >= static_cast<std::size_t>(items.size())) {
         return {
             {items.begin() + static_cast<std::ptrdiff_t>(offset), items.end()},
-            std::nullopt};
+            {}};
     }
     const std::size_t next = offset + page_size;
     return {{items.begin() + static_cast<std::ptrdiff_t>(offset),
              items.begin() + static_cast<std::ptrdiff_t>(next)},
-            std::to_string(next)};
+            QString::number(next)};
 }
 }  // namespace
 
-Server& Server::tool(std::string name, Json input_schema, ToolHandler handler,
-                     std::optional<std::string> title,
-                     std::optional<std::string> description,
+Server& Server::tool(QString name, Json input_schema, ToolHandler handler,
+                     QString title, QString description,
                      std::optional<ToolAnnotations> annotations,
                      std::optional<Json> output_schema) {
     Tool t{
@@ -574,12 +580,12 @@ Server& Server::tool(std::string name, Json input_schema, ToolHandler handler,
     return *this;
 }
 
-Server& Server::tool(std::string name, Json input_schema, ToolHandler handler,
+Server& Server::tool(QString name, Json input_schema, ToolHandler handler,
                      ToolMetadata meta) {
     Tool t{
         .name = name,
-        .title = std::nullopt,
-        .description = std::nullopt,
+        .title = {},
+        .description = {},
         .input_schema = std::move(input_schema),
         .output_schema = std::nullopt,
         .annotations = std::nullopt,
@@ -594,7 +600,7 @@ Server& Server::tool(std::string name, Json input_schema, ToolHandler handler,
 
 Server& Server::resource(Resource descriptor, ResourceReadHandler handler) {
     std::lock_guard<std::mutex> lk(m_resources_mu);
-    const std::string uri = descriptor.uri;
+    const QString uri = descriptor.uri;
     m_resources[uri] = ResourceEntry{std::move(descriptor), std::move(handler)};
     return *this;
 }
@@ -613,7 +619,7 @@ Server& Server::fallback_resource_handler(ResourceReadHandler handler) {
 
 Server& Server::prompt(Prompt descriptor, PromptGetHandler handler) {
     std::lock_guard<std::mutex> lk(m_prompts_mu);
-    const std::string name = descriptor.name;
+    const QString name = descriptor.name;
     m_prompts[name] = PromptEntry{std::move(descriptor), std::move(handler)};
     return *this;
 }
@@ -624,8 +630,7 @@ Server& Server::enable_logging(LoggingLevel initial_level) {
     return *this;
 }
 
-bool Server::log(LoggingLevel level, Json data,
-                 std::optional<std::string> logger) {
+bool Server::log(LoggingLevel level, Json data, QString logger) {
     if (!m_logging_enabled.load(std::memory_order_acquire))
         return false;
     if (static_cast<int>(level) <
@@ -639,14 +644,13 @@ bool Server::log(LoggingLevel level, Json data,
         .logger = std::move(logger),
         .data = std::move(data),
     };
-    auto ec = session->send_notification(
-        std::string{method_notifications_message}, to_json(params));
+    auto ec = session->send_notification(QString{method_notifications_message},
+                                         to_json(params));
     return !ec;
 }
 
 void Server::report_progress(const ProgressToken& token, double progress,
-                             std::optional<double> total,
-                             std::optional<std::string> message) {
+                             std::optional<double> total, QString message) {
     auto session = acquire_session();
     if (!session)
         return;
@@ -656,7 +660,7 @@ void Server::report_progress(const ProgressToken& token, double progress,
         .total = total,
         .message = std::move(message),
     };
-    (void)session->send_notification(std::string{method_notifications_progress},
+    (void)session->send_notification(QString{method_notifications_progress},
                                      to_json(params));
 }
 
@@ -668,7 +672,7 @@ Server::sample(CreateMessageRequestParams params) {
                     "Server::sample: server is not running"};
     }
     return session->send_request_for<CreateMessageResult>(
-        std::string{method_sampling_create_message}, to_json(params),
+        QString{method_sampling_create_message}, to_json(params),
         [](Json j) { return from_json<CreateMessageResult>(j); });
 }
 
@@ -679,7 +683,7 @@ std::future<ListRootsResult> Server::list_roots(void) {
                     "Server::list_roots: server is not running"};
     }
     return session->send_request_for<ListRootsResult>(
-        std::string{method_roots_list}, {},
+        QString{method_roots_list}, {},
         [](Json j) { return from_json<ListRootsResult>(j); });
 }
 
@@ -697,7 +701,7 @@ std::future<ElicitResult> Server::elicit(ElicitRequestParams params,
     // 0 ⇒ Session's default request timeout (30 s). For URL-mode
     // human-in-the-loop flows callers should pass a larger value.
     return session->send_request_for<ElicitResult>(
-        std::string{method_elicitation_create}, to_json(params),
+        QString{method_elicitation_create}, to_json(params),
         [](Json j) { return from_json<ElicitResult>(j); }, timeout);
 }
 
@@ -707,13 +711,12 @@ void Server::set_elicitation_complete_handler(
     m_elicitation_complete_handler = std::move(handler);
 }
 
-std::error_code
-Server::notify_elicitation_complete(std::string elicitation_id) {
+std::error_code Server::notify_elicitation_complete(QString elicitation_id) {
     auto session = acquire_session();
     if (!session)
         return std::make_error_code(std::errc::not_connected);
     return session->send_notification(
-        std::string{method_notifications_elicitation_complete},
+        QString{method_notifications_elicitation_complete},
         to_json(ElicitationCompleteNotificationParams{
             .elicitation_id = std::move(elicitation_id),
         }));
@@ -754,7 +757,7 @@ Json Server::handle_initialize(const Json& params) {
         parsed = from_json<InitializeRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid initialize params: "} + e.what()};
+                    QString{"invalid initialize params: "} + e.what()};
     }
 
     // Atomically claim the "initialized" slot — only the first concurrent
@@ -779,7 +782,7 @@ Json Server::handle_initialize(const Json& params) {
     // respond with the version we *do* support; the client may then
     // disconnect. For Phase 1 we simply echo our own latest.
     InitializeResult result{};
-    result.protocol_version = std::string{kLatestProtocolVersion};
+    result.protocol_version = QString{kLatestProtocolVersion};
     result.server_info = m_server_info;
     result.instructions = m_instructions;
 
@@ -831,12 +834,12 @@ Json Server::handle_list_tools(const Json& params) {
     }
     auto parsed = params.isNull() ? ListToolsRequestParams{}
                                   : from_json<ListToolsRequestParams>(params);
-    std::vector<Tool> all;
+    QList<Tool> all;
     {
         std::lock_guard<std::mutex> lk(m_tools_mu);
         all.reserve(m_tools.size());
-        for (const auto& [name, entry] : m_tools)
-            all.push_back(entry.descriptor);
+        for (auto it = m_tools.constBegin(); it != m_tools.constEnd(); ++it)
+            all.push_back(it.value().descriptor);
     }
     auto [page, next] =
         paginate(all, decode_cursor(parsed.cursor), m_page_size);
@@ -856,7 +859,7 @@ Json Server::handle_call_tool(const Json& params) {
         parsed = from_json<CallToolRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid tools/call params: "} + e.what()};
+                    QString{"invalid tools/call params: "} + e.what()};
     }
 
     ToolHandler h;
@@ -868,9 +871,9 @@ Json Server::handle_call_tool(const Json& params) {
             throw Error{error_code::method_not_found,
                         "tool not found: " + parsed.name};
         }
-        h = it->second.handler;
-        if (it->second.descriptor.execution.has_value()) {
-            tool_task_support = it->second.descriptor.execution->task_support;
+        h = it.value().handler;
+        if (it.value().descriptor.execution.has_value()) {
+            tool_task_support = it.value().descriptor.execution->task_support;
         }
     }
     const auto args = parsed.arguments.value_or(QJsonObject{});
@@ -909,7 +912,7 @@ Json Server::handle_call_tool(const Json& params) {
                 m_tasks_max_concurrent) {
             throw Error{error_code::invalid_request,
                         "task concurrency limit reached (" +
-                            std::to_string(m_tasks_max_concurrent) + ")"};
+                            QString::number(m_tasks_max_concurrent) + ")"};
         }
         // Resolve effective TTL: per-call override wins, else the
         // server-wide default.
@@ -927,7 +930,7 @@ Json Server::handle_call_tool(const Json& params) {
         // worker_started/finished bracket the worker so TaskStore
         // shutdown() can wait for it to exit before the Server is
         // destroyed.
-        const std::string id = task.taskId;
+        const QString id = task.taskId;
         m_tasks->worker_started();
         std::thread([store = m_tasks.get(), h = std::move(h),
                      args = std::move(args), id]() mutable {
@@ -957,12 +960,13 @@ Json Server::handle_list_resources(const Json& params) {
     auto parsed = params.isNull()
                       ? ListResourcesRequestParams{}
                       : from_json<ListResourcesRequestParams>(params);
-    std::vector<Resource> all;
+    QList<Resource> all;
     {
         std::lock_guard<std::mutex> lk(m_resources_mu);
         all.reserve(m_resources.size());
-        for (const auto& [uri, entry] : m_resources)
-            all.push_back(entry.descriptor);
+        for (auto it = m_resources.constBegin(); it != m_resources.constEnd();
+             ++it)
+            all.push_back(it.value().descriptor);
     }
     auto [page, next] =
         paginate(all, decode_cursor(parsed.cursor), m_page_size);
@@ -980,7 +984,7 @@ Json Server::handle_list_resource_templates(const Json& params) {
     auto parsed = params.isNull()
                       ? ListResourceTemplatesRequestParams{}
                       : from_json<ListResourceTemplatesRequestParams>(params);
-    std::vector<ResourceTemplate> all;
+    QList<ResourceTemplate> all;
     {
         std::lock_guard<std::mutex> lk(m_resources_mu);
         all = m_resource_templates;
@@ -1003,7 +1007,7 @@ Json Server::handle_read_resource(const Json& params) {
         parsed = from_json<ReadResourceRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid resources/read params: "} + e.what()};
+                    QString{"invalid resources/read params: "} + e.what()};
     }
 
     ResourceReadHandler h;
@@ -1011,7 +1015,7 @@ Json Server::handle_read_resource(const Json& params) {
         std::lock_guard<std::mutex> lk(m_resources_mu);
         auto it = m_resources.find(parsed.uri);
         if (it != m_resources.end()) {
-            h = it->second.handler;
+            h = it.value().handler;
         } else {
             h = m_fallback_resource_handler;
         }
@@ -1029,12 +1033,12 @@ Json Server::handle_list_prompts(const Json& params) {
     }
     auto parsed = params.isNull() ? ListPromptsRequestParams{}
                                   : from_json<ListPromptsRequestParams>(params);
-    std::vector<Prompt> all;
+    QList<Prompt> all;
     {
         std::lock_guard<std::mutex> lk(m_prompts_mu);
         all.reserve(m_prompts.size());
-        for (const auto& [name, entry] : m_prompts)
-            all.push_back(entry.descriptor);
+        for (auto it = m_prompts.constBegin(); it != m_prompts.constEnd(); ++it)
+            all.push_back(it.value().descriptor);
     }
     auto [page, next] =
         paginate(all, decode_cursor(parsed.cursor), m_page_size);
@@ -1054,7 +1058,7 @@ Json Server::handle_get_prompt(const Json& params) {
         parsed = from_json<GetPromptRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid prompts/get params: "} + e.what()};
+                    QString{"invalid prompts/get params: "} + e.what()};
     }
 
     PromptGetHandler h;
@@ -1062,14 +1066,13 @@ Json Server::handle_get_prompt(const Json& params) {
         std::lock_guard<std::mutex> lk(m_prompts_mu);
         auto it = m_prompts.find(parsed.name);
         if (it != m_prompts.end())
-            h = it->second.handler;
+            h = it.value().handler;
     }
     if (!h) {
         throw Error{error_code::method_not_found,
                     "prompt not found: " + parsed.name};
     }
-    const auto args = parsed.arguments.value_or(
-        std::unordered_map<std::string, std::string>{});
+    const auto args = parsed.arguments.value_or(QHash<QString, QString>{});
     return to_json(h(args));
 }
 
@@ -1087,7 +1090,7 @@ Json Server::handle_set_level(const Json& params) {
         parsed = from_json<SetLevelRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid logging/setLevel: "} + e.what()};
+                    QString{"invalid logging/setLevel: "} + e.what()};
     }
     m_log_level.store(parsed.level, std::memory_order_release);
     return QJsonObject{};
@@ -1111,8 +1114,7 @@ Json Server::handle_complete(const Json& params) {
         parsed = from_json<CompleteRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid completion/complete params: "} +
-                        e.what()};
+                    QString{"invalid completion/complete params: "} + e.what()};
     }
     return to_json(CompleteResult{.completion = h(parsed)});
 }
@@ -1130,7 +1132,7 @@ Json Server::handle_get_task(const Json& params) {
         parsed = from_json<GetTaskRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid tasks/get params: "} + e.what()};
+                    QString{"invalid tasks/get params: "} + e.what()};
     }
     auto t = m_tasks->get(parsed.task_id);
     if (!t.has_value()) {
@@ -1153,7 +1155,7 @@ Json Server::handle_get_task_result(const Json& params) {
         parsed = from_json<GetTaskResultRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid tasks/result params: "} + e.what()};
+                    QString{"invalid tasks/result params: "} + e.what()};
     }
     // Block up to a hair under the JSON-RPC default request timeout
     // so the requester gets a clean error rather than a timeout if
@@ -1188,7 +1190,7 @@ Json Server::handle_get_task_result(const Json& params) {
                                ? obj.value(QStringLiteral("_meta")).toObject()
                                : QJsonObject{};
         meta.insert(
-            QString::fromLatin1(tasks_related_task_meta_key),
+            tasks_related_task_meta_key,
             QJsonObject{{QStringLiteral("taskId"), to_json(parsed.task_id)}});
         obj.insert(QStringLiteral("_meta"), meta);
         *value = obj;
@@ -1210,7 +1212,7 @@ Json Server::handle_list_tasks(const Json& params) {
             parsed = from_json<ListTasksRequestParams>(params);
         } catch (const std::exception& e) {
             throw Error{error_code::invalid_params,
-                        std::string{"invalid tasks/list params: "} + e.what()};
+                        QString{"invalid tasks/list params: "} + e.what()};
         }
     }
     return to_json(m_tasks->list(parsed.cursor, m_page_size));
@@ -1229,7 +1231,7 @@ Json Server::handle_cancel_task(const Json& params) {
         parsed = from_json<CancelTaskRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid tasks/cancel params: "} + e.what()};
+                    QString{"invalid tasks/cancel params: "} + e.what()};
     }
     auto t = m_tasks->cancel(parsed.task_id);
     if (!t.has_value()) {
@@ -1248,7 +1250,7 @@ void Server::handle_cancelled(const Json& params) {
         if (p.request_id.has_value()) {
             MCP_LOG_INFO(
                 "client cancelled request id=" + p.request_id->canonical() +
-                (p.reason ? (" reason=" + *p.reason) : ""));
+                (p.reason.isNull() ? QString() : " reason=" + p.reason));
         }
     } catch (...) {
         MCP_LOG_WARN("malformed notifications/cancelled payload");
@@ -1274,51 +1276,50 @@ void Server::run(std::unique_ptr<Transport> transport) {
     }
 
     local->set_request_handler(
-        std::string{method_initialize},
+        QString{method_initialize},
         [this](const Json& p) { return handle_initialize(p); });
     local->set_request_handler(
-        std::string{method_tools_list},
+        QString{method_tools_list},
         [this](const Json& p) { return handle_list_tools(p); });
     local->set_request_handler(
-        std::string{method_tools_call},
+        QString{method_tools_call},
         [this](const Json& p) { return handle_call_tool(p); });
     local->set_request_handler(
-        std::string{method_resources_list},
+        QString{method_resources_list},
         [this](const Json& p) { return handle_list_resources(p); });
     local->set_request_handler(
-        std::string{method_resources_templates_list},
+        QString{method_resources_templates_list},
         [this](const Json& p) { return handle_list_resource_templates(p); });
     local->set_request_handler(
-        std::string{method_resources_read},
+        QString{method_resources_read},
         [this](const Json& p) { return handle_read_resource(p); });
     local->set_request_handler(
-        std::string{method_prompts_list},
+        QString{method_prompts_list},
         [this](const Json& p) { return handle_list_prompts(p); });
     local->set_request_handler(
-        std::string{method_prompts_get},
+        QString{method_prompts_get},
         [this](const Json& p) { return handle_get_prompt(p); });
-    local->set_request_handler(std::string{method_ping}, [this](const Json& p) {
-        return handle_ping(p);
-    });
     local->set_request_handler(
-        std::string{method_logging_set_level},
+        QString{method_ping}, [this](const Json& p) { return handle_ping(p); });
+    local->set_request_handler(
+        QString{method_logging_set_level},
         [this](const Json& p) { return handle_set_level(p); });
     local->set_request_handler(
-        std::string{method_completion_complete},
+        QString{method_completion_complete},
         [this](const Json& p) { return handle_complete(p); });
 
     if (m_tasks) {
         local->set_request_handler(
-            std::string{method_tasks_get},
+            QString{method_tasks_get},
             [this](const Json& p) { return handle_get_task(p); });
         local->set_request_handler(
-            std::string{method_tasks_result},
+            QString{method_tasks_result},
             [this](const Json& p) { return handle_get_task_result(p); });
         local->set_request_handler(
-            std::string{method_tasks_list},
+            QString{method_tasks_list},
             [this](const Json& p) { return handle_list_tasks(p); });
         local->set_request_handler(
-            std::string{method_tasks_cancel},
+            QString{method_tasks_cancel},
             [this](const Json& p) { return handle_cancel_task(p); });
 
         // Push status updates to the client over notifications/tasks/status.
@@ -1331,7 +1332,7 @@ void Server::run(std::unique_ptr<Transport> transport) {
             if (!s)
                 return;
             (void)s->send_notification(
-                std::string{method_notifications_tasks_status},
+                QString{method_notifications_tasks_status},
                 to_json(TaskStatusNotificationParams{.task = t}));
         });
     }
@@ -1340,7 +1341,7 @@ void Server::run(std::unique_ptr<Transport> transport) {
     // handler may be set/cleared at any time; we resolve it lazily
     // under m_completion_mu on each fire.
     local->set_notification_handler(
-        std::string{method_notifications_elicitation_complete},
+        QString{method_notifications_elicitation_complete},
         [this](const Json& params) {
             ElicitationCompleteHandler h;
             {
@@ -1354,7 +1355,7 @@ void Server::run(std::unique_ptr<Transport> transport) {
                 parsed =
                     from_json<ElicitationCompleteNotificationParams>(params);
             } catch (const std::exception& e) {
-                MCP_LOG_WARN(std::string{"malformed elicitation/complete: "} +
+                MCP_LOG_WARN(QString{"malformed elicitation/complete: "} +
                              e.what());
                 return;
             } catch (...) {
@@ -1364,9 +1365,8 @@ void Server::run(std::unique_ptr<Transport> transport) {
             try {
                 h(std::move(parsed.elicitation_id));
             } catch (const std::exception& e) {
-                MCP_LOG_ERROR(
-                    std::string{"elicitation/complete handler threw: "} +
-                    e.what());
+                MCP_LOG_ERROR(QString{"elicitation/complete handler threw: "} +
+                              e.what());
             } catch (...) {
                 MCP_LOG_ERROR(
                     "elicitation/complete handler threw a non-std exception");
@@ -1374,11 +1374,11 @@ void Server::run(std::unique_ptr<Transport> transport) {
         });
 
     local->set_notification_handler(
-        std::string{method_notifications_cancelled},
+        QString{method_notifications_cancelled},
         [this](const Json& p) { handle_cancelled(p); });
 
     local->set_notification_handler(
-        std::string{method_notifications_initialized}, [](const Json&) {
+        QString{method_notifications_initialized}, [](const Json&) {
             // Per the spec, this notification just confirms the client is
             // ready for normal operation. We simply log it.
             MCP_LOG_DEBUG("client sent notifications/initialized");

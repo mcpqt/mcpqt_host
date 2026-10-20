@@ -37,15 +37,13 @@ void load_path(mcp::PluginManager& plugins, const QString& path) {
     const QString absolute = QFileInfo(path).absoluteFilePath();
     if (QFileInfo(absolute).isDir()) {
         const std::size_t n = plugins.load_directory(absolute);
-        MCP_LOG_INFO("mcp_stdio_server: loaded " + std::to_string(n) +
-                     " plugin(s) from " + absolute.toStdString());
+        MCP_LOG_INFO("mcp_stdio_server: loaded " + QString::number(n) +
+                     " plugin(s) from " + absolute);
     } else {
         if (plugins.load_file(absolute)) {
-            MCP_LOG_INFO("mcp_stdio_server: loaded plugin " +
-                         absolute.toStdString());
+            MCP_LOG_INFO("mcp_stdio_server: loaded plugin " + absolute);
         } else {
-            MCP_LOG_WARN("mcp_stdio_server: failed to load " +
-                         absolute.toStdString());
+            MCP_LOG_WARN("mcp_stdio_server: failed to load " + absolute);
         }
     }
 }
@@ -79,7 +77,7 @@ int main(int argc, char** argv) {
                             "contributed by loaded plugins.");
 
     const std::size_t registered = plugins.register_tools(server);
-    MCP_LOG_INFO("mcp_stdio_server: registered " + std::to_string(registered) +
+    MCP_LOG_INFO("mcp_stdio_server: registered " + QString::number(registered) +
                  " tool/resource entr(ies)");
 
     g_server.store(&server, std::memory_order_release);

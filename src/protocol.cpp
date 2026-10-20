@@ -9,6 +9,8 @@
 #include <QJsonValue>
 #include <QString>
 
+#include <QHash>
+#include <QList>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -24,11 +26,11 @@ namespace mcp {
 // RequestId
 // =====================================================================
 
-std::string RequestId::canonical(void) const {
+QString RequestId::canonical(void) const {
     if (is_string()) {
         return "s:" + as_string();
     }
-    return "i:" + std::to_string(as_integer());
+    return "i:" + QString::number(as_integer());
 }
 
 QJsonValue to_json(const RequestId& id) {
@@ -37,7 +39,7 @@ QJsonValue to_json(const RequestId& id) {
 
 void from_json(const QJsonValue& j, RequestId& id) {
     if (j.isString()) {
-        id = RequestId{j.toString().toStdString()};
+        id = RequestId{j.toString()};
         return;
     }
     if (j.isDouble()) {
@@ -69,11 +71,11 @@ QJsonValue to_json(const JsonRpcRequest& r) {
 
 void from_json(const QJsonValue& j, JsonRpcRequest& r) {
     const QJsonObject o = as_object(j);
-    if (require<std::string>(o, "jsonrpc") != std::string{kJsonrpcVersion}) {
+    if (require<QString>(o, "jsonrpc") != QString{kJsonrpcVersion}) {
         throw Error(error_code::invalid_request, "jsonrpc must be \"2.0\"");
     }
     r.id = require<RequestId>(o, "id");
-    r.method = require<std::string>(o, "method");
+    r.method = require<QString>(o, "method");
     r.params.reset();
     take_optional<Json>(o, "params", r.params);
 }
@@ -89,10 +91,10 @@ QJsonValue to_json(const JsonRpcNotification& n) {
 
 void from_json(const QJsonValue& j, JsonRpcNotification& n) {
     const QJsonObject o = as_object(j);
-    if (require<std::string>(o, "jsonrpc") != std::string{kJsonrpcVersion}) {
+    if (require<QString>(o, "jsonrpc") != QString{kJsonrpcVersion}) {
         throw Error(error_code::invalid_request, "jsonrpc must be \"2.0\"");
     }
-    n.method = require<std::string>(o, "method");
+    n.method = require<QString>(o, "method");
     n.params.reset();
     take_optional<Json>(o, "params", n.params);
 }
@@ -109,7 +111,7 @@ QJsonValue to_json(const ErrorObject& e) {
 void from_json(const QJsonValue& j, ErrorObject& e) {
     const QJsonObject o = as_object(j);
     e.code = require<int>(o, "code");
-    e.message = require<std::string>(o, "message");
+    e.message = require<QString>(o, "message");
     const auto it = o.constFind(QStringLiteral("data"));
     e.data = (it != o.constEnd() && !it->isNull())
                  ? *it
@@ -132,7 +134,7 @@ QJsonValue to_json(const JsonRpcResponse& r) {
 
 void from_json(const QJsonValue& j, JsonRpcResponse& r) {
     const QJsonObject o = as_object(j);
-    if (require<std::string>(o, "jsonrpc") != std::string{kJsonrpcVersion}) {
+    if (require<QString>(o, "jsonrpc") != QString{kJsonrpcVersion}) {
         throw Error(error_code::invalid_request, "jsonrpc must be \"2.0\"");
     }
     const auto idIt = o.constFind(QStringLiteral("id"));
@@ -185,26 +187,26 @@ Json serialize_message(const JsonRpcMessage& m) {
 QJsonValue to_json(const Icon& c) {
     QJsonObject o;
     o.insert(QStringLiteral("src"), to_json(c.src));
-    put_optional(o, "mimeType", c.mime_type);
-    put_optional(o, "sizes", c.sizes);
-    put_optional(o, "theme", c.theme);
+    put_optional_string(o, "mimeType", c.mime_type);
+    put_optional_string(o, "sizes", c.sizes);
+    put_optional_string(o, "theme", c.theme);
     return o;
 }
 void from_json(const QJsonValue& j, Icon& c) {
     const QJsonObject o = as_object(j);
-    c.src = require<std::string>(o, "src");
-    take_optional(o, "mimeType", c.mime_type);
-    take_optional(o, "sizes", c.sizes);
-    take_optional(o, "theme", c.theme);
+    c.src = require<QString>(o, "src");
+    take_optional_string(o, "mimeType", c.mime_type);
+    take_optional_string(o, "sizes", c.sizes);
+    take_optional_string(o, "theme", c.theme);
 }
 
 QJsonValue to_json(const Implementation& i) {
     QJsonObject o;
     o.insert(QStringLiteral("name"), to_json(i.name));
     o.insert(QStringLiteral("version"), to_json(i.version));
-    put_optional(o, "title", i.title);
-    put_optional(o, "description", i.description);
-    put_optional(o, "websiteUrl", i.website_url);
+    put_optional_string(o, "title", i.title);
+    put_optional_string(o, "description", i.description);
+    put_optional_string(o, "websiteUrl", i.website_url);
     put_optional(o, "icons", i.icons);
     put_optional<Json>(o, "_meta", i.meta);
     return o;
@@ -212,11 +214,11 @@ QJsonValue to_json(const Implementation& i) {
 
 void from_json(const QJsonValue& j, Implementation& i) {
     const QJsonObject o = as_object(j);
-    i.name = require<std::string>(o, "name");
-    i.version = require<std::string>(o, "version");
-    take_optional(o, "title", i.title);
-    take_optional(o, "description", i.description);
-    take_optional(o, "websiteUrl", i.website_url);
+    i.name = require<QString>(o, "name");
+    i.version = require<QString>(o, "version");
+    take_optional_string(o, "title", i.title);
+    take_optional_string(o, "description", i.description);
+    take_optional_string(o, "websiteUrl", i.website_url);
     take_optional(o, "icons", i.icons);
     take_optional<Json>(o, "_meta", i.meta);
 }
@@ -387,7 +389,7 @@ QJsonValue to_json(const InitializeRequestParams& p) {
 
 void from_json(const QJsonValue& j, InitializeRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.protocol_version = require<std::string>(o, "protocolVersion");
+    p.protocol_version = require<QString>(o, "protocolVersion");
     p.capabilities = require<ClientCapabilities>(o, "capabilities");
     p.client_info = require<Implementation>(o, "clientInfo");
 }
@@ -397,17 +399,17 @@ QJsonValue to_json(const InitializeResult& r) {
     o.insert(QStringLiteral("protocolVersion"), to_json(r.protocol_version));
     o.insert(QStringLiteral("capabilities"), to_json(r.capabilities));
     o.insert(QStringLiteral("serverInfo"), to_json(r.server_info));
-    put_optional(o, "instructions", r.instructions);
+    put_optional_string(o, "instructions", r.instructions);
     put_optional<Json>(o, "_meta", r.meta);
     return o;
 }
 
 void from_json(const QJsonValue& j, InitializeResult& r) {
     const QJsonObject o = as_object(j);
-    r.protocol_version = require<std::string>(o, "protocolVersion");
+    r.protocol_version = require<QString>(o, "protocolVersion");
     r.capabilities = require<ServerCapabilities>(o, "capabilities");
     r.server_info = require<Implementation>(o, "serverInfo");
-    take_optional(o, "instructions", r.instructions);
+    take_optional_string(o, "instructions", r.instructions);
     take_optional<Json>(o, "_meta", r.meta);
 }
 
@@ -415,7 +417,7 @@ void from_json(const QJsonValue& j, InitializeResult& r) {
 // Content blocks
 // =====================================================================
 
-std::string_view to_string(Role r) noexcept {
+QString to_string(Role r) noexcept {
     switch (r) {
     case Role::user:
         return "user";
@@ -427,13 +429,13 @@ std::string_view to_string(Role r) noexcept {
 
 namespace {
 
-Role role_from_string(std::string_view s) {
+Role role_from_string(QString s) {
     if (s == "user")
         return Role::user;
     if (s == "assistant")
         return Role::assistant;
     throw Error(error_code::parse_error,
-                std::string{"unknown role: "} + std::string{s});
+                QString{"unknown role: "} + QString{s});
 }
 
 }  // namespace
@@ -442,7 +444,7 @@ QJsonValue to_json(Role r) {
     return to_json(to_string(r));
 }
 void from_json(const QJsonValue& j, Role& r) {
-    r = role_from_string(from_json<std::string>(j));
+    r = role_from_string(from_json<QString>(j));
 }
 
 QJsonValue to_json(const Annotations& a) {
@@ -454,7 +456,7 @@ QJsonValue to_json(const Annotations& a) {
         o.insert(QStringLiteral("audience"), arr);
     }
     put_optional(o, "priority", a.priority);
-    put_optional(o, "lastModified", a.last_modified);
+    put_optional_string(o, "lastModified", a.last_modified);
     return o;
 }
 
@@ -463,14 +465,14 @@ void from_json(const QJsonValue& j, Annotations& a) {
     if (auto it = o.constFind(QStringLiteral("audience"));
         it != o.constEnd() && it->isArray()) {
         const QJsonArray arr = it->toArray();
-        std::vector<Role> roles;
-        roles.reserve(static_cast<std::size_t>(arr.size()));
+        QList<Role> roles;
+        roles.reserve(arr.size());
         for (const auto& v : arr)
             roles.push_back(from_json<Role>(v));
         a.audience = std::move(roles);
     }
     take_optional(o, "priority", a.priority);
-    take_optional(o, "lastModified", a.last_modified);
+    take_optional_string(o, "lastModified", a.last_modified);
 }
 
 QJsonValue to_json(const TextContent& c) {
@@ -483,7 +485,7 @@ QJsonValue to_json(const TextContent& c) {
 
 void from_json(const QJsonValue& j, TextContent& c) {
     const QJsonObject o = as_object(j);
-    c.text = require<std::string>(o, "text");
+    c.text = require<QString>(o, "text");
     take_optional(o, "annotations", c.annotations);
 }
 
@@ -498,8 +500,8 @@ QJsonValue to_json(const ImageContent& c) {
 
 void from_json(const QJsonValue& j, ImageContent& c) {
     const QJsonObject o = as_object(j);
-    c.data = require<std::string>(o, "data");
-    c.mime_type = require<std::string>(o, "mimeType");
+    c.data = require<QString>(o, "data");
+    c.mime_type = require<QString>(o, "mimeType");
     take_optional(o, "annotations", c.annotations);
 }
 
@@ -514,8 +516,8 @@ QJsonValue to_json(const AudioContent& c) {
 
 void from_json(const QJsonValue& j, AudioContent& c) {
     const QJsonObject o = as_object(j);
-    c.data = require<std::string>(o, "data");
-    c.mime_type = require<std::string>(o, "mimeType");
+    c.data = require<QString>(o, "data");
+    c.mime_type = require<QString>(o, "mimeType");
     take_optional(o, "annotations", c.annotations);
 }
 
@@ -527,30 +529,30 @@ QJsonValue to_json(const TextResourceContents& c) {
     QJsonObject o;
     o.insert(QStringLiteral("uri"), to_json(c.uri));
     o.insert(QStringLiteral("text"), to_json(c.text));
-    put_optional(o, "mimeType", c.mime_type);
+    put_optional_string(o, "mimeType", c.mime_type);
     return o;
 }
 
 void from_json(const QJsonValue& j, TextResourceContents& c) {
     const QJsonObject o = as_object(j);
-    c.uri = require<std::string>(o, "uri");
-    c.text = require<std::string>(o, "text");
-    take_optional(o, "mimeType", c.mime_type);
+    c.uri = require<QString>(o, "uri");
+    c.text = require<QString>(o, "text");
+    take_optional_string(o, "mimeType", c.mime_type);
 }
 
 QJsonValue to_json(const BlobResourceContents& c) {
     QJsonObject o;
     o.insert(QStringLiteral("uri"), to_json(c.uri));
     o.insert(QStringLiteral("blob"), to_json(c.blob));
-    put_optional(o, "mimeType", c.mime_type);
+    put_optional_string(o, "mimeType", c.mime_type);
     return o;
 }
 
 void from_json(const QJsonValue& j, BlobResourceContents& c) {
     const QJsonObject o = as_object(j);
-    c.uri = require<std::string>(o, "uri");
-    c.blob = require<std::string>(o, "blob");
-    take_optional(o, "mimeType", c.mime_type);
+    c.uri = require<QString>(o, "uri");
+    c.blob = require<QString>(o, "blob");
+    take_optional_string(o, "mimeType", c.mime_type);
 }
 
 QJsonValue to_json(const ResourceContents& c) {
@@ -575,9 +577,9 @@ QJsonValue to_json(const Resource& r) {
     QJsonObject o;
     o.insert(QStringLiteral("uri"), to_json(r.uri));
     o.insert(QStringLiteral("name"), to_json(r.name));
-    put_optional(o, "title", r.title);
-    put_optional(o, "description", r.description);
-    put_optional(o, "mimeType", r.mime_type);
+    put_optional_string(o, "title", r.title);
+    put_optional_string(o, "description", r.description);
+    put_optional_string(o, "mimeType", r.mime_type);
     put_optional(o, "annotations", r.annotations);
     put_optional(o, "size", r.size);
     put_optional(o, "icons", r.icons);
@@ -587,11 +589,11 @@ QJsonValue to_json(const Resource& r) {
 
 void from_json(const QJsonValue& j, Resource& r) {
     const QJsonObject o = as_object(j);
-    r.uri = require<std::string>(o, "uri");
-    r.name = require<std::string>(o, "name");
-    take_optional(o, "title", r.title);
-    take_optional(o, "description", r.description);
-    take_optional(o, "mimeType", r.mime_type);
+    r.uri = require<QString>(o, "uri");
+    r.name = require<QString>(o, "name");
+    take_optional_string(o, "title", r.title);
+    take_optional_string(o, "description", r.description);
+    take_optional_string(o, "mimeType", r.mime_type);
     take_optional(o, "annotations", r.annotations);
     take_optional(o, "size", r.size);
     take_optional(o, "icons", r.icons);
@@ -602,9 +604,9 @@ QJsonValue to_json(const ResourceTemplate& r) {
     QJsonObject o;
     o.insert(QStringLiteral("uriTemplate"), to_json(r.uri_template));
     o.insert(QStringLiteral("name"), to_json(r.name));
-    put_optional(o, "title", r.title);
-    put_optional(o, "description", r.description);
-    put_optional(o, "mimeType", r.mime_type);
+    put_optional_string(o, "title", r.title);
+    put_optional_string(o, "description", r.description);
+    put_optional_string(o, "mimeType", r.mime_type);
     put_optional(o, "annotations", r.annotations);
     put_optional(o, "icons", r.icons);
     put_optional<Json>(o, "_meta", r.meta);
@@ -613,11 +615,11 @@ QJsonValue to_json(const ResourceTemplate& r) {
 
 void from_json(const QJsonValue& j, ResourceTemplate& r) {
     const QJsonObject o = as_object(j);
-    r.uri_template = require<std::string>(o, "uriTemplate");
-    r.name = require<std::string>(o, "name");
-    take_optional(o, "title", r.title);
-    take_optional(o, "description", r.description);
-    take_optional(o, "mimeType", r.mime_type);
+    r.uri_template = require<QString>(o, "uriTemplate");
+    r.name = require<QString>(o, "name");
+    take_optional_string(o, "title", r.title);
+    take_optional_string(o, "description", r.description);
+    take_optional_string(o, "mimeType", r.mime_type);
     take_optional(o, "annotations", r.annotations);
     take_optional(o, "icons", r.icons);
     take_optional<Json>(o, "_meta", r.meta);
@@ -628,9 +630,9 @@ QJsonValue to_json(const ResourceLink& r) {
     o.insert(QStringLiteral("type"), to_json("resource_link"));
     o.insert(QStringLiteral("uri"), to_json(r.uri));
     o.insert(QStringLiteral("name"), to_json(r.name));
-    put_optional(o, "title", r.title);
-    put_optional(o, "description", r.description);
-    put_optional(o, "mimeType", r.mime_type);
+    put_optional_string(o, "title", r.title);
+    put_optional_string(o, "description", r.description);
+    put_optional_string(o, "mimeType", r.mime_type);
     put_optional(o, "annotations", r.annotations);
     put_optional(o, "size", r.size);
     put_optional(o, "icons", r.icons);
@@ -640,11 +642,11 @@ QJsonValue to_json(const ResourceLink& r) {
 
 void from_json(const QJsonValue& j, ResourceLink& r) {
     const QJsonObject o = as_object(j);
-    r.uri = require<std::string>(o, "uri");
-    r.name = require<std::string>(o, "name");
-    take_optional(o, "title", r.title);
-    take_optional(o, "description", r.description);
-    take_optional(o, "mimeType", r.mime_type);
+    r.uri = require<QString>(o, "uri");
+    r.name = require<QString>(o, "name");
+    take_optional_string(o, "title", r.title);
+    take_optional_string(o, "description", r.description);
+    take_optional_string(o, "mimeType", r.mime_type);
     take_optional(o, "annotations", r.annotations);
     take_optional(o, "size", r.size);
     take_optional(o, "icons", r.icons);
@@ -676,8 +678,8 @@ QJsonValue to_json(const ToolUseContent& c) {
 }
 void from_json(const QJsonValue& j, ToolUseContent& c) {
     const QJsonObject o = as_object(j);
-    c.id = require<std::string>(o, "id");
-    c.name = require<std::string>(o, "name");
+    c.id = require<QString>(o, "id");
+    c.name = require<QString>(o, "name");
     c.input = require<Json>(o, "input");
     take_optional(o, "annotations", c.annotations);
 }
@@ -688,7 +690,7 @@ QJsonValue to_json(const PlainContentBlock& c) {
 }
 void from_json(const QJsonValue& j, PlainContentBlock& c) {
     const QJsonObject o = as_object(j);
-    const auto t = require<std::string>(o, "type");
+    const auto t = require<QString>(o, "type");
     if (t == "text") {
         c = from_json<TextContent>(j);
         return;
@@ -710,7 +712,7 @@ void from_json(const QJsonValue& j, PlainContentBlock& c) {
         return;
     }
     throw Error(error_code::parse_error,
-                std::string{"plain content block must not be \"" + t + "\""});
+                QString{"plain content block must not be \"" + t + "\""});
 }
 
 QJsonValue to_json(const ToolResultContent& c) {
@@ -724,8 +726,8 @@ QJsonValue to_json(const ToolResultContent& c) {
 }
 void from_json(const QJsonValue& j, ToolResultContent& c) {
     const QJsonObject o = as_object(j);
-    c.tool_use_id = require<std::string>(o, "toolUseId");
-    c.content = require<std::vector<PlainContentBlock>>(o, "content");
+    c.tool_use_id = require<QString>(o, "toolUseId");
+    c.content = require<QList<PlainContentBlock>>(o, "content");
     take_optional(o, "isError", c.is_error);
     take_optional(o, "annotations", c.annotations);
 }
@@ -736,7 +738,7 @@ QJsonValue to_json(const ContentBlock& c) {
 
 void from_json(const QJsonValue& j, ContentBlock& c) {
     const QJsonObject o = as_object(j);
-    const auto t = require<std::string>(o, "type");
+    const auto t = require<QString>(o, "type");
     if (t == "text") {
         c = from_json<TextContent>(j);
         return;
@@ -766,7 +768,7 @@ void from_json(const QJsonValue& j, ContentBlock& c) {
         return;
     }
     throw Error(error_code::parse_error,
-                std::string{"unknown content block type: "} + t);
+                QString{"unknown content block type: "} + t);
 }
 
 // =====================================================================
@@ -775,7 +777,7 @@ void from_json(const QJsonValue& j, ContentBlock& c) {
 
 QJsonValue to_json(const ToolAnnotations& a) {
     QJsonObject o;
-    put_optional(o, "title", a.title);
+    put_optional_string(o, "title", a.title);
     put_optional(o, "readOnlyHint", a.read_only_hint);
     put_optional(o, "destructiveHint", a.destructive_hint);
     put_optional(o, "idempotentHint", a.idempotent_hint);
@@ -785,7 +787,7 @@ QJsonValue to_json(const ToolAnnotations& a) {
 
 void from_json(const QJsonValue& j, ToolAnnotations& a) {
     const QJsonObject o = as_object(j);
-    take_optional(o, "title", a.title);
+    take_optional_string(o, "title", a.title);
     take_optional(o, "readOnlyHint", a.read_only_hint);
     take_optional(o, "destructiveHint", a.destructive_hint);
     take_optional(o, "idempotentHint", a.idempotent_hint);
@@ -804,7 +806,7 @@ QJsonValue to_json(TaskSupport t) {
     return to_json("optional");  // unreachable; defensive default
 }
 void from_json(const QJsonValue& j, TaskSupport& t) {
-    const auto v = from_json<std::string>(j);
+    const auto v = from_json<QString>(j);
     if (v == "forbidden")
         t = TaskSupport::forbidden;
     else if (v == "optional")
@@ -835,8 +837,8 @@ QJsonValue to_json(const Tool& t) {
     QJsonObject o;
     o.insert(QStringLiteral("name"), to_json(t.name));
     o.insert(QStringLiteral("inputSchema"), t.input_schema);
-    put_optional(o, "title", t.title);
-    put_optional(o, "description", t.description);
+    put_optional_string(o, "title", t.title);
+    put_optional_string(o, "description", t.description);
     put_optional<Json>(o, "outputSchema", t.output_schema);
     put_optional(o, "annotations", t.annotations);
     put_optional(o, "icons", t.icons);
@@ -847,10 +849,10 @@ QJsonValue to_json(const Tool& t) {
 
 void from_json(const QJsonValue& j, Tool& t) {
     const QJsonObject o = as_object(j);
-    t.name = require<std::string>(o, "name");
+    t.name = require<QString>(o, "name");
     t.input_schema = require<Json>(o, "inputSchema");
-    take_optional(o, "title", t.title);
-    take_optional(o, "description", t.description);
+    take_optional_string(o, "title", t.title);
+    take_optional_string(o, "description", t.description);
     take_optional<Json>(o, "outputSchema", t.output_schema);
     take_optional(o, "annotations", t.annotations);
     take_optional(o, "icons", t.icons);
@@ -860,27 +862,27 @@ void from_json(const QJsonValue& j, Tool& t) {
 
 QJsonValue to_json(const ListToolsRequestParams& p) {
     QJsonObject o;
-    put_optional(o, "cursor", p.cursor);
+    put_optional_string(o, "cursor", p.cursor);
     return o;
 }
 
 void from_json(const QJsonValue& j, ListToolsRequestParams& p) {
     const QJsonObject o = as_object(j);
-    take_optional(o, "cursor", p.cursor);
+    take_optional_string(o, "cursor", p.cursor);
 }
 
 QJsonValue to_json(const ListToolsResult& r) {
     QJsonObject o;
     o.insert(QStringLiteral("tools"), to_json(r.tools));
-    put_optional(o, "nextCursor", r.next_cursor);
+    put_optional_string(o, "nextCursor", r.next_cursor);
     put_optional<Json>(o, "_meta", r.meta);
     return o;
 }
 
 void from_json(const QJsonValue& j, ListToolsResult& r) {
     const QJsonObject o = as_object(j);
-    r.tools = require<std::vector<Tool>>(o, "tools");
-    take_optional(o, "nextCursor", r.next_cursor);
+    r.tools = require<QList<Tool>>(o, "tools");
+    take_optional_string(o, "nextCursor", r.next_cursor);
     take_optional<Json>(o, "_meta", r.meta);
 }
 
@@ -894,7 +896,7 @@ QJsonValue to_json(const CallToolRequestParams& p) {
 
 void from_json(const QJsonValue& j, CallToolRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.name = require<std::string>(o, "name");
+    p.name = require<QString>(o, "name");
     take_optional<Json>(o, "arguments", p.arguments);
     take_optional(o, "task", p.task);
 }
@@ -910,7 +912,7 @@ QJsonValue to_json(const CallToolResult& r) {
 
 void from_json(const QJsonValue& j, CallToolResult& r) {
     const QJsonObject o = as_object(j);
-    r.content = require<std::vector<ContentBlock>>(o, "content");
+    r.content = require<QList<ContentBlock>>(o, "content");
     take_optional<Json>(o, "structuredContent", r.structured_content);
     take_optional(o, "isError", r.is_error);
     take_optional<Json>(o, "_meta", r.meta);
@@ -922,51 +924,51 @@ void from_json(const QJsonValue& j, CallToolResult& r) {
 
 QJsonValue to_json(const ListResourcesRequestParams& p) {
     QJsonObject o;
-    put_optional(o, "cursor", p.cursor);
+    put_optional_string(o, "cursor", p.cursor);
     return o;
 }
 void from_json(const QJsonValue& j, ListResourcesRequestParams& p) {
     const QJsonObject o = as_object(j);
-    take_optional(o, "cursor", p.cursor);
+    take_optional_string(o, "cursor", p.cursor);
 }
 
 QJsonValue to_json(const ListResourcesResult& r) {
     QJsonObject o;
     o.insert(QStringLiteral("resources"), to_json(r.resources));
-    put_optional(o, "nextCursor", r.next_cursor);
+    put_optional_string(o, "nextCursor", r.next_cursor);
     put_optional<Json>(o, "_meta", r.meta);
     return o;
 }
 void from_json(const QJsonValue& j, ListResourcesResult& r) {
     const QJsonObject o = as_object(j);
-    r.resources = require<std::vector<Resource>>(o, "resources");
-    take_optional(o, "nextCursor", r.next_cursor);
+    r.resources = require<QList<Resource>>(o, "resources");
+    take_optional_string(o, "nextCursor", r.next_cursor);
     take_optional<Json>(o, "_meta", r.meta);
 }
 
 QJsonValue to_json(const ListResourceTemplatesRequestParams& p) {
     QJsonObject o;
-    put_optional(o, "cursor", p.cursor);
+    put_optional_string(o, "cursor", p.cursor);
     return o;
 }
 void from_json(const QJsonValue& j, ListResourceTemplatesRequestParams& p) {
     const QJsonObject o = as_object(j);
-    take_optional(o, "cursor", p.cursor);
+    take_optional_string(o, "cursor", p.cursor);
 }
 
 QJsonValue to_json(const ListResourceTemplatesResult& r) {
     QJsonObject o;
     o.insert(QStringLiteral("resourceTemplates"),
              to_json(r.resource_templates));
-    put_optional(o, "nextCursor", r.next_cursor);
+    put_optional_string(o, "nextCursor", r.next_cursor);
     put_optional<Json>(o, "_meta", r.meta);
     return o;
 }
 void from_json(const QJsonValue& j, ListResourceTemplatesResult& r) {
     const QJsonObject o = as_object(j);
     r.resource_templates =
-        require<std::vector<ResourceTemplate>>(o, "resourceTemplates");
-    take_optional(o, "nextCursor", r.next_cursor);
+        require<QList<ResourceTemplate>>(o, "resourceTemplates");
+    take_optional_string(o, "nextCursor", r.next_cursor);
     take_optional<Json>(o, "_meta", r.meta);
 }
 
@@ -977,7 +979,7 @@ QJsonValue to_json(const ReadResourceRequestParams& p) {
 }
 void from_json(const QJsonValue& j, ReadResourceRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.uri = require<std::string>(o, "uri");
+    p.uri = require<QString>(o, "uri");
 }
 
 QJsonValue to_json(const ReadResourceResult& r) {
@@ -988,7 +990,7 @@ QJsonValue to_json(const ReadResourceResult& r) {
 }
 void from_json(const QJsonValue& j, ReadResourceResult& r) {
     const QJsonObject o = as_object(j);
-    r.contents = require<std::vector<ResourceContents>>(o, "contents");
+    r.contents = require<QList<ResourceContents>>(o, "contents");
     take_optional<Json>(o, "_meta", r.meta);
 }
 
@@ -999,7 +1001,7 @@ QJsonValue to_json(const SubscribeRequestParams& p) {
 }
 void from_json(const QJsonValue& j, SubscribeRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.uri = require<std::string>(o, "uri");
+    p.uri = require<QString>(o, "uri");
 }
 
 QJsonValue to_json(const UnsubscribeRequestParams& p) {
@@ -1009,7 +1011,7 @@ QJsonValue to_json(const UnsubscribeRequestParams& p) {
 }
 void from_json(const QJsonValue& j, UnsubscribeRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.uri = require<std::string>(o, "uri");
+    p.uri = require<QString>(o, "uri");
 }
 
 QJsonValue to_json(const ResourceUpdatedNotificationParams& p) {
@@ -1019,7 +1021,7 @@ QJsonValue to_json(const ResourceUpdatedNotificationParams& p) {
 }
 void from_json(const QJsonValue& j, ResourceUpdatedNotificationParams& p) {
     const QJsonObject o = as_object(j);
-    p.uri = require<std::string>(o, "uri");
+    p.uri = require<QString>(o, "uri");
 }
 
 // =====================================================================
@@ -1029,24 +1031,24 @@ void from_json(const QJsonValue& j, ResourceUpdatedNotificationParams& p) {
 QJsonValue to_json(const PromptArgument& a) {
     QJsonObject o;
     o.insert(QStringLiteral("name"), to_json(a.name));
-    put_optional(o, "title", a.title);
-    put_optional(o, "description", a.description);
+    put_optional_string(o, "title", a.title);
+    put_optional_string(o, "description", a.description);
     put_optional(o, "required", a.required);
     return o;
 }
 void from_json(const QJsonValue& j, PromptArgument& a) {
     const QJsonObject o = as_object(j);
-    a.name = require<std::string>(o, "name");
-    take_optional(o, "title", a.title);
-    take_optional(o, "description", a.description);
+    a.name = require<QString>(o, "name");
+    take_optional_string(o, "title", a.title);
+    take_optional_string(o, "description", a.description);
     take_optional(o, "required", a.required);
 }
 
 QJsonValue to_json(const Prompt& p) {
     QJsonObject o;
     o.insert(QStringLiteral("name"), to_json(p.name));
-    put_optional(o, "title", p.title);
-    put_optional(o, "description", p.description);
+    put_optional_string(o, "title", p.title);
+    put_optional_string(o, "description", p.description);
     if (p.arguments.has_value())
         o.insert(QStringLiteral("arguments"), to_json(*p.arguments));
     put_optional(o, "icons", p.icons);
@@ -1055,12 +1057,12 @@ QJsonValue to_json(const Prompt& p) {
 }
 void from_json(const QJsonValue& j, Prompt& p) {
     const QJsonObject o = as_object(j);
-    p.name = require<std::string>(o, "name");
-    take_optional(o, "title", p.title);
-    take_optional(o, "description", p.description);
+    p.name = require<QString>(o, "name");
+    take_optional_string(o, "title", p.title);
+    take_optional_string(o, "description", p.description);
     if (auto it = o.constFind(QStringLiteral("arguments"));
         it != o.constEnd() && !it->isNull()) {
-        p.arguments = from_json<std::vector<PromptArgument>>(*it);
+        p.arguments = from_json<QList<PromptArgument>>(*it);
     }
     take_optional(o, "icons", p.icons);
     take_optional<Json>(o, "_meta", p.meta);
@@ -1080,25 +1082,25 @@ void from_json(const QJsonValue& j, PromptMessage& m) {
 
 QJsonValue to_json(const ListPromptsRequestParams& p) {
     QJsonObject o;
-    put_optional(o, "cursor", p.cursor);
+    put_optional_string(o, "cursor", p.cursor);
     return o;
 }
 void from_json(const QJsonValue& j, ListPromptsRequestParams& p) {
     const QJsonObject o = as_object(j);
-    take_optional(o, "cursor", p.cursor);
+    take_optional_string(o, "cursor", p.cursor);
 }
 
 QJsonValue to_json(const ListPromptsResult& r) {
     QJsonObject o;
     o.insert(QStringLiteral("prompts"), to_json(r.prompts));
-    put_optional(o, "nextCursor", r.next_cursor);
+    put_optional_string(o, "nextCursor", r.next_cursor);
     put_optional<Json>(o, "_meta", r.meta);
     return o;
 }
 void from_json(const QJsonValue& j, ListPromptsResult& r) {
     const QJsonObject o = as_object(j);
-    r.prompts = require<std::vector<Prompt>>(o, "prompts");
-    take_optional(o, "nextCursor", r.next_cursor);
+    r.prompts = require<QList<Prompt>>(o, "prompts");
+    take_optional_string(o, "nextCursor", r.next_cursor);
     take_optional<Json>(o, "_meta", r.meta);
 }
 
@@ -1107,8 +1109,9 @@ QJsonValue to_json(const GetPromptRequestParams& p) {
     o.insert(QStringLiteral("name"), to_json(p.name));
     if (p.arguments.has_value()) {
         QJsonObject args;
-        for (const auto& [k, v] : *p.arguments) {
-            args.insert(QString::fromStdString(k), to_json(v));
+        for (auto it = p.arguments->constBegin(); it != p.arguments->constEnd();
+             ++it) {
+            args.insert(it.key(), to_json(it.value()));
         }
         o.insert(QStringLiteral("arguments"), args);
     }
@@ -1116,15 +1119,14 @@ QJsonValue to_json(const GetPromptRequestParams& p) {
 }
 void from_json(const QJsonValue& j, GetPromptRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.name = require<std::string>(o, "name");
+    p.name = require<QString>(o, "name");
     if (auto it = o.constFind(QStringLiteral("arguments"));
         it != o.constEnd() && it->isObject()) {
         const QJsonObject src = it->toObject();
-        std::unordered_map<std::string, std::string> args;
+        QHash<QString, QString> args;
         for (auto i = src.begin(); i != src.end(); ++i) {
             if (i.value().isString()) {
-                args.emplace(i.key().toStdString(),
-                             i.value().toString().toStdString());
+                args.emplace(i.key(), i.value().toString());
             }
         }
         p.arguments = std::move(args);
@@ -1133,15 +1135,15 @@ void from_json(const QJsonValue& j, GetPromptRequestParams& p) {
 
 QJsonValue to_json(const GetPromptResult& r) {
     QJsonObject o;
-    put_optional(o, "description", r.description);
+    put_optional_string(o, "description", r.description);
     o.insert(QStringLiteral("messages"), to_json(r.messages));
     put_optional<Json>(o, "_meta", r.meta);
     return o;
 }
 void from_json(const QJsonValue& j, GetPromptResult& r) {
     const QJsonObject o = as_object(j);
-    take_optional(o, "description", r.description);
-    r.messages = require<std::vector<PromptMessage>>(o, "messages");
+    take_optional_string(o, "description", r.description);
+    r.messages = require<QList<PromptMessage>>(o, "messages");
     take_optional<Json>(o, "_meta", r.meta);
 }
 
@@ -1153,7 +1155,7 @@ QJsonValue to_json(const CancelledNotificationParams& p) {
     QJsonObject o;
     if (p.request_id.has_value())
         o.insert(QStringLiteral("requestId"), to_json(*p.request_id));
-    put_optional(o, "reason", p.reason);
+    put_optional_string(o, "reason", p.reason);
     return o;
 }
 
@@ -1163,16 +1165,16 @@ void from_json(const QJsonValue& j, CancelledNotificationParams& p) {
         it != o.constEnd() && !it->isNull()) {
         p.request_id = from_json<RequestId>(*it);
     }
-    take_optional(o, "reason", p.reason);
+    take_optional_string(o, "reason", p.reason);
 }
 
 // =====================================================================
 // Progress
 // =====================================================================
 
-std::string ProgressToken::canonical(void) const {
+QString ProgressToken::canonical(void) const {
     return is_string() ? "s:" + as_string()
-                       : "i:" + std::to_string(as_integer());
+                       : "i:" + QString::number(as_integer());
 }
 
 QJsonValue to_json(const ProgressToken& t) {
@@ -1182,7 +1184,7 @@ QJsonValue to_json(const ProgressToken& t) {
 }
 void from_json(const QJsonValue& j, ProgressToken& t) {
     if (j.isString()) {
-        t = ProgressToken{j.toString().toStdString()};
+        t = ProgressToken{j.toString()};
         return;
     }
     if (j.isDouble()) {
@@ -1201,7 +1203,7 @@ QJsonValue to_json(const ProgressNotificationParams& p) {
     o.insert(QStringLiteral("progressToken"), to_json(p.progress_token));
     o.insert(QStringLiteral("progress"), to_json(p.progress));
     put_optional(o, "total", p.total);
-    put_optional(o, "message", p.message);
+    put_optional_string(o, "message", p.message);
     return o;
 }
 void from_json(const QJsonValue& j, ProgressNotificationParams& p) {
@@ -1209,14 +1211,14 @@ void from_json(const QJsonValue& j, ProgressNotificationParams& p) {
     p.progress_token = require<ProgressToken>(o, "progressToken");
     p.progress = require<double>(o, "progress");
     take_optional(o, "total", p.total);
-    take_optional(o, "message", p.message);
+    take_optional_string(o, "message", p.message);
 }
 
 // =====================================================================
 // Logging (protocol-level)
 // =====================================================================
 
-std::string_view to_string(LoggingLevel l) noexcept {
+QString to_string(LoggingLevel l) noexcept {
     switch (l) {
     case LoggingLevel::debug:
         return "debug";
@@ -1239,7 +1241,7 @@ std::string_view to_string(LoggingLevel l) noexcept {
 }
 
 namespace {
-LoggingLevel logging_level_from_string(std::string_view s) {
+LoggingLevel logging_level_from_string(QString s) {
     if (s == "debug")
         return LoggingLevel::debug;
     if (s == "info")
@@ -1257,7 +1259,7 @@ LoggingLevel logging_level_from_string(std::string_view s) {
     if (s == "emergency")
         return LoggingLevel::emergency;
     throw Error(error_code::parse_error,
-                std::string{"unknown logging level: "} + std::string{s});
+                QString{"unknown logging level: "} + QString{s});
 }
 }  // namespace
 
@@ -1265,7 +1267,7 @@ QJsonValue to_json(LoggingLevel l) {
     return to_json(to_string(l));
 }
 void from_json(const QJsonValue& j, LoggingLevel& l) {
-    l = logging_level_from_string(from_json<std::string>(j));
+    l = logging_level_from_string(from_json<QString>(j));
 }
 
 QJsonValue to_json(const SetLevelRequestParams& p) {
@@ -1282,14 +1284,14 @@ QJsonValue to_json(const LoggingMessageNotificationParams& p) {
     QJsonObject o;
     o.insert(QStringLiteral("level"), to_json(p.level));
     o.insert(QStringLiteral("data"), p.data);
-    put_optional(o, "logger", p.logger);
+    put_optional_string(o, "logger", p.logger);
     return o;
 }
 void from_json(const QJsonValue& j, LoggingMessageNotificationParams& p) {
     const QJsonObject o = as_object(j);
     p.level = require<LoggingLevel>(o, "level");
     p.data = require<Json>(o, "data");
-    take_optional(o, "logger", p.logger);
+    take_optional_string(o, "logger", p.logger);
 }
 
 // =====================================================================
@@ -1298,12 +1300,12 @@ void from_json(const QJsonValue& j, LoggingMessageNotificationParams& p) {
 
 QJsonValue to_json(const ModelHint& h) {
     QJsonObject o;
-    put_optional(o, "name", h.name);
+    put_optional_string(o, "name", h.name);
     return o;
 }
 void from_json(const QJsonValue& j, ModelHint& h) {
     const QJsonObject o = as_object(j);
-    take_optional(o, "name", h.name);
+    take_optional_string(o, "name", h.name);
 }
 
 QJsonValue to_json(const ModelPreferences& p) {
@@ -1319,14 +1321,14 @@ void from_json(const QJsonValue& j, ModelPreferences& p) {
     const QJsonObject o = as_object(j);
     if (auto it = o.constFind(QStringLiteral("hints"));
         it != o.constEnd() && it->isArray()) {
-        p.hints = from_json<std::vector<ModelHint>>(*it);
+        p.hints = from_json<QList<ModelHint>>(*it);
     }
     take_optional(o, "costPriority", p.cost_priority);
     take_optional(o, "speedPriority", p.speed_priority);
     take_optional(o, "intelligencePriority", p.intelligence_priority);
 }
 
-std::string_view to_string(IncludeContext c) noexcept {
+QString to_string(IncludeContext c) noexcept {
     switch (c) {
     case IncludeContext::none:
         return "none";
@@ -1341,7 +1343,7 @@ QJsonValue to_json(IncludeContext c) {
     return to_json(to_string(c));
 }
 void from_json(const QJsonValue& j, IncludeContext& c) {
-    const auto s = from_json<std::string>(j);
+    const auto s = from_json<QString>(j);
     if (s == "none")
         c = IncludeContext::none;
     else if (s == "thisServer")
@@ -1352,7 +1354,7 @@ void from_json(const QJsonValue& j, IncludeContext& c) {
         throw Error(error_code::parse_error, "unknown includeContext: " + s);
 }
 
-std::string_view to_string(ToolChoiceMode m) noexcept {
+QString to_string(ToolChoiceMode m) noexcept {
     switch (m) {
     case ToolChoiceMode::m_auto:
         return "auto";
@@ -1369,7 +1371,7 @@ QJsonValue to_json(ToolChoiceMode m) {
     return to_json(to_string(m));
 }
 void from_json(const QJsonValue& j, ToolChoiceMode& m) {
-    const auto s = from_json<std::string>(j);
+    const auto s = from_json<QString>(j);
     if (s == "auto")
         m = ToolChoiceMode::m_auto;
     else if (s == "any")
@@ -1389,8 +1391,8 @@ QJsonValue to_json(const ToolChoice& c) {
     if (c.mode.has_value() && *c.mode == ToolChoiceMode::tool) {
         QJsonObject o;
         o.insert(QStringLiteral("type"), to_json("tool"));
-        if (c.name.has_value())
-            o.insert(QStringLiteral("name"), to_json(*c.name));
+        if (!c.name.isNull())
+            o.insert(QStringLiteral("name"), to_json(c.name));
         return o;
     }
     if (c.mode.has_value()) {
@@ -1407,17 +1409,17 @@ void from_json(const QJsonValue& j, ToolChoice& c) {
         const QJsonObject o = j.toObject();
         if (auto it = o.constFind(QStringLiteral("type"));
             it != o.constEnd() && it->isString()) {
-            const auto t = it->toString().toStdString();
+            const auto t = it->toString();
             if (t == "tool") {
                 c.mode = ToolChoiceMode::tool;
-                take_optional(o, "name", c.name);
+                take_optional_string(o, "name", c.name);
                 return;
             }
             // Unknown object shape — fall through to the legacy
             // `{ mode: ... }` form for forward compat.
         }
         take_optional(o, "mode", c.mode);
-        take_optional(o, "name", c.name);
+        take_optional_string(o, "name", c.name);
         return;
     }
     throw Error(error_code::parse_error,
@@ -1439,7 +1441,7 @@ void from_json(const QJsonValue& j, SamplingMessage& m) {
     m.role = require<Role>(o, "role");
     const QJsonValue c = o.value(QStringLiteral("content"));
     if (c.isArray()) {
-        m.content = from_json<std::vector<ContentBlock>>(c);
+        m.content = from_json<QList<ContentBlock>>(c);
     } else {
         m.content = {from_json<ContentBlock>(c)};
     }
@@ -1450,7 +1452,7 @@ QJsonValue to_json(const CreateMessageRequestParams& p) {
     o.insert(QStringLiteral("messages"), to_json(p.messages));
     o.insert(QStringLiteral("maxTokens"), to_json(p.max_tokens));
     put_optional(o, "modelPreferences", p.model_preferences);
-    put_optional(o, "systemPrompt", p.system_prompt);
+    put_optional_string(o, "systemPrompt", p.system_prompt);
     put_optional(o, "includeContext", p.include_context);
     put_optional(o, "temperature", p.temperature);
     if (p.stop_sequences.has_value())
@@ -1462,7 +1464,7 @@ QJsonValue to_json(const CreateMessageRequestParams& p) {
 }
 void from_json(const QJsonValue& j, CreateMessageRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.messages = require<std::vector<SamplingMessage>>(o, "messages");
+    p.messages = require<QList<SamplingMessage>>(o, "messages");
 
     // maxTokens: reject non-integer / negative / fractional values.
     const QJsonValue mt = o.value(QStringLiteral("maxTokens"));
@@ -1481,12 +1483,12 @@ void from_json(const QJsonValue& j, CreateMessageRequestParams& p) {
     p.max_tokens = static_cast<std::int64_t>(iv);
 
     take_optional(o, "modelPreferences", p.model_preferences);
-    take_optional(o, "systemPrompt", p.system_prompt);
+    take_optional_string(o, "systemPrompt", p.system_prompt);
     take_optional(o, "includeContext", p.include_context);
     take_optional(o, "temperature", p.temperature);
     if (auto it = o.constFind(QStringLiteral("stopSequences"));
         it != o.constEnd() && it->isArray()) {
-        p.stop_sequences = from_json<std::vector<std::string>>(*it);
+        p.stop_sequences = from_json<QList<QString>>(*it);
     }
     take_optional<Json>(o, "metadata", p.metadata);
     take_optional(o, "tools", p.tools);
@@ -1502,7 +1504,7 @@ QJsonValue to_json(const CreateMessageResult& r) {
         o.insert(QStringLiteral("content"), to_json(r.content));
     }
     o.insert(QStringLiteral("model"), to_json(r.model));
-    put_optional(o, "stopReason", r.stop_reason);
+    put_optional_string(o, "stopReason", r.stop_reason);
     put_optional<Json>(o, "_meta", r.meta);
     return o;
 }
@@ -1511,12 +1513,12 @@ void from_json(const QJsonValue& j, CreateMessageResult& r) {
     r.role = require<Role>(o, "role");
     const QJsonValue c = o.value(QStringLiteral("content"));
     if (c.isArray()) {
-        r.content = from_json<std::vector<ContentBlock>>(c);
+        r.content = from_json<QList<ContentBlock>>(c);
     } else {
         r.content = {from_json<ContentBlock>(c)};
     }
-    r.model = require<std::string>(o, "model");
-    take_optional(o, "stopReason", r.stop_reason);
+    r.model = require<QString>(o, "model");
+    take_optional_string(o, "stopReason", r.stop_reason);
     take_optional<Json>(o, "_meta", r.meta);
 }
 
@@ -1527,13 +1529,13 @@ void from_json(const QJsonValue& j, CreateMessageResult& r) {
 QJsonValue to_json(const Root& r) {
     QJsonObject o;
     o.insert(QStringLiteral("uri"), to_json(r.uri));
-    put_optional(o, "name", r.name);
+    put_optional_string(o, "name", r.name);
     return o;
 }
 void from_json(const QJsonValue& j, Root& r) {
     const QJsonObject o = as_object(j);
-    r.uri = require<std::string>(o, "uri");
-    take_optional(o, "name", r.name);
+    r.uri = require<QString>(o, "uri");
+    take_optional_string(o, "name", r.name);
 }
 
 QJsonValue to_json(const ListRootsResult& r) {
@@ -1543,7 +1545,7 @@ QJsonValue to_json(const ListRootsResult& r) {
 }
 void from_json(const QJsonValue& j, ListRootsResult& r) {
     const QJsonObject o = as_object(j);
-    r.roots = require<std::vector<Root>>(o, "roots");
+    r.roots = require<QList<Root>>(o, "roots");
 }
 
 // =====================================================================
@@ -1558,20 +1560,20 @@ QJsonValue to_json(const ResourceTemplateReference& r) {
 }
 void from_json(const QJsonValue& j, ResourceTemplateReference& r) {
     const QJsonObject o = as_object(j);
-    r.uri_template = require<std::string>(o, "uri");
+    r.uri_template = require<QString>(o, "uri");
 }
 
 QJsonValue to_json(const PromptReference& r) {
     QJsonObject o;
     o.insert(QStringLiteral("type"), to_json("ref/prompt"));
     o.insert(QStringLiteral("name"), to_json(r.name));
-    put_optional(o, "title", r.title);
+    put_optional_string(o, "title", r.title);
     return o;
 }
 void from_json(const QJsonValue& j, PromptReference& r) {
     const QJsonObject o = as_object(j);
-    r.name = require<std::string>(o, "name");
-    take_optional(o, "title", r.title);
+    r.name = require<QString>(o, "name");
+    take_optional_string(o, "title", r.title);
 }
 
 QJsonValue to_json(const CompletionReference& r) {
@@ -1579,7 +1581,7 @@ QJsonValue to_json(const CompletionReference& r) {
 }
 void from_json(const QJsonValue& j, CompletionReference& r) {
     const QJsonObject o = as_object(j);
-    const auto t = require<std::string>(o, "type");
+    const auto t = require<QString>(o, "type");
     if (t == "ref/resource") {
         r = from_json<ResourceTemplateReference>(j);
         return;
@@ -1589,7 +1591,7 @@ void from_json(const QJsonValue& j, CompletionReference& r) {
         return;
     }
     throw Error(error_code::parse_error,
-                std::string{"unknown completion reference type: "} + t);
+                QString{"unknown completion reference type: "} + t);
 }
 
 QJsonValue to_json(const CompleteArgument& a) {
@@ -1600,8 +1602,8 @@ QJsonValue to_json(const CompleteArgument& a) {
 }
 void from_json(const QJsonValue& j, CompleteArgument& a) {
     const QJsonObject o = as_object(j);
-    a.name = require<std::string>(o, "name");
-    a.value = require<std::string>(o, "value");
+    a.name = require<QString>(o, "name");
+    a.value = require<QString>(o, "value");
 }
 
 QJsonValue to_json(const CompleteRequestParams& p) {
@@ -1610,8 +1612,9 @@ QJsonValue to_json(const CompleteRequestParams& p) {
     o.insert(QStringLiteral("argument"), to_json(p.argument));
     if (p.context_arguments.has_value()) {
         QJsonObject ctx;
-        for (const auto& [k, v] : *p.context_arguments) {
-            ctx.insert(QString::fromStdString(k), to_json(v));
+        for (auto it = p.context_arguments->constBegin();
+             it != p.context_arguments->constEnd(); ++it) {
+            ctx.insert(it.key(), to_json(it.value()));
         }
         QJsonObject wrapper;
         wrapper.insert(QStringLiteral("arguments"), ctx);
@@ -1629,11 +1632,10 @@ void from_json(const QJsonValue& j, CompleteRequestParams& p) {
         if (auto a = ctx.constFind(QStringLiteral("arguments"));
             a != ctx.constEnd() && a->isObject()) {
             const QJsonObject src = a->toObject();
-            std::unordered_map<std::string, std::string> args;
+            QHash<QString, QString> args;
             for (auto i = src.begin(); i != src.end(); ++i) {
                 if (i.value().isString()) {
-                    args.emplace(i.key().toStdString(),
-                                 i.value().toString().toStdString());
+                    args.emplace(i.key(), i.value().toString());
                 }
             }
             p.context_arguments = std::move(args);
@@ -1650,7 +1652,7 @@ QJsonValue to_json(const CompletionValues& v) {
 }
 void from_json(const QJsonValue& j, CompletionValues& v) {
     const QJsonObject o = as_object(j);
-    v.values = require<std::vector<std::string>>(o, "values");
+    v.values = require<QList<QString>>(o, "values");
     take_optional(o, "total", v.total);
     take_optional(o, "hasMore", v.has_more);
 }
@@ -1679,7 +1681,7 @@ QJsonValue to_json(const ElicitFormRequestParams& p) {
 }
 void from_json(const QJsonValue& j, ElicitFormRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.message = require<std::string>(o, "message");
+    p.message = require<QString>(o, "message");
     p.requested_schema = require<Json>(o, "requestedSchema");
     // Per spec, requestedSchema is a JSON-Schema object describing
     // the expected response shape. Reject non-object values up
@@ -1702,9 +1704,9 @@ QJsonValue to_json(const ElicitUrlRequestParams& p) {
 }
 void from_json(const QJsonValue& j, ElicitUrlRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.message = require<std::string>(o, "message");
-    p.url = require<std::string>(o, "url");
-    p.elicitation_id = require<std::string>(o, "elicitationId");
+    p.message = require<QString>(o, "message");
+    p.url = require<QString>(o, "url");
+    p.elicitation_id = require<QString>(o, "elicitationId");
 }
 
 QJsonValue to_json(const ElicitRequestParams& p) {
@@ -1716,13 +1718,13 @@ void from_json(const QJsonValue& j, ElicitRequestParams& p) {
     // rejected so a future spec extension that ships a
     // non-string-mode shape can't silently fall through to form.
     const QJsonObject o = as_object(j);
-    std::string mode = "form";
+    QString mode = "form";
     if (auto it = o.constFind(QStringLiteral("mode")); it != o.constEnd()) {
         if (!it->isString()) {
             throw Error(error_code::invalid_params,
                         "elicitation/create: `mode` must be a string");
         }
-        mode = it->toString().toStdString();
+        mode = it->toString();
     }
     if (mode == "form") {
         p = from_json<ElicitFormRequestParams>(j);
@@ -1746,7 +1748,7 @@ QJsonValue to_json(ElicitAction a) {
     return to_json("cancel");  // unreachable; defensive default
 }
 void from_json(const QJsonValue& j, ElicitAction& a) {
-    const auto s = from_json<std::string>(j);
+    const auto s = from_json<QString>(j);
     if (s == "accept")
         a = ElicitAction::accept;
     else if (s == "decline")
@@ -1777,7 +1779,7 @@ QJsonValue to_json(const ElicitationCompleteNotificationParams& p) {
 }
 void from_json(const QJsonValue& j, ElicitationCompleteNotificationParams& p) {
     const QJsonObject o = as_object(j);
-    p.elicitation_id = require<std::string>(o, "elicitationId");
+    p.elicitation_id = require<QString>(o, "elicitationId");
 }
 
 QJsonValue to_json(const UrlElicitationRequiredErrorData& d) {
@@ -1787,8 +1789,7 @@ QJsonValue to_json(const UrlElicitationRequiredErrorData& d) {
 }
 void from_json(const QJsonValue& j, UrlElicitationRequiredErrorData& d) {
     const QJsonObject o = as_object(j);
-    d.elicitations =
-        require<std::vector<ElicitUrlRequestParams>>(o, "elicitations");
+    d.elicitations = require<QList<ElicitUrlRequestParams>>(o, "elicitations");
 }
 
 // =====================================================================
@@ -1811,7 +1812,7 @@ QJsonValue to_json(TaskStatus s) {
     return to_json("failed");  // unreachable; defensive default
 }
 void from_json(const QJsonValue& j, TaskStatus& s) {
-    const auto v = from_json<std::string>(j);
+    const auto v = from_json<QString>(j);
     if (v == "working")
         s = TaskStatus::working;
     else if (v == "input_required")
@@ -1833,18 +1834,18 @@ QJsonValue to_json(const Task& t) {
     o.insert(QStringLiteral("status"), to_json(t.status));
     o.insert(QStringLiteral("createdAt"), to_json(t.created_at));
     o.insert(QStringLiteral("lastUpdatedAt"), to_json(t.last_updated_at));
-    put_optional(o, "statusMessage", t.status_message);
+    put_optional_string(o, "statusMessage", t.status_message);
     put_optional(o, "ttl", t.ttl);
     put_optional(o, "pollInterval", t.poll_interval);
     return o;
 }
 void from_json(const QJsonValue& j, Task& t) {
     const QJsonObject o = as_object(j);
-    t.taskId = require<std::string>(o, "taskId");
+    t.taskId = require<QString>(o, "taskId");
     t.status = require<TaskStatus>(o, "status");
-    t.created_at = require<std::string>(o, "createdAt");
-    t.last_updated_at = require<std::string>(o, "lastUpdatedAt");
-    take_optional(o, "statusMessage", t.status_message);
+    t.created_at = require<QString>(o, "createdAt");
+    t.last_updated_at = require<QString>(o, "lastUpdatedAt");
+    take_optional_string(o, "statusMessage", t.status_message);
     take_optional(o, "ttl", t.ttl);
     take_optional(o, "pollInterval", t.poll_interval);
 }
@@ -1866,7 +1867,7 @@ QJsonValue to_json(const GetTaskRequestParams& p) {
 }
 void from_json(const QJsonValue& j, GetTaskRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.task_id = require<std::string>(o, "taskId");
+    p.task_id = require<QString>(o, "taskId");
 }
 
 QJsonValue to_json(const GetTaskResultRequestParams& p) {
@@ -1876,29 +1877,29 @@ QJsonValue to_json(const GetTaskResultRequestParams& p) {
 }
 void from_json(const QJsonValue& j, GetTaskResultRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.task_id = require<std::string>(o, "taskId");
+    p.task_id = require<QString>(o, "taskId");
 }
 
 QJsonValue to_json(const ListTasksRequestParams& p) {
     QJsonObject o;
-    put_optional(o, "cursor", p.cursor);
+    put_optional_string(o, "cursor", p.cursor);
     return o;
 }
 void from_json(const QJsonValue& j, ListTasksRequestParams& p) {
     const QJsonObject o = as_object(j);
-    take_optional(o, "cursor", p.cursor);
+    take_optional_string(o, "cursor", p.cursor);
 }
 
 QJsonValue to_json(const ListTasksResult& r) {
     QJsonObject o;
     o.insert(QStringLiteral("tasks"), to_json(r.tasks));
-    put_optional(o, "nextCursor", r.next_cursor);
+    put_optional_string(o, "nextCursor", r.next_cursor);
     return o;
 }
 void from_json(const QJsonValue& j, ListTasksResult& r) {
     const QJsonObject o = as_object(j);
-    r.tasks = require<std::vector<Task>>(o, "tasks");
-    take_optional(o, "nextCursor", r.next_cursor);
+    r.tasks = require<QList<Task>>(o, "tasks");
+    take_optional_string(o, "nextCursor", r.next_cursor);
 }
 
 QJsonValue to_json(const CancelTaskRequestParams& p) {
@@ -1908,7 +1909,7 @@ QJsonValue to_json(const CancelTaskRequestParams& p) {
 }
 void from_json(const QJsonValue& j, CancelTaskRequestParams& p) {
     const QJsonObject o = as_object(j);
-    p.task_id = require<std::string>(o, "taskId");
+    p.task_id = require<QString>(o, "taskId");
 }
 
 QJsonValue to_json(const TaskStatusNotificationParams& p) {

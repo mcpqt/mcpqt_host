@@ -7,6 +7,7 @@
 // output from the SDK to stderr — never to stdout, because stdout is owned by
 // the stdio transport.
 
+#include <QString>
 #include <atomic>
 #include <functional>
 #include <source_location>
@@ -24,13 +25,13 @@ enum class LogLevel : int {
     off = 5,
 };
 
-[[nodiscard]] std::string_view to_string(LogLevel l) noexcept;
+[[nodiscard]] QString to_string(LogLevel l) noexcept;
 
 /// Sink signature: receives a fully-formatted line (no trailing newline).
 /// The sink is invoked synchronously from whichever thread emitted the log.
 /// The default sink (the core's minimal fallback) writes a timestamped line
 /// to `stderr`.
-using LogSink = std::function<void(LogLevel, std::string_view)>;
+using LogSink = std::function<void(LogLevel, const QString&)>;
 
 /// Replace the global log sink. Pass `nullptr` to restore the core's default
 /// fallback sink. Returns false (and leaves the sink untouched) if a sink has
@@ -60,7 +61,7 @@ void set_log_level(LogLevel level) noexcept;
 
 /// Low-level entry point. Prefer the `MCP_LOG_*` macros below, which
 /// short-circuit at the call site when the level is disabled.
-void log_message(LogLevel level, std::string_view msg,
+void log_message(LogLevel level, const QString& msg,
                  std::source_location loc = std::source_location::current());
 
 }  // namespace mcp

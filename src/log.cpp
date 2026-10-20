@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "log.h"
 
+#include <QByteArray>
+#include <QString>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -25,7 +27,7 @@ LogSink g_sink;  // empty until first call to ensure_default_sink().
 // it. Guarded by g_sink_mutex for writes; read lock-free by log_message().
 std::atomic<bool> g_claimed{false};
 
-void default_sink(LogLevel level, std::string_view msg) {
+void default_sink(LogLevel level, const QString& msg) {
     // Compose the line under a single mutex so multi-thread interleaving
     // doesn't garble output. fwrite is line-buffered on stderr by default.
     static std::mutex io_mutex;
@@ -45,32 +47,34 @@ void default_sink(LogLevel level, std::string_view msg) {
     localtime_r(&tt, &tm_buf);
 #endif
 
+    const QByteArray level_text = to_string(level).toUtf8();
+    const QByteArray text = msg.toUtf8();
     std::fprintf(stderr, "[%04d-%02d-%02d %02d:%02d:%02d.%06lld %-5s] %.*s\n",
                  tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec,
-                 static_cast<long long>(micros), to_string(level).data(),
-                 static_cast<int>(msg.size()), msg.data());
+                 static_cast<long long>(micros), level_text.constData(),
+                 static_cast<int>(text.size()), text.constData());
     std::fflush(stderr);
 }
 
 }  // namespace
 
-std::string_view to_string(LogLevel l) noexcept {
+QString to_string(LogLevel l) noexcept {
     switch (l) {
     case LogLevel::trace:
-        return "TRACE";
+        return QStringLiteral("TRACE");
     case LogLevel::debug:
-        return "DEBUG";
+        return QStringLiteral("DEBUG");
     case LogLevel::info:
-        return "INFO";
+        return QStringLiteral("INFO");
     case LogLevel::warn:
-        return "WARN";
+        return QStringLiteral("WARN");
     case LogLevel::error:
-        return "ERROR";
+        return QStringLiteral("ERROR");
     case LogLevel::off:
-        return "OFF";
+        return QStringLiteral("OFF");
     }
-    return "?";
+    return QStringLiteral("?");
 }
 
 bool set_log_sink(LogSink sink) {
@@ -107,7 +111,7 @@ LogLevel log_level(void) noexcept {
     return g_level.load(std::memory_order_relaxed);
 }
 
-void log_message(LogLevel level, std::string_view msg,
+void log_message(LogLevel level, const QString& msg,
                  std::source_location /*loc*/) {
     if (level < g_level.load(std::memory_order_relaxed))
         return;

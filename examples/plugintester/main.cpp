@@ -130,9 +130,11 @@ int main(int argc, char** argv) {
     // All SDK diagnostics go to stderr, and a plugin must not be able to take
     // logging over. Claiming the sink here (before any plugin loads) does both.
     const bool claimed =
-        mcp::claim_log_sink([](mcp::LogLevel level, std::string_view msg) {
-            std::fprintf(stderr, "[%-5s] %.*s\n", mcp::to_string(level).data(),
-                         static_cast<int>(msg.size()), msg.data());
+        mcp::claim_log_sink([](mcp::LogLevel level, const QString& msg) {
+            const QByteArray level_text = mcp::to_string(level).toUtf8();
+            const QByteArray text = msg.toUtf8();
+            std::fprintf(stderr, "[%-5s] %.*s\n", level_text.constData(),
+                         static_cast<int>(text.size()), text.constData());
             std::fflush(stderr);
         });
     if (!claimed) {
@@ -194,15 +196,16 @@ int main(int argc, char** argv) {
             std::cout << "loaded " << n << " plugin(s) from "
                       << dir.toStdString() << "\n";
         } else if (command == "unload") {
-            std::string id;
-            iss >> id;
-            if (id.empty()) {
+            std::string id_str;
+            iss >> id_str;
+            const QString id = QString::fromStdString(id_str);
+            if (id.isEmpty()) {
                 std::cout << "usage: unload <plugin-id>\n";
             } else if (plugins.unload_plugin(id)) {
-                std::cout << "unloaded: " << id << "\n";
+                std::cout << "unloaded: " << id.toStdString() << "\n";
             } else {
                 std::cout
-                    << "unload refused: " << id
+                    << "unload refused: " << id.toStdString()
                     << " (unknown, pinned, or required by another plugin)\n";
             }
         } else {

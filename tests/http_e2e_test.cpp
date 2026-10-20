@@ -102,7 +102,7 @@ void HttpEndToEnd::InitializeAndToolCall(void) {
                        const double a = mcp::require<double>(o, "a");
                        const double b = mcp::require<double>(o, "b");
                        return {.content = {mcp::TextContent{
-                                   .text = std::to_string(a + b),
+                                   .text = QString::number(a + b),
                                }}};
                    });
         },
@@ -111,28 +111,27 @@ void HttpEndToEnd::InitializeAndToolCall(void) {
     QVERIFY(host.port() > 0);
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.open_get_stream = false;  // server doesn't offer one in 3e/2
 
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::make_unique<mcp::HttpClientTransport>(topts));
 
     auto info = client.initialize().get();
-    QCOMPARE(info.protocol_version, std::string{mcp::kLatestProtocolVersion});
-    QCOMPARE(info.server_info.name, std::string{"calc-http"});
+    QCOMPARE(info.protocol_version, QString{mcp::kLatestProtocolVersion});
+    QCOMPARE(info.server_info.name, QString{"calc-http"});
     QVERIFY(info.capabilities.tools.has_value());
 
     auto tools = client.list_tools().get();
     QCOMPARE(tools.tools.size(), std::size_t{1});
-    QCOMPARE(tools.tools[0].name, std::string{"add"});
+    QCOMPARE(tools.tools[0].name, QString{"add"});
 
     auto out =
         client.call_tool("add", QJsonObject{{"a", 2.5}, {"b", 1.5}}).get();
     QVERIFY(!out.is_error.value_or(false));
     QCOMPARE(out.content.size(), std::size_t{1});
     QVERIFY(std::holds_alternative<mcp::TextContent>(out.content[0]));
-    QVERIFY(std::get<mcp::TextContent>(out.content[0]).text.find("4.") !=
-            std::string::npos);
+    QVERIFY(std::get<mcp::TextContent>(out.content[0]).text == QString{"4"});
 
     client.disconnect();
     host.stop();
@@ -151,7 +150,7 @@ void HttpEndToEnd::OriginAllowlistRejectsCrossOrigin(void) {
     host.start();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.open_get_stream = false;
     topts.extra_headers["Origin"] = "https://evil.example";
 
@@ -183,43 +182,42 @@ void HttpEndToEnd::ServerInitiatedSamplingThroughGetStream(void) {
             // Tool that itself asks the client to sample. Exercises
             // the full server-initiated → GET-stream → client →
             // back-through-POST round trip.
-            s.tool(
-                "ask",
-                QJsonObject{
-                    {"type", "object"},
-                    {"properties",
-                     QJsonObject{{"q", QJsonObject{{"type", "string"}}}}}},
-                [&s](const mcp::Json& args) -> mcp::CallToolResult {
-                    const std::string q =
-                        args.toObject().value("q").toString("?").toStdString();
-                    auto resp =
-                        s
-                            .sample(mcp::CreateMessageRequestParams{
-                                .messages = {mcp::SamplingMessage{
-                                    .role = mcp::Role::user,
-                                    .content = {mcp::TextContent{.text = q}},
-                                }},
-                                .max_tokens = 100,
-                            })
-                            .get();
-                    return {.content = {mcp::TextContent{
-                                .text = "got: " + std::get<mcp::TextContent>(
-                                                      resp.content.at(0))
-                                                      .text,
-                            }}};
-                });
+            s.tool("ask",
+                   QJsonObject{
+                       {"type", "object"},
+                       {"properties",
+                        QJsonObject{{"q", QJsonObject{{"type", "string"}}}}}},
+                   [&s](const mcp::Json& args) -> mcp::CallToolResult {
+                       const QString q =
+                           args.toObject().value("q").toString("?");
+                       auto resp =
+                           s
+                               .sample(mcp::CreateMessageRequestParams{
+                                   .messages = {mcp::SamplingMessage{
+                                       .role = mcp::Role::user,
+                                       .content = {mcp::TextContent{.text = q}},
+                                   }},
+                                   .max_tokens = 100,
+                               })
+                               .get();
+                       return {.content = {mcp::TextContent{
+                                   .text = "got: " + std::get<mcp::TextContent>(
+                                                         resp.content.at(0))
+                                                         .text,
+                               }}};
+                   });
         },
     };
     host.start();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.open_get_stream = true;  // required for sampling round-trip
 
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::make_unique<mcp::HttpClientTransport>(topts));
     client.set_sampling_handler([](const mcp::CreateMessageRequestParams& req) {
-        const std::string in =
+        const QString in =
             std::get<mcp::TextContent>(req.messages.at(0).content.at(0)).text;
         return mcp::CreateMessageResult{
             .role = mcp::Role::assistant,
@@ -232,7 +230,7 @@ void HttpEndToEnd::ServerInitiatedSamplingThroughGetStream(void) {
     auto out = client.call_tool("ask", QJsonObject{{"q", "hello"}}).get();
     QVERIFY(!out.is_error.value_or(false));
     QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"got: echo:hello"});
+             QString{"got: echo:hello"});
 
     client.disconnect();
     host.stop();
@@ -256,7 +254,7 @@ void HttpEndToEnd::SessionIdReusedAcrossCalls(void) {
     host.start();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.open_get_stream = false;
     auto transport_ptr = new mcp::HttpClientTransport{topts};
     std::unique_ptr<mcp::HttpClientTransport> transport{transport_ptr};
@@ -266,8 +264,8 @@ void HttpEndToEnd::SessionIdReusedAcrossCalls(void) {
 
     (void)client.initialize().get();
     const auto sid = transport_ptr->session_id();
-    QVERIFY(sid.has_value());
-    QVERIFY(!sid->empty());
+    QVERIFY(!sid.isNull());
+    QVERIFY(!sid.isEmpty());
 
     QCOMPARE(host.active_sessions(), std::size_t{1});
 
@@ -328,7 +326,7 @@ void HttpEndToEnd::ClientSendsDeleteOnGracefulClose(void) {
     host.start();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.open_get_stream = false;
 
     mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
@@ -437,7 +435,7 @@ void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete(void) {
     // client-DELETE teardown path, with the Server still alive. Track the
     // Server* seen so we can assert identity, and count invocations.
     std::mutex seen_mu;
-    std::vector<mcp::Server*> seen;
+    QList<mcp::Server*> seen;
     std::atomic<int> calls{0};
 
     mcp::HttpServerHost::Options opts;
@@ -584,3 +582,4 @@ void HttpEndToEnd::ClientCapabilitiesCapturedAtInitialize(void) {
 
 QTEST_GUILESS_MAIN(HttpEndToEnd)
 #include "http_e2e_test.moc"
+#include <QString>

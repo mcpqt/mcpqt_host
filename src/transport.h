@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <QByteArray>
+#include <QByteArrayView>
+#include <QString>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -23,7 +26,7 @@ namespace mcp {
 
 class Transport {
 public:
-    using MessageCallback = std::function<void(std::string)>;
+    using MessageCallback = std::function<void(QByteArray)>;
     using ErrorCallback = std::function<void(std::error_code)>;
     using CloseCallback = std::function<void()>;
 
@@ -56,7 +59,7 @@ public:
 
     /// Send a single complete JSON-RPC frame. Returns an empty error_code
     /// on success. Thread-safe.
-    [[nodiscard]] virtual std::error_code send(std::string_view frame) = 0;
+    [[nodiscard]] virtual std::error_code send(QByteArrayView frame) = 0;
 
     /// Whether the transport is currently running.
     [[nodiscard]] virtual bool is_open(void) const noexcept = 0;

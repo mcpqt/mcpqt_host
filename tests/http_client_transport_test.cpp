@@ -47,22 +47,22 @@ private slots:
 
 void HttpClientTransport::PostSingleJsonResponseIsDelivered(void) {
     std::mutex mu;
-    std::string observed_body;
+    QString observed_body;
     mcp::test::FakeHttpServer fake(
         [&](const mcp::test::FakeHttpServer::Request& req) {
             std::lock_guard<std::mutex> lk(mu);
-            observed_body = req.body.toStdString();
+            observed_body = req.body;
             return mcp::test::json_response(R"({"ok":true})");
         });
 
     mcp::HttpClientTransport::Options opts;
-    opts.url = fake.url().toStdString();
+    opts.url = fake.url();
     opts.open_get_stream = false;  // simpler for this test
     auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
-    std::promise<std::string> got;
+    std::promise<QString> got;
     auto fut = got.get_future();
-    transport->on_message([&](std::string s) {
+    transport->on_message([&](QString s) {
         try {
             got.set_value(std::move(s));
         } catch (...) {
@@ -72,12 +72,10 @@ void HttpClientTransport::PostSingleJsonResponseIsDelivered(void) {
 
     QVERIFY(!transport->send(R"({"hello":1})"));
     QCOMPARE(fut.wait_for(2s), std::future_status::ready);
-    QCOMPARE(QString::fromStdString(fut.get()),
-             QString::fromUtf8(R"({"ok":true})"));
+    QCOMPARE(QString(fut.get()), QString::fromUtf8(R"({"ok":true})"));
     {
         std::lock_guard<std::mutex> lk(mu);
-        QCOMPARE(QString::fromStdString(observed_body),
-                 QString::fromUtf8(R"({"hello":1})"));
+        QCOMPARE(QString(observed_body), QString::fromUtf8(R"({"hello":1})"));
     }
     transport->close();
 }
@@ -90,14 +88,14 @@ void HttpClientTransport::PostSseResponseDeliversMultipleFrames(void) {
         });
 
     mcp::HttpClientTransport::Options opts;
-    opts.url = fake.url().toStdString();
+    opts.url = fake.url();
     opts.open_get_stream = false;
     auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
     std::mutex mu;
     std::condition_variable cv;
-    std::vector<std::string> frames;
-    transport->on_message([&](std::string s) {
+    QList<QString> frames;
+    transport->on_message([&](QString s) {
         std::lock_guard<std::mutex> lk(mu);
         frames.push_back(std::move(s));
         cv.notify_all();
@@ -110,10 +108,8 @@ void HttpClientTransport::PostSseResponseDeliversMultipleFrames(void) {
         QVERIFY(cv.wait_for(lk, 2s, [&] { return frames.size() >= 2; }));
     }
     QCOMPARE(frames.size(), std::size_t{2});
-    QCOMPARE(QString::fromStdString(frames[0]),
-             QString::fromUtf8(R"({"a":1})"));
-    QCOMPARE(QString::fromStdString(frames[1]),
-             QString::fromUtf8(R"({"b":2})"));
+    QCOMPARE(QString(frames[0]), QString::fromUtf8(R"({"a":1})"));
+    QCOMPARE(QString(frames[1]), QString::fromUtf8(R"({"b":2})"));
     transport->close();
 }
 
@@ -126,12 +122,12 @@ void HttpClientTransport::NotificationGets202AbsorbedSilently(void) {
         });
 
     mcp::HttpClientTransport::Options opts;
-    opts.url = fake.url().toStdString();
+    opts.url = fake.url();
     opts.open_get_stream = false;
     auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
     std::atomic<int> messages{0};
-    transport->on_message([&](std::string) { ++messages; });
+    transport->on_message([&](QString) { ++messages; });
     transport->start();
     QVERIFY(!transport->send(R"({"jsonrpc":"2.0","method":"x"})"));
     std::this_thread::sleep_for(150ms);
@@ -144,7 +140,7 @@ void HttpClientTransport::NotificationGets202AbsorbedSilently(void) {
 void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void) {
     std::atomic<int> first_call{0};
     std::mutex mu;
-    std::string captured_id_on_second_call;
+    QString captured_id_on_second_call;
     mcp::test::FakeHttpServer fake(
         [&](const mcp::test::FakeHttpServer::Request& req) {
             const int n = ++first_call;
@@ -155,31 +151,31 @@ void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void) {
             const QByteArray id = req.header("Mcp-Session-Id");
             if (!id.isEmpty()) {
                 std::lock_guard<std::mutex> lk(mu);
-                captured_id_on_second_call = id.toStdString();
+                captured_id_on_second_call = id;
             }
             return mcp::test::json_response("{}");
         });
 
     mcp::HttpClientTransport::Options opts;
-    opts.url = fake.url().toStdString();
+    opts.url = fake.url();
     opts.open_get_stream = false;
     auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
     std::atomic<int> messages{0};
-    transport->on_message([&](std::string) { ++messages; });
+    transport->on_message([&](QString) { ++messages; });
     transport->start();
 
     QVERIFY(!transport->send("{}"));
     while (messages.load() < 1)
         std::this_thread::sleep_for(5ms);
-    QVERIFY(transport->session_id() == std::optional<std::string>{"deadbeef"});
+    QCOMPARE(transport->session_id(), QString{"deadbeef"});
 
     QVERIFY(!transport->send("{}"));
     while (messages.load() < 2)
         std::this_thread::sleep_for(5ms);
     {
         std::lock_guard<std::mutex> lk(mu);
-        QCOMPARE(QString::fromStdString(captured_id_on_second_call),
+        QCOMPARE(QString(captured_id_on_second_call),
                  QStringLiteral("deadbeef"));
     }
 
@@ -188,33 +184,32 @@ void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void) {
 
 void HttpClientTransport::McpProtocolVersionHeaderIsSent(void) {
     std::mutex mu;
-    std::string captured_pv;
+    QString captured_pv;
     mcp::test::FakeHttpServer fake(
         [&](const mcp::test::FakeHttpServer::Request& req) {
             const QByteArray pv = req.header("MCP-Protocol-Version");
             if (!pv.isEmpty()) {
                 std::lock_guard<std::mutex> lk(mu);
-                captured_pv = pv.toStdString();
+                captured_pv = pv;
             }
             return mcp::test::json_response("{}");
         });
 
     mcp::HttpClientTransport::Options opts;
-    opts.url = fake.url().toStdString();
+    opts.url = fake.url();
     opts.protocol_version = "2025-11-25";
     opts.open_get_stream = false;
     auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
     std::atomic<int> messages{0};
-    transport->on_message([&](std::string) { ++messages; });
+    transport->on_message([&](QString) { ++messages; });
     transport->start();
     QVERIFY(!transport->send("{}"));
     while (messages.load() < 1)
         std::this_thread::sleep_for(5ms);
     {
         std::lock_guard<std::mutex> lk(mu);
-        QCOMPARE(QString::fromStdString(captured_pv),
-                 QStringLiteral("2025-11-25"));
+        QCOMPARE(QString(captured_pv), QStringLiteral("2025-11-25"));
     }
     transport->close();
 }
@@ -230,7 +225,7 @@ void HttpClientTransport::GetStreamReceivesServerInitiatedFrames(void) {
         });
 
     mcp::HttpClientTransport::Options opts;
-    opts.url = fake.url().toStdString();
+    opts.url = fake.url();
     opts.open_get_stream = true;
     // The transport's GET worker waits for a session id before
     // issuing the request (real servers want one); seed it for this
@@ -238,9 +233,9 @@ void HttpClientTransport::GetStreamReceivesServerInitiatedFrames(void) {
     opts.session_id = "test-session";
     auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
-    std::promise<std::string> got;
+    std::promise<QString> got;
     auto fut = got.get_future();
-    transport->on_message([&](std::string s) {
+    transport->on_message([&](QString s) {
         try {
             got.set_value(std::move(s));
         } catch (...) {
@@ -249,8 +244,7 @@ void HttpClientTransport::GetStreamReceivesServerInitiatedFrames(void) {
     transport->start();
 
     QCOMPARE(fut.wait_for(2s), std::future_status::ready);
-    QCOMPARE(QString::fromStdString(fut.get()),
-             QString::fromUtf8(R"({"server-said":"hi"})"));
+    QCOMPARE(QString(fut.get()), QString::fromUtf8(R"({"server-said":"hi"})"));
     transport->close();
 }
 
@@ -276,3 +270,5 @@ void HttpClientTransport::IdempotentClose(void) {
 
 QTEST_GUILESS_MAIN(HttpClientTransport)
 #include "http_client_transport_test.moc"
+#include <QList>
+#include <QString>

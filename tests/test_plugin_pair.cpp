@@ -57,8 +57,7 @@ public slots:
 
         // Display the returned value (plugin-side log) and fold it into our
         // own result so it is observable by the caller too.
-        MCP_LOG_INFO("test-pair: TestPlugin::echo returned '" +
-                     text.toStdString() + "'");
+        MCP_LOG_INFO("test-pair: TestPlugin::echo returned '" + text + "'");
         return QStringLiteral("test-pair received: %1").arg(text);
     }
 

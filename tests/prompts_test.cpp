@@ -91,7 +91,7 @@ void Prompts::PromptRoundTripWithArguments(void) {
         .name = "summarize",
         .description = "Summarize text",
         .arguments =
-            std::vector<mcp::PromptArgument>{
+            QList<mcp::PromptArgument>{
                 {.name = "text", .required = true},
                 {.name = "max_words"},
             },
@@ -102,7 +102,7 @@ void Prompts::PromptRoundTripWithArguments(void) {
     auto back = mcp::from_json<mcp::Prompt>(j);
     QVERIFY(back.arguments.has_value());
     QCOMPARE(back.arguments->size(), std::size_t{2});
-    QCOMPARE((*back.arguments)[0].name, std::string{"text"});
+    QCOMPARE((*back.arguments)[0].name, QString{"text"});
 }
 
 void Prompts::PromptMessageRoundTrip(void) {
@@ -142,7 +142,7 @@ void Prompts::GetPromptParamsArgumentsAreStringMap(void) {
     mcp::GetPromptRequestParams p{
         .name = "x",
         .arguments =
-            std::unordered_map<std::string, std::string>{
+            QHash<QString, QString>{
                 {"a", "1"},
                 {"b", "two"},
             },
@@ -153,7 +153,7 @@ void Prompts::GetPromptParamsArgumentsAreStringMap(void) {
     QCOMPARE(j["arguments"]["b"], mcp::test::jv("two"));
     auto back = mcp::from_json<mcp::GetPromptRequestParams>(j);
     QVERIFY(back.arguments.has_value());
-    QCOMPARE((*back.arguments)["a"], std::string{"1"});
+    QCOMPARE((*back.arguments)["a"], QString{"1"});
 }
 
 // -------------------------------------------------------------------------
@@ -177,13 +177,13 @@ void PromptsIntegration::ListPromptsAndGetPrompt(void) {
                 .title = "Greet",
                 .description = "Greet someone by name",
                 .arguments =
-                    std::vector<mcp::PromptArgument>{
+                    QList<mcp::PromptArgument>{
                         {.name = "name", .required = true},
                     },
             },
-            [](const std::unordered_map<std::string, std::string>& args) {
-                const std::string name =
-                    args.contains("name") ? args.at("name") : "world";
+            [](const QHash<QString, QString>& args) {
+                const QString name =
+                    args.contains("name") ? args.value("name") : "world";
                 return mcp::GetPromptResult{
                     .description = "greeting",
                     .messages =
@@ -205,18 +205,16 @@ void PromptsIntegration::ListPromptsAndGetPrompt(void) {
 
     auto list = client.list_prompts().get();
     QCOMPARE(list.prompts.size(), std::size_t{1});
-    QCOMPARE(list.prompts[0].name, std::string{"greet"});
+    QCOMPARE(list.prompts[0].name, QString{"greet"});
     QVERIFY(list.prompts[0].arguments.has_value());
 
-    auto out = client
-                   .get_prompt("greet",
-                               std::unordered_map<std::string, std::string>{
-                                   {"name", "Alice"}})
-                   .get();
+    auto out =
+        client.get_prompt("greet", QHash<QString, QString>{{"name", "Alice"}})
+            .get();
     QCOMPARE(out.messages.size(), std::size_t{1});
     QVERIFY(std::holds_alternative<mcp::TextContent>(out.messages[0].content));
     QVERIFY(std::get<mcp::TextContent>(out.messages[0].content)
-                .text.find("Alice") != std::string::npos);
+                .text.contains("Alice"));
 
     client.disconnect();
 }
@@ -224,10 +222,9 @@ void PromptsIntegration::ListPromptsAndGetPrompt(void) {
 void PromptsIntegration::MissingPromptMapsToError(void) {
     auto p = mcp::test::make_in_memory_pair();
     PromptsServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.prompt(mcp::Prompt{.name = "x"},
-                 [](const std::unordered_map<std::string, std::string>&) {
-                     return mcp::GetPromptResult{};
-                 });
+        s.prompt(mcp::Prompt{.name = "x"}, [](const QHash<QString, QString>&) {
+            return mcp::GetPromptResult{};
+        });
     });
 
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
@@ -249,7 +246,7 @@ void PromptsIntegration::EmptyArgumentsAreOkay(void) {
     auto p = mcp::test::make_in_memory_pair();
     PromptsServerThread srv(std::move(p.b), [&](mcp::Server& s) {
         s.prompt(mcp::Prompt{.name = "noargs"},
-                 [&](const std::unordered_map<std::string, std::string>& args) {
+                 [&](const QHash<QString, QString>& args) {
                      handler_saw_empty_args = args.empty();
                      return mcp::GetPromptResult{
                          .messages =
@@ -288,3 +285,6 @@ int main(int argc, char** argv) {
 }
 
 #include "prompts_test.moc"
+#include <QHash>
+#include <QList>
+#include <QString>

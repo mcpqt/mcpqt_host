@@ -8,6 +8,7 @@
 
 #include "transport.h"
 
+#include <QByteArrayView>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -42,7 +43,7 @@ public:
     void on_close(CloseCallback cb) override;
     void start(void) override;
     void close(void) override;
-    [[nodiscard]] std::error_code send(std::string_view frame) override;
+    [[nodiscard]] std::error_code send(QByteArrayView frame) override;
     [[nodiscard]] bool is_open(void) const noexcept override;
 
 private:

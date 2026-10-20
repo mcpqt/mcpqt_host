@@ -41,7 +41,7 @@ enum error_code : int {
 /// response and the caller asks for the result via a future.
 struct ErrorObject {
     int code{error_code::no_error};
-    std::string message;
+    QString message;
     QJsonValue data;  // optional; null when absent on the wire
 
     [[nodiscard]] bool has_data(void) const noexcept { return !data.isNull(); }
@@ -55,18 +55,18 @@ struct ErrorObject {
 class Error : public std::runtime_error {
 public:
     explicit Error(ErrorObject err)
-        : std::runtime_error(err.message), m_error(std::move(err)) {}
+        : std::runtime_error(err.message.toStdString()),
+          m_error(std::move(err)) {}
 
-    Error(int code, std::string msg,
-          QJsonValue data = QJsonValue(QJsonValue::Null))
-        : std::runtime_error(msg),
+    Error(int code, QString msg, QJsonValue data = QJsonValue(QJsonValue::Null))
+        : std::runtime_error(msg.toStdString()),
           m_error{code, std::move(msg), std::move(data)} {}
 
     [[nodiscard]] const ErrorObject& object(void) const noexcept {
         return m_error;
     }
     [[nodiscard]] int code(void) const noexcept { return m_error.code; }
-    [[nodiscard]] const std::string& message(void) const noexcept {
+    [[nodiscard]] const QString& message(void) const noexcept {
         return m_error.message;
     }
     [[nodiscard]] const QJsonValue& data(void) const noexcept {

@@ -80,17 +80,14 @@ public slots:
     // The host invokes this for every diagnostic log event after claimLogging.
     // Signature must be exactly "void <Class>::log(int, QString)".
     void log(int level, QString message) {
-        const std::string text = message.toStdString();
-        write(static_cast<mcp::LogLevel>(level), text);
+        write(static_cast<mcp::LogLevel>(level), message);
     }
 
 private:
-    void write(mcp::LogLevel level, std::string_view msg) {
+    void write(mcp::LogLevel level, const QString& msg) {
         const QJsonObject record{
-            {QStringLiteral("level"),
-             QString::fromLatin1(mcp::to_string(level).data())},
-            {QStringLiteral("msg"),
-             QString::fromUtf8(msg.data(), static_cast<int>(msg.size()))},
+            {QStringLiteral("level"), mcp::to_string(level)},
+            {QStringLiteral("msg"), msg},
         };
         const QByteArray line =
             QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n';

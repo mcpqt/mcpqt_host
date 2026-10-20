@@ -100,11 +100,12 @@ void AuditRegression::PaginationCursorRejectsNegative(void) {
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    for (const std::string bad :
+    for (const QString bad :
          {"-1", "1abc", " 5", "5 ", "0xFF", "+5", "99999999999999999999"}) {
         try {
             (void)client.list_tools(bad).get();
-            QFAIL(("expected error for cursor=\"" + bad + "\"").c_str());
+            const QString msg = "expected error for cursor=\"" + bad + "\"";
+            QFAIL(msg.toStdString().c_str());
         } catch (const mcp::Error& e) {
             QCOMPARE(e.code(), mcp::error_code::invalid_params);
         }
@@ -117,7 +118,7 @@ void AuditRegression::PaginationCursorAcceptsValidDigits(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);
         for (int i = 0; i < 5; ++i) {
-            s.tool("t" + std::to_string(i), QJsonObject{{"type", "object"}},
+            s.tool("t" + QString::number(i), QJsonObject{{"type", "object"}},
                    [](const Json&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
@@ -130,8 +131,8 @@ void AuditRegression::PaginationCursorAcceptsValidDigits(void) {
 
     auto first = client.list_tools().get();
     QCOMPARE(static_cast<int>(first.tools.size()), 2);
-    QVERIFY(first.next_cursor.has_value());
-    auto second = client.list_tools(*first.next_cursor).get();
+    QVERIFY(!first.next_cursor.isNull());
+    auto second = client.list_tools(first.next_cursor).get();
     QCOMPARE(static_cast<int>(second.tools.size()), 2);
     client.disconnect();
 }
@@ -180,7 +181,7 @@ void AuditRegression::MalformedListToolsParamsYieldsInvalidParams(void) {
     auto session = std::make_unique<mcp::Session>(std::move(p.a));
     session->start();
     // tools/list with a numeric cursor instead of string: malformed
-    auto fut = session->send_request(std::string{mcp::method_tools_list},
+    auto fut = session->send_request(QString{mcp::method_tools_list},
                                      mcp::parse_json(R"({"cursor":42})"), 2s);
     // initialize first to avoid invalid_request for "not initialized"
     // ... actually this test bypasses initialize; the server returns
@@ -214,8 +215,8 @@ void AuditRegression::SamplingMessageContentArrayPreservesAll(void) {
     })");
     auto m = mcp::from_json<mcp::SamplingMessage>(j);
     QCOMPARE(static_cast<int>(m.content.size()), 2);
-    QCOMPARE(std::get<mcp::TextContent>(m.content[0]).text, std::string("a"));
-    QCOMPARE(std::get<mcp::TextContent>(m.content[1]).text, std::string("b"));
+    QCOMPARE(std::get<mcp::TextContent>(m.content[0]).text, QString("a"));
+    QCOMPARE(std::get<mcp::TextContent>(m.content[1]).text, QString("b"));
 }
 
 void AuditRegression::SamplingMessageSingleBlockOnWire(void) {
@@ -418,14 +419,14 @@ void AuditRegression::ConcurrentInitializeRequestsExactlyOneSucceeds(void) {
     session->start();
 
     Json init_payload = mcp::to_json(mcp::InitializeRequestParams{
-        .protocol_version = std::string{mcp::kLatestProtocolVersion},
+        .protocol_version = QString{mcp::kLatestProtocolVersion},
         .capabilities = {},
         .client_info = {.name = "tester", .version = "0"},
     });
 
-    auto f1 = session->send_request(std::string{mcp::method_initialize},
+    auto f1 = session->send_request(QString{mcp::method_initialize},
                                     init_payload, 5s);
-    auto f2 = session->send_request(std::string{mcp::method_initialize},
+    auto f2 = session->send_request(QString{mcp::method_initialize},
                                     init_payload, 5s);
 
     int succeeded = 0;
@@ -461,9 +462,9 @@ void AuditRegression::StdioStripsCrBeforeNewline(void) {
     opts.owns_fds = true;
 
     auto transport = std::make_unique<mcp::StdioTransport>(opts);
-    std::promise<std::string> got;
+    std::promise<QByteArray> got;
     auto fut = got.get_future();
-    transport->on_message([&](std::string s) {
+    transport->on_message([&](QByteArray s) {
         try {
             got.set_value(std::move(s));
         } catch (...) {
@@ -471,13 +472,13 @@ void AuditRegression::StdioStripsCrBeforeNewline(void) {
     });
     transport->start();
 
-    const std::string crlf = "{\"k\":1}\r\n";
-    QVERIFY(::write(t2[1], crlf.data(), crlf.size()) ==
+    const QByteArray crlf = "{\"k\":1}\r\n";
+    QVERIFY(::write(t2[1], crlf.constData(), crlf.size()) ==
             static_cast<ssize_t>(crlf.size()));
 
     QVERIFY(fut.wait_for(2s) == std::future_status::ready);
     auto frame = fut.get();
-    QCOMPARE(frame, std::string("{\"k\":1}"));
+    QCOMPARE(frame, QByteArray("{\"k\":1}"));
 
     transport->close();
     ::close(t2[1]);
@@ -533,3 +534,4 @@ int main(int argc, char** argv) {
 }
 
 #include "audit_regression_test.moc"
+#include <QString>

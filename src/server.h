@@ -24,6 +24,9 @@
 
 #include "json.h"
 
+#include <QHash>
+#include <QList>
+#include <QString>
 #include <atomic>
 #include <condition_variable>
 #include <functional>
@@ -56,7 +59,7 @@ public:
     /// `_meta`, and an `execution.taskSupport` policy gating
     /// task-augmented inbound calls.
     struct ToolMetadata {
-        std::optional<std::vector<Icon>> icons = {};
+        std::optional<QList<Icon>> icons = {};
         std::optional<ToolExecution> execution = {};
         std::optional<Json> meta = {};
     };
@@ -65,13 +68,13 @@ public:
     /// the resource contents. Throwing mcp::Error is reported back as a
     /// JSON-RPC error.
     using ResourceReadHandler =
-        std::function<ReadResourceResult(const std::string& uri)>;
+        std::function<ReadResourceResult(const QString& uri)>;
 
     /// Prompt-get handler. Receives the (string-keyed, string-valued)
     /// argument map (which may be empty) and returns the rendered
     /// prompt as a sequence of PromptMessages.
     using PromptGetHandler = std::function<GetPromptResult(
-        const std::unordered_map<std::string, std::string>& arguments)>;
+        const QHash<QString, QString>& arguments)>;
 
     explicit Server(Implementation server_info);
     /// Out-of-line because the optional `m_tasks` member holds a
@@ -84,7 +87,7 @@ public:
     Server& operator=(Server&&) = delete;
 
     /// Optional human-readable instructions returned in InitializeResult.
-    Server& set_instructions(std::string s);
+    Server& set_instructions(QString s);
 
     /// Maximum items per list response. Pages beyond this size return a
     /// `nextCursor` that the client passes back to fetch the next page.
@@ -93,16 +96,15 @@ public:
 
     /// Register a tool with the given name. Replaces any prior handler.
     /// `input_schema` MUST be a JSON Schema object with "type": "object".
-    Server& tool(std::string name, Json input_schema, ToolHandler handler,
-                 std::optional<std::string> title = std::nullopt,
-                 std::optional<std::string> description = std::nullopt,
+    Server& tool(QString name, Json input_schema, ToolHandler handler,
+                 QString title = {}, QString description = {},
                  std::optional<ToolAnnotations> annotations = std::nullopt,
                  std::optional<Json> output_schema = std::nullopt);
 
     /// Tool registration with the 2025-11-25 metadata bag. Use the
     /// long-form constructor when you need to declare icons, _meta,
     /// or an execution policy that gates task augmentation.
-    Server& tool(std::string name, Json input_schema, ToolHandler handler,
+    Server& tool(QString name, Json input_schema, ToolHandler handler,
                  ToolMetadata meta);
 
     /// Register a resource the server exposes. The handler is invoked
@@ -136,14 +138,13 @@ public:
     /// if logging is not enabled or `level` is below the negotiated
     /// minimum. `data` is free-form JSON (typically a string or
     /// object). Returns `true` if the notification was sent.
-    [[nodiscard]] bool log(LoggingLevel level, Json data,
-                           std::optional<std::string> logger = std::nullopt);
+    [[nodiscard]] bool log(LoggingLevel level, Json data, QString logger = {});
 
     /// Emit a `notifications/progress` for the given progress token.
     /// `total` and `message` are optional per spec.
     void report_progress(const ProgressToken& token, double progress,
                          std::optional<double> total = std::nullopt,
-                         std::optional<std::string> message = std::nullopt);
+                         QString message = {});
 
     /// Send `sampling/createMessage` to the client and return a future
     /// for the result. The caller (typically a tool handler) MUST run on
@@ -169,7 +170,7 @@ public:
     /// Best-effort `notifications/elicitation/complete` from the server
     /// side, used after a URL-mode elicitation finishes out of band.
     /// Returns std::errc::not_connected if no session is bound.
-    std::error_code notify_elicitation_complete(std::string elicitation_id);
+    std::error_code notify_elicitation_complete(QString elicitation_id);
 
     /// Hook for inbound `notifications/elicitation/complete` from the
     /// client. The handler receives the `elicitationId` of the URL
@@ -179,7 +180,7 @@ public:
     /// (the originator depends on which side actually witnesses the
     /// out-of-band flow conclude) — the SDK accepts it on either.
     using ElicitationCompleteHandler =
-        std::function<void(std::string elicitation_id)>;
+        std::function<void(QString elicitation_id)>;
     void set_elicitation_complete_handler(ElicitationCompleteHandler handler);
 
     /// `Server::elicit` with an explicit per-call timeout. Useful when
@@ -275,13 +276,13 @@ private:
     };
 
     Implementation m_server_info;
-    std::optional<std::string> m_instructions;
+    QString m_instructions;
     std::size_t m_page_size{0};
-    std::unordered_map<std::string, ToolEntry> m_tools;
+    QHash<QString, ToolEntry> m_tools;
     std::mutex m_tools_mu;
 
-    std::unordered_map<std::string, ResourceEntry> m_resources;
-    std::vector<ResourceTemplate> m_resource_templates;
+    QHash<QString, ResourceEntry> m_resources;
+    QList<ResourceTemplate> m_resource_templates;
     ResourceReadHandler m_fallback_resource_handler;
     std::mutex m_resources_mu;
 
@@ -289,7 +290,7 @@ private:
         Prompt descriptor;
         PromptGetHandler handler;
     };
-    std::unordered_map<std::string, PromptEntry> m_prompts;
+    QHash<QString, PromptEntry> m_prompts;
     std::mutex m_prompts_mu;
 
     std::atomic<bool> m_logging_enabled{false};

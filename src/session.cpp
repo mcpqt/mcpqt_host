@@ -6,6 +6,9 @@
 #include "protocol.h"
 #include "transport.h"
 
+#include <QHash>
+#include <QList>
+#include <QString>
 #include <chrono>
 #include <exception>
 #include <future>
@@ -32,9 +35,9 @@ Session::Session(std::unique_ptr<Transport> transport, Options opts)
         throw Error{error_code::internal_error, "Session: transport is null"};
     }
     m_transport->on_message(
-        [this](std::string raw) { this->handle_frame(std::move(raw)); });
+        [this](QByteArray raw) { this->handle_frame(std::move(raw)); });
     m_transport->on_error([](std::error_code ec) {
-        MCP_LOG_WARN(std::string{"transport error: "} + ec.message());
+        MCP_LOG_WARN(QString{"transport error: "} + ec.message().c_str());
     });
     m_transport->on_close([this]() {
         ErrorObject reason{
@@ -57,7 +60,7 @@ Session::Session(std::unique_ptr<Transport> transport, Options opts)
             try {
                 cb();
             } catch (const std::exception& e) {
-                MCP_LOG_ERROR(std::string{"on_closed threw: "} + e.what());
+                MCP_LOG_ERROR(QString{"on_closed threw: "} + e.what());
             }
         }
     });
@@ -71,25 +74,24 @@ Session::~Session() {
 // Handlers
 // =====================================================================
 
-void Session::set_request_handler(std::string method, RequestHandler h) {
+void Session::set_request_handler(QString method, RequestHandler h) {
     std::lock_guard<std::mutex> lk(m_handlers_mu);
     m_req_handlers[std::move(method)] = std::move(h);
 }
 
-void Session::set_notification_handler(std::string method,
-                                       NotificationHandler h) {
+void Session::set_notification_handler(QString method, NotificationHandler h) {
     std::lock_guard<std::mutex> lk(m_handlers_mu);
     m_note_handlers[std::move(method)] = std::move(h);
 }
 
-void Session::clear_request_handler(const std::string& method) {
+void Session::clear_request_handler(const QString& method) {
     std::lock_guard<std::mutex> lk(m_handlers_mu);
-    m_req_handlers.erase(method);
+    m_req_handlers.remove(method);
 }
 
-void Session::clear_notification_handler(const std::string& method) {
+void Session::clear_notification_handler(const QString& method) {
     std::lock_guard<std::mutex> lk(m_handlers_mu);
-    m_note_handlers.erase(method);
+    m_note_handlers.remove(method);
 }
 
 void Session::set_fallback_request_handler(RequestHandler h) {
@@ -171,7 +173,7 @@ RequestId Session::next_id(void) noexcept {
     return RequestId{m_next_id.fetch_add(1, std::memory_order_relaxed)};
 }
 
-std::future<Json> Session::send_request(std::string method, Json params,
+std::future<Json> Session::send_request(QString method, Json params,
                                         std::chrono::milliseconds timeout) {
     return send_request_for<Json>(
         std::move(method), std::move(params), [](Json j) { return j; },
@@ -179,7 +181,7 @@ std::future<Json> Session::send_request(std::string method, Json params,
 }
 
 std::future<void>
-Session::send_request_void(std::string method, Json params,
+Session::send_request_void(QString method, Json params,
                            std::chrono::milliseconds timeout) {
     auto pr = std::make_shared<std::promise<void>>();
     auto fut = pr->get_future();
@@ -191,7 +193,7 @@ Session::send_request_void(std::string method, Json params,
     return fut;
 }
 
-void Session::register_pending(std::string method, Json params, Pending pending,
+void Session::register_pending(QString method, Json params, Pending pending,
                                std::chrono::milliseconds timeout) {
     auto id = next_id();
 
@@ -221,9 +223,8 @@ void Session::register_pending(std::string method, Json params, Pending pending,
             // drained the map.
             state = Parked::kClosed;
         } else {
-            auto [it, inserted] = m_pending.try_emplace(id, std::move(pending));
-            (void)it;
-            if (inserted) {
+            if (!m_pending.contains(id)) {
+                m_pending.insert(id, std::move(pending));
                 state = Parked::kOk;
                 m_timeout_cv.notify_all();
             } else {
@@ -259,7 +260,7 @@ void Session::register_pending(std::string method, Json params, Pending pending,
             std::lock_guard<std::mutex> lk(m_pending_mu);
             auto it = m_pending.find(id);
             if (it != m_pending.end()) {
-                parked = std::move(it->second);
+                parked = std::move(it.value());
                 m_pending.erase(it);
                 found = true;
             }
@@ -269,7 +270,7 @@ void Session::register_pending(std::string method, Json params, Pending pending,
     }
 }
 
-std::error_code Session::send_notification(std::string method, Json params) {
+std::error_code Session::send_notification(QString method, Json params) {
     JsonRpcNotification note;
     note.method = std::move(method);
     if (!params.isNull())
@@ -286,8 +287,8 @@ std::error_code Session::send_notification(std::string method, Json params) {
 
 void Session::send_message(const JsonRpcMessage& msg) {
     const auto j = serialize_message(msg);
-    const auto str = dump(j);
-    auto ec = m_transport->send(str);
+    const QByteArray frame = dump(j).toUtf8();
+    auto ec = m_transport->send(frame);
     if (ec) {
         throw std::system_error{
             ec, "Session::send_message: transport->send failed"};
@@ -298,12 +299,12 @@ void Session::send_message(const JsonRpcMessage& msg) {
 // Inbound dispatch
 // =====================================================================
 
-void Session::handle_frame(std::string raw) {
+void Session::handle_frame(QByteArray raw) {
     Json j;
     try {
         j = parse_json(raw);
     } catch (const Error& e) {
-        MCP_LOG_WARN(std::string{"rejecting non-JSON frame: "} + e.what());
+        MCP_LOG_WARN(QString{"rejecting non-JSON frame: "} + e.what());
         return;  // JSON-RPC says we send a parse error response, but per the
                  // spec we cannot when there is no id; simplest is to drop.
     }
@@ -312,14 +313,14 @@ void Session::handle_frame(std::string raw) {
     try {
         msg = parse_message(j);
     } catch (const Error& e) {
-        MCP_LOG_WARN(std::string{"rejecting malformed JSON-RPC frame: "} +
+        MCP_LOG_WARN(QString{"rejecting malformed JSON-RPC frame: "} +
                      e.what());
         return;
     } catch (const std::exception& e) {
         // A from_json deeper in parse_message can throw when fields are
         // mistyped or missing. Treat those identically to a parse error
         // and drop the frame.
-        MCP_LOG_WARN(std::string{"rejecting malformed JSON-RPC frame: "} +
+        MCP_LOG_WARN(QString{"rejecting malformed JSON-RPC frame: "} +
                      e.what());
         return;
     }
@@ -366,7 +367,7 @@ void Session::handle_request(JsonRpcRequest req) {
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         auto it = m_req_handlers.find(req.method);
         if (it != m_req_handlers.end())
-            handler = it->second;
+            handler = it.value();
         else
             handler = m_fallback_req;
     }
@@ -393,7 +394,7 @@ void Session::handle_request(JsonRpcRequest req) {
                 // rather than parse_error so clients can fix their request.
                 resp.outcome = ErrorObject{
                     error_code::invalid_params,
-                    std::string{"invalid params: "} + e.what(),
+                    QString{"invalid params: "} + e.what(),
                     {},
                 };
             } else {
@@ -402,7 +403,7 @@ void Session::handle_request(JsonRpcRequest req) {
         } catch (const std::exception& e) {
             resp.outcome = ErrorObject{
                 error_code::internal_error,
-                std::string{"handler threw: "} + e.what(),
+                QString{"handler threw: "} + e.what(),
                 {},
             };
         } catch (...) {
@@ -417,7 +418,7 @@ void Session::handle_request(JsonRpcRequest req) {
     try {
         send_message(resp);
     } catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"failed to send response: "} + e.what());
+        MCP_LOG_ERROR(QString{"failed to send response: "} + e.what());
     }
 }
 
@@ -427,7 +428,7 @@ void Session::handle_notification(JsonRpcNotification note) {
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         auto it = m_note_handlers.find(note.method);
         if (it != m_note_handlers.end())
-            handler = it->second;
+            handler = it.value();
         else
             handler = m_fallback_note;
     }
@@ -437,7 +438,7 @@ void Session::handle_notification(JsonRpcNotification note) {
         static const Json kNull{QJsonValue::Null};
         handler(note.params.has_value() ? *note.params : kNull);
     } catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"notification handler threw: "} + e.what());
+        MCP_LOG_ERROR(QString{"notification handler threw: "} + e.what());
     } catch (...) {
         MCP_LOG_ERROR("notification handler threw a non-std exception");
     }
@@ -448,7 +449,7 @@ void Session::handle_response(JsonRpcResponse resp) {
         // Per spec, an error response with no id can occur on parse errors
         // we issued; nothing to correlate against.
         if (resp.is_error()) {
-            MCP_LOG_WARN(std::string{"received untargeted error: "} +
+            MCP_LOG_WARN(QString{"received untargeted error: "} +
                          resp.error().message);
         }
         return;
@@ -463,7 +464,7 @@ void Session::handle_response(JsonRpcResponse resp) {
                          resp.id->canonical());
             return;
         }
-        pending = std::move(it->second);
+        pending = std::move(it.value());
         m_pending.erase(it);
         m_timeout_cv.notify_all();
     }
@@ -492,9 +493,10 @@ void Session::timeout_loop(void) {
         }
 
         auto soonest = steady_clock::time_point::max();
-        for (const auto& [id, p] : m_pending) {
-            if (p.deadline < soonest)
-                soonest = p.deadline;
+        for (auto it = m_pending.constBegin(); it != m_pending.constEnd();
+             ++it) {
+            if (it.value().deadline < soonest)
+                soonest = it.value().deadline;
         }
         if (m_timeout_cv.wait_until(lk, soonest) == std::cv_status::timeout) {
             const auto now = steady_clock::now();
@@ -505,11 +507,11 @@ void Session::timeout_loop(void) {
             // snapshotting into a local vector also means we don't have
             // to keep an iterator valid across cancel_all_pending
             // swapping the map under us.
-            std::vector<std::function<void(std::exception_ptr)>> expired;
+            QList<std::function<void(std::exception_ptr)>> expired;
             for (auto it = m_pending.begin(); it != m_pending.end();) {
-                if (it->second.deadline <= now) {
-                    if (it->second.reject)
-                        expired.push_back(std::move(it->second.reject));
+                if (it.value().deadline <= now) {
+                    if (it.value().reject)
+                        expired.push_back(std::move(it.value().reject));
                     it = m_pending.erase(it);
                 } else {
                     ++it;
@@ -526,16 +528,15 @@ void Session::timeout_loop(void) {
 }
 
 void Session::cancel_all_pending(const ErrorObject& reason) {
-    std::unordered_map<RequestId, Pending> drained;
+    QHash<RequestId, Pending> drained;
     {
         std::lock_guard<std::mutex> lk(m_pending_mu);
         drained.swap(m_pending);
         m_timeout_cv.notify_all();
     }
-    for (auto& [id, p] : drained) {
-        (void)id;
-        if (p.reject)
-            p.reject(std::make_exception_ptr(Error{reason}));
+    for (auto it = drained.begin(); it != drained.end(); ++it) {
+        if (it.value().reject)
+            it.value().reject(std::make_exception_ptr(Error{reason}));
     }
 }
 

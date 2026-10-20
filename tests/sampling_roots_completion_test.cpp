@@ -71,8 +71,7 @@ void Sampling::CreateMessageRoundTrip(void) {
         }},
         .model_preferences =
             mcp::ModelPreferences{
-                .hints =
-                    std::vector<mcp::ModelHint>{{.name = "claude-3-5-sonnet"}},
+                .hints = QList<mcp::ModelHint>{{.name = "claude-3-5-sonnet"}},
                 .intelligence_priority = 0.9,
             },
         .max_tokens = 256,
@@ -149,7 +148,7 @@ void Completion::ReferenceVariantRoundTrip(void) {
     QCOMPARE(j["type"], mcp::test::jv("ref/prompt"));
     auto back = mcp::from_json<mcp::CompletionReference>(j);
     QVERIFY(std::holds_alternative<mcp::PromptReference>(back));
-    QCOMPARE(std::get<mcp::PromptReference>(back).name, std::string{"p1"});
+    QCOMPARE(std::get<mcp::PromptReference>(back).name, QString{"p1"});
 
     ref = mcp::ResourceTemplateReference{.uri_template = "file:///{x}"};
     j = mcp::to_json(ref);
@@ -162,7 +161,7 @@ void Completion::RequestRoundTrip(void) {
         .reference = mcp::PromptReference{.name = "greet"},
         .argument = mcp::CompleteArgument{.name = "name", .value = "Al"},
         .context_arguments =
-            std::unordered_map<std::string, std::string>{
+            QHash<QString, QString>{
                 {"locale", "en-US"},
             },
     };
@@ -171,7 +170,7 @@ void Completion::RequestRoundTrip(void) {
     QCOMPARE(j["argument"]["value"], mcp::test::jv("Al"));
     QCOMPARE(j["context"]["arguments"]["locale"], mcp::test::jv("en-US"));
     auto back = mcp::from_json<mcp::CompleteRequestParams>(j);
-    QCOMPARE(back.argument.value, std::string{"Al"});
+    QCOMPARE(back.argument.value, QString{"Al"});
     QVERIFY(back.context_arguments.has_value());
 }
 
@@ -198,9 +197,7 @@ void SamplingIntegration::ToolHandlerCanRoundTripThroughClient(void) {
             [&s](const Json& args) -> mcp::CallToolResult {
                 const QJsonObject ao = args.toObject();
                 const QJsonValue qv = ao.value(QStringLiteral("q"));
-                const std::string q = qv.isString()
-                                          ? qv.toString().toStdString()
-                                          : std::string{"?"};
+                const QString q = qv.isString() ? qv.toString() : QString{"?"};
                 mcp::CreateMessageRequestParams params{
                     .messages = {mcp::SamplingMessage{
                         .role = mcp::Role::user,
@@ -224,7 +221,7 @@ void SamplingIntegration::ToolHandlerCanRoundTripThroughClient(void) {
     client.connect(std::move(p.a));
     client.set_sampling_handler([](const mcp::CreateMessageRequestParams& req)
                                     -> mcp::CreateMessageResult {
-        const std::string in =
+        const QString in =
             std::get<mcp::TextContent>(req.messages.at(0).content.at(0)).text;
         return mcp::CreateMessageResult{
             .role = mcp::Role::assistant,
@@ -239,7 +236,7 @@ void SamplingIntegration::ToolHandlerCanRoundTripThroughClient(void) {
     auto out = client.call_tool("ask", QJsonObject{{"q", "hello"}}).get();
     QVERIFY(!out.is_error.value_or(false));
     QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"got: echo:hello"});
+             QString{"got: echo:hello"});
 
     client.disconnect();
 }
@@ -308,7 +305,7 @@ void RootsIntegration::ServerCanQueryClientRoots(void) {
                    }
                    return mcp::CallToolResult{
                        .content = {mcp::TextContent{
-                           .text = std::to_string(roots.roots.size())}},
+                           .text = QString::number(roots.roots.size())}},
                    };
                });
     });
@@ -328,7 +325,7 @@ void RootsIntegration::ServerCanQueryClientRoots(void) {
     QVERIFY(info.capabilities.tools.has_value());
 
     auto out = client.call_tool("read_roots").get();
-    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string{"2"});
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, QString{"2"});
 
     auto roots = roots_future.get();
     QCOMPARE(roots.roots.size(), std::size_t{2});
@@ -371,7 +368,7 @@ void CompletionIntegration::ServerProvidesCompletions(void) {
                       mcp::CompleteArgument{.name = "name", .value = "Al"})
             .get();
     QCOMPARE(out.completion.values.size(), std::size_t{2});
-    QCOMPARE(out.completion.values[0], std::string{"Al_a"});
+    QCOMPARE(out.completion.values[0], QString{"Al_a"});
 
     client.disconnect();
 }
@@ -407,3 +404,6 @@ int main(int argc, char** argv) {
 }
 
 #include "sampling_roots_completion_test.moc"
+#include <QHash>
+#include <QList>
+#include <QString>

@@ -105,7 +105,7 @@ void Tasks::TaskRoundTrip(void) {
              mcp::test::jv(static_cast<qint64>(60'000)));
     QCOMPARE(j.toObject().value("pollInterval"), mcp::test::jv(500));
     auto back = mcp::from_json<mcp::Task>(j);
-    QCOMPARE(back.taskId, std::string("abc"));
+    QCOMPARE(back.taskId, QString("abc"));
     QCOMPARE(back.status, mcp::TaskStatus::working);
     QCOMPARE(*back.poll_interval, 500);
 }
@@ -196,7 +196,7 @@ void Tasks::ListTasksResultRoundTrip(void) {
     QCOMPARE(j.toObject().value("nextCursor"), mcp::test::jv("1"));
     auto back = mcp::from_json<mcp::ListTasksResult>(j);
     QCOMPARE(static_cast<int>(back.tasks.size()), 1);
-    QCOMPARE(*back.next_cursor, std::string("1"));
+    QCOMPARE(back.next_cursor, QString("1"));
 }
 
 // -------------------------------------------------------------------------
@@ -235,7 +235,7 @@ void TasksIntegration::AugmentedCallReturnsCreateTaskResult(void) {
                    const int a = args.toObject().value("a").toInt(0);
                    const int b = args.toObject().value("b").toInt(0);
                    return {.content = {mcp::TextContent{
-                               .text = std::to_string(a + b),
+                               .text = QString::number(a + b),
                            }}};
                });
     });
@@ -249,7 +249,7 @@ void TasksIntegration::AugmentedCallReturnsCreateTaskResult(void) {
             .call_tool_as_task("slow_add",
                                Json(QJsonObject{{"a", 2}, {"b", 3}}), 60'000)
             .get();
-    QVERIFY(!envelope.task.taskId.empty());
+    QVERIFY(!envelope.task.taskId.isEmpty());
     // The server marks the task working before the worker thread
     // flips to completed; either is acceptable depending on
     // scheduling, but it can't be a terminal-other.
@@ -260,17 +260,17 @@ void TasksIntegration::AugmentedCallReturnsCreateTaskResult(void) {
     auto raw = client.task_result(envelope.task.taskId).get();
     auto out = mcp::from_json<mcp::CallToolResult>(raw);
     QVERIFY(!(out.is_error.value_or(false)));
-    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string("5"));
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, QString("5"));
 
     // _meta must carry the related-task tag.
     QVERIFY(raw.toObject().contains("_meta"));
     QVERIFY(raw.toObject().value("_meta").isObject());
     QVERIFY(raw.toObject().value("_meta").toObject().contains(
-        QString::fromUtf8(mcp::tasks_related_task_meta_key)));
+        mcp::tasks_related_task_meta_key));
     QCOMPARE(raw.toObject()
                  .value("_meta")
                  .toObject()
-                 .value(QString::fromUtf8(mcp::tasks_related_task_meta_key))
+                 .value(mcp::tasks_related_task_meta_key)
                  .toObject()
                  .value("taskId"),
              mcp::test::jv(envelope.task.taskId));
@@ -287,7 +287,7 @@ void TasksIntegration::GetReturnsCurrentEnvelope(void) {
                    const int a = args.toObject().value("a").toInt(0);
                    const int b = args.toObject().value("b").toInt(0);
                    return {.content = {mcp::TextContent{
-                               .text = std::to_string(a + b),
+                               .text = QString::number(a + b),
                            }}};
                });
     });
@@ -323,7 +323,7 @@ void TasksIntegration::ListEnumeratesTasks(void) {
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    std::vector<std::string> ids;
+    QList<QString> ids;
     for (int i = 0; i < 3; ++i) {
         auto e = client.call_tool_as_task("noop", Json(QJsonObject{})).get();
         ids.push_back(e.task.taskId);
@@ -333,7 +333,7 @@ void TasksIntegration::ListEnumeratesTasks(void) {
 
     auto lst = client.task_list().get();
     QCOMPARE(static_cast<int>(lst.tasks.size()), 3);
-    QVERIFY(!lst.next_cursor.has_value());
+    QVERIFY(lst.next_cursor.isNull());
 
     client.disconnect();
 }
@@ -384,14 +384,14 @@ void TasksIntegration::StatusNotificationsArrive(void) {
                    const int a = args.toObject().value("a").toInt(0);
                    const int b = args.toObject().value("b").toInt(0);
                    return {.content = {mcp::TextContent{
-                               .text = std::to_string(a + b),
+                               .text = QString::number(a + b),
                            }}};
                });
     });
 
     std::mutex mu;
     std::condition_variable cv;
-    std::vector<mcp::TaskStatus> seen;
+    QList<mcp::TaskStatus> seen;
 
     mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
@@ -437,7 +437,7 @@ void TasksIntegration::NonAugmentedCallStillWorks(void) {
                    const int a = args.toObject().value("a").toInt(0);
                    const int b = args.toObject().value("b").toInt(0);
                    return {.content = {mcp::TextContent{
-                               .text = std::to_string(a + b),
+                               .text = QString::number(a + b),
                            }}};
                });
     });
@@ -448,8 +448,7 @@ void TasksIntegration::NonAugmentedCallStillWorks(void) {
 
     auto out =
         client.call_tool("add", Json(QJsonObject{{"a", 7}, {"b", 8}})).get();
-    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string("15"));
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, QString("15"));
 
     client.disconnect();
 }
@@ -476,7 +475,7 @@ void TasksIntegration::CancelOnceFiresStatusListenerOnce(void) {
 
     std::mutex mu;
     std::condition_variable cv;
-    std::vector<mcp::TaskStatus> seen;
+    QList<mcp::TaskStatus> seen;
 
     mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
@@ -569,7 +568,7 @@ void TasksIntegration::ResultMetaMergesInsteadOfClobbering(void) {
     QVERIFY(raw.toObject().contains("_meta"));
     QVERIFY(raw.toObject().value("_meta").isObject());
     QVERIFY(raw.toObject().value("_meta").toObject().contains(
-        QString::fromUtf8(mcp::tasks_related_task_meta_key)));
+        mcp::tasks_related_task_meta_key));
 
     client.disconnect();
 }
@@ -679,3 +678,5 @@ int main(int argc, char** argv) {
 }
 
 #include "tasks_test.moc"
+#include <QList>
+#include <QString>

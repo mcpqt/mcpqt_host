@@ -139,7 +139,7 @@ void CalculatorSubprocess::EndToEnd(void) {
 
     auto info = client.initialize().get();
     QCOMPARE(info.protocol_version, mcp::kLatestProtocolVersion);
-    QCOMPARE(info.server_info.name, std::string{"mcp-server"});
+    QCOMPARE(info.server_info.name, QString{"mcp-server"});
     QVERIFY(info.capabilities.tools.has_value());
 
     auto tools = client.list_tools().get();
@@ -149,8 +149,7 @@ void CalculatorSubprocess::EndToEnd(void) {
         client.call_tool("add", QJsonObject{{"a", 6.0}, {"b", 7.0}}).get();
     QVERIFY(!add_out.is_error.value_or(false));
     QCOMPARE(add_out.content.size(), std::size_t{1});
-    QVERIFY(std::get<mcp::TextContent>(add_out.content[0]).text.find("13") !=
-            std::string::npos);
+    QVERIFY(std::get<mcp::TextContent>(add_out.content[0]).text.contains("13"));
 
     auto div_out =
         client.call_tool("divide", QJsonObject{{"a", 1.0}, {"b", 0.0}}).get();
@@ -171,3 +170,4 @@ int main(int argc, char** argv) {
 }
 
 #include "calculator_subprocess_test.moc"
+#include <QString>

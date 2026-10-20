@@ -85,13 +85,12 @@ void PluginManagerTest::ToolsMetadataExposed(void) {
     // The plugin's metadata declares Tools keyed by function signature. Only
     // the entry naming a published function is retained; the bogus one is
     // dropped at load time.
-    const std::vector<mcp::PluginTool> tools = plugins.tools();
+    const QList<mcp::PluginTool> tools = plugins.tools();
     QCOMPARE(tools.size(), std::size_t{1});
     QCOMPARE(tools[0].signature,
              QStringLiteral("QString TestPlugin::echo(QString)"));
-    QCOMPARE(QString::fromStdString(tools[0].tool.name),
-             QStringLiteral("echo"));
-    QCOMPARE(QString::fromStdString(tools[0].tool.description.value_or("")),
+    QCOMPARE(QString(tools[0].tool.name), QStringLiteral("echo"));
+    QCOMPARE(tools[0].tool.description,
              QStringLiteral("Echo back the message."));
     const QJsonObject schema = tools[0].tool.input_schema.toObject();
     QCOMPARE(schema.value(QStringLiteral("type")).toString(),
@@ -107,7 +106,7 @@ void PluginManagerTest::ToolsMetadataExposed(void) {
     const std::optional<mcp::Tool> tool =
         plugins.tool(QStringLiteral("QString TestPlugin::echo(QString)"));
     QVERIFY(tool.has_value());
-    QCOMPARE(QString::fromStdString(tool->name), QStringLiteral("echo"));
+    QCOMPARE(QString(tool->name), QStringLiteral("echo"));
 
     QVERIFY(!plugins.tool(QStringLiteral("void TestPlugin::does_not_exist()"))
                  .has_value());
@@ -299,8 +298,8 @@ void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced(void) {
             .contains("logging-plugin-probe-line"));
 
     // Once claimed, nobody can displace the logging system.
-    QVERIFY(!mcp::set_log_sink([](mcp::LogLevel, std::string_view) {}));
-    QVERIFY(!mcp::claim_log_sink([](mcp::LogLevel, std::string_view) {}));
+    QVERIFY(!mcp::set_log_sink([](mcp::LogLevel, QString) {}));
+    QVERIFY(!mcp::claim_log_sink([](mcp::LogLevel, QString) {}));
 
     // The claiming plugin is pinned: unload_all() must not detach it.
     plugins.unload_all();
@@ -316,3 +315,5 @@ int main(int argc, char** argv) {
 }
 
 #include "plugin_test.moc"
+#include <QList>
+#include <QString>

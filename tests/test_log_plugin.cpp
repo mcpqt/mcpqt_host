@@ -44,7 +44,7 @@ public slots:
         (void)level;
         m_count.fetch_add(1, std::memory_order_relaxed);
         std::lock_guard<std::mutex> lk(m_mu);
-        m_last = message.toStdString();
+        m_last = message;
     }
 
     // Number of log events this plugin has received via its sink.
@@ -56,14 +56,14 @@ public slots:
     // The most recent message the sink received.
     QString last(void) {
         std::lock_guard<std::mutex> lk(m_mu);
-        return QString::fromStdString(m_last);
+        return m_last;
     }
 
 private:
     std::atomic<int> m_count{0};
     bool m_claimed = false;
     std::mutex m_mu;
-    std::string m_last;
+    QString m_last;
 };
 
 #include "test_log_plugin.moc"

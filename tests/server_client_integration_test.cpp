@@ -76,7 +76,7 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
                        const double b = args["b"].toDouble();
                        return mcp::CallToolResult{
                            .content = {mcp::TextContent{
-                               .text = std::to_string(a + b),
+                               .text = QString::number(a + b),
                            }},
                        };
                    });
@@ -101,7 +101,7 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
                        const double a = args["a"].toDouble();
                        return mcp::CallToolResult{
                            .content = {mcp::TextContent{
-                               .text = std::to_string(a / b),
+                               .text = QString::number(a / b),
                            }},
                        };
                    });
@@ -134,11 +134,11 @@ void Integration::InitializeReturnsExpectedShape(void) {
     client.connect(std::move(p.a));
 
     auto info = client.initialize().get();
-    QCOMPARE(info.protocol_version, std::string{mcp::kLatestProtocolVersion});
-    QCOMPARE(info.server_info.name, std::string{"calc"});
+    QCOMPARE(info.protocol_version, QString{mcp::kLatestProtocolVersion});
+    QCOMPARE(info.server_info.name, QString{"calc"});
     QVERIFY(info.capabilities.tools.has_value());
-    QVERIFY(info.instructions.has_value());
-    QCOMPARE(*info.instructions, std::string{"A tiny arithmetic server."});
+    QVERIFY(!info.instructions.isNull());
+    QCOMPARE(info.instructions, QString{"A tiny arithmetic server."});
 
     client.disconnect();
 }
@@ -154,11 +154,11 @@ void Integration::ListToolsReturnsRegisteredTools(void) {
 
     auto list = client.list_tools().get();
     QCOMPARE(list.tools.size(), std::size_t{2});
-    std::vector<std::string> names;
+    QList<QString> names;
     for (const auto& t : list.tools)
         names.push_back(t.name);
     std::sort(names.begin(), names.end());
-    QCOMPARE(names, (std::vector<std::string>{"add", "divide"}));
+    QCOMPARE(names, (QList<QString>{"add", "divide"}));
 
     client.disconnect();
 }
@@ -177,7 +177,7 @@ void Integration::CallToolReturnsTextContent(void) {
     QCOMPARE(out.content.size(), std::size_t{1});
     QVERIFY(std::holds_alternative<mcp::TextContent>(out.content[0]));
     const auto& text = std::get<mcp::TextContent>(out.content[0]).text;
-    QVERIFY(text.find("5.5") != std::string::npos);
+    QVERIFY(text.contains("5.5"));
     QVERIFY(!out.is_error.value_or(false));
 
     client.disconnect();
@@ -198,7 +198,7 @@ void Integration::ToolErrorIsReportedViaIsError(void) {
     QVERIFY(*out.is_error);
     QCOMPARE(out.content.size(), std::size_t{1});
     QVERIFY(std::get<mcp::TextContent>(out.content[0])
-                .text.find("division by zero") != std::string::npos);
+                .text.contains("division by zero"));
 
     client.disconnect();
 }
@@ -277,7 +277,7 @@ void Integration::ServerInfoCachedOnInitialize(void) {
     (void)client.initialize().get();
     auto cached = client.server();
     QVERIFY(cached.has_value());
-    QCOMPARE(cached->server_info.name, std::string{"calc"});
+    QCOMPARE(cached->server_info.name, QString{"calc"});
     client.disconnect();
     QVERIFY(!client.server().has_value());
 }
@@ -293,3 +293,5 @@ int main(int argc, char** argv) {
 }
 
 #include "server_client_integration_test.moc"
+#include <QList>
+#include <QString>

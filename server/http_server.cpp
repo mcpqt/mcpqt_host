@@ -50,19 +50,19 @@ int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     mcp::set_log_level(mcp::LogLevel::info);
 
-    std::string host = "127.0.0.1";
+    QString host = QStringLiteral("127.0.0.1");
     int port = 8848;
-    std::string path = "/mcp";
+    QString path = QStringLiteral("/mcp");
     QStringList plugin_paths;
 
     for (int i = 1; i < argc; ++i) {
-        const std::string arg{argv[i]};
+        const QString arg = QString::fromLocal8Bit(argv[i]);
         if (arg == "--host" && i + 1 < argc) {
-            host = argv[++i];
+            host = QString::fromLocal8Bit(argv[++i]);
         } else if (arg == "--port" && i + 1 < argc) {
             port = std::atoi(argv[++i]);
         } else if (arg == "--path" && i + 1 < argc) {
-            path = argv[++i];
+            path = QString::fromLocal8Bit(argv[++i]);
         } else {
             plugin_paths << QString::fromLocal8Bit(argv[i]);
         }
@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
 
     if (const char* token = std::getenv("MCP_TOKEN"); token && *token) {
         opts.bearer_validator =
-            [expected = std::string(token)](std::string_view presented) {
+            [expected = QString::fromLocal8Bit(token)](QStringView presented) {
                 using Outcome = mcp::HttpServerHost::Options::BearerOutcome;
                 using Status = mcp::HttpServerHost::Options::BearerStatus;
                 Outcome out;
@@ -111,7 +111,8 @@ int main(int argc, char** argv) {
 
     server_host.start();
     std::fprintf(stderr, "[mcp_http_server] listening on http://%s:%d%s\n",
-                 host.c_str(), server_host.port(), path.c_str());
+                 host.toUtf8().constData(), server_host.port(),
+                 path.toUtf8().constData());
 
     while (!g_shutdown_requested.test(std::memory_order_acquire)) {
         std::this_thread::sleep_for(std::chrono::milliseconds{200});

@@ -346,21 +346,24 @@ public slots:
         lim = std::clamp<std::int64_t>(lim, 1, 1000);
 
         std::string sql = "SELECT key, tags, updated_at FROM notes WHERE 1=1";
-        std::vector<std::string> binds;
+        QList<QString> binds;
         if (!prefix_s.empty()) {
             sql += " AND key LIKE ?";
-            binds.push_back(prefix_s + "%");
+            binds.push_back(QString::fromStdString(prefix_s) +
+                            QLatin1Char('%'));
         }
         if (!tag_s.empty()) {
             sql += " AND (',' || tags || ',') LIKE ?";
-            binds.push_back("%," + tag_s + ",%");
+            binds.push_back(QStringLiteral("%,") +
+                            QString::fromStdString(tag_s) +
+                            QStringLiteral(",%"));
         }
         sql += " ORDER BY updated_at DESC LIMIT ?";
 
         auto stmt = m_db->prepare(sql);
         int idx = 1;
         for (const auto& b : binds) {
-            stmt.bind(idx++, b);
+            stmt.bind(idx++, b.toStdString());
         }
         stmt.bind(idx, lim);
 
@@ -435,8 +438,10 @@ public slots:
         if (is_glob || !confirm) {
             const mcp::ElicitRequestParams params =
                 mcp::ElicitFormRequestParams{
-                    .message = "Delete note(s) matching key \"" + k +
-                               "\"? This cannot be undone.",
+                    .message = QStringLiteral("Delete note(s) matching key "
+                                              "\"") +
+                               QString::fromStdString(k) +
+                               QStringLiteral("\"? This cannot be undone."),
                     .requested_schema =
                         QJsonObject{
                             {"type", "object"},

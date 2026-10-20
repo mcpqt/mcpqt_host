@@ -111,28 +111,29 @@ int main(int argc, char** argv) {
     client.connect(std::move(transport));
 
     auto info = client.initialize().get();
-    std::cout << "connected to " << info.server_info.name << " "
-              << info.server_info.version << "\n";
-    if (info.instructions.has_value()) {
-        std::cout << "instructions: " << *info.instructions << "\n";
+    std::cout << "connected to " << info.server_info.name.toStdString() << " "
+              << info.server_info.version.toStdString() << "\n";
+    if (!info.instructions.isNull()) {
+        std::cout << "instructions: " << info.instructions.toStdString()
+                  << "\n";
     }
 
     auto tools = client.list_tools().get();
     std::cout << "\navailable tools:\n";
     for (const auto& t : tools.tools) {
-        std::cout << "  - " << t.name;
-        if (t.description.has_value())
-            std::cout << " — " << *t.description;
+        std::cout << "  - " << t.name.toStdString();
+        if (!t.description.isNull())
+            std::cout << " — " << t.description.toStdString();
         std::cout << "\n";
     }
 
-    if (!tools.tools.empty()) {
+    if (!tools.tools.isEmpty()) {
         const auto& first = tools.tools[0].name;
-        std::cout << "\ncalling " << first << "(a=2, b=3)...\n";
+        std::cout << "\ncalling " << first.toStdString() << "(a=2, b=3)...\n";
         auto out =
             client.call_tool(first, QJsonObject{{"a", 2}, {"b", 3}}).get();
         if (auto* text = std::get_if<mcp::TextContent>(&out.content[0])) {
-            std::cout << "  -> " << text->text << "\n";
+            std::cout << "  -> " << text->text.toStdString() << "\n";
         }
     }
 

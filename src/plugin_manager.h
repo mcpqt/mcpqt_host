@@ -42,6 +42,7 @@
 #include <QVariant>
 #include <QVariantList>
 
+#include <QList>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -135,7 +136,7 @@ public:
     /// declares a dependency on it or on one of its published functions —
     /// reverse dependencies are honored so a dependent is never left dangling.
     /// Must not be called while that plugin's calls are in flight.
-    bool unload_plugin(const std::string& id);
+    bool unload_plugin(const QString& id);
 
     /// Call shutdown() on every unloadable plugin and detach its shared
     /// library. Pinned plugins (those that own the log sink) are kept loaded.
@@ -150,7 +151,7 @@ public:
     [[nodiscard]] QStringList plugin_ids(void) const;
 
     /// The QObject of the loaded plugin with `id`, or nullptr.
-    [[nodiscard]] QObject* plugin_object(const std::string& id) const;
+    [[nodiscard]] QObject* plugin_object(const QString& id) const;
 
     /// Every published function signature, across all loaded plugins.
     [[nodiscard]] QStringList functions(void) const;
@@ -161,14 +162,14 @@ public:
     /// Tool declarations contributed by loaded plugins (from each plugin's
     /// metadata "Tools" object), sorted by signature. Entries whose signature
     /// is not a published function are dropped at load time with a warning.
-    [[nodiscard]] std::vector<PluginTool> tools() const;
+    [[nodiscard]] QList<PluginTool> tools() const;
 
     /// The Tool declared for `signature`, if any loaded plugin
     /// declared one for a published function.
     [[nodiscard]] std::optional<Tool> tool(const QString& signature) const;
 
     /// Resource declarations contributed by loaded plugins.
-    [[nodiscard]] std::vector<PluginResource> resources() const;
+    [[nodiscard]] QList<PluginResource> resources() const;
 
     /// The resource descriptor declared for `uri`, if any.
     [[nodiscard]] std::optional<PluginResource>
@@ -235,7 +236,7 @@ private:
     void unload_instance(const std::shared_ptr<Instance>& inst);
 
     QHash<QString, FunctionEntry> m_registry;  // signature -> entry
-    std::vector<std::shared_ptr<Instance>> m_plugins;
+    QList<std::shared_ptr<Instance>> m_plugins;
 };
 
 }  // namespace mcp

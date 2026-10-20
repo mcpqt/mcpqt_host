@@ -45,9 +45,6 @@ inline QJsonValue jv(double v) {
 inline QJsonValue jv(const char* v) {
     return QJsonValue(QString::fromUtf8(v));
 }
-inline QJsonValue jv(const std::string& v) {
-    return QJsonValue(QString::fromStdString(v));
-}
 inline QJsonValue jv(const QString& v) {
     return QJsonValue(v);
 }

@@ -209,7 +209,7 @@ void LoggingIntegration::ServerLogReachesClient(void) {
 
     auto received = fut.get();
     QCOMPARE(received.level, mcp::LoggingLevel::warning);
-    QCOMPARE(received.logger, std::string{"logger-1"});
+    QCOMPARE(received.logger, QString{"logger-1"});
     QCOMPARE(received.data["msg"], mcp::test::jv("hi"));
 
     client.disconnect();
@@ -270,7 +270,7 @@ void ProgressIntegration::ServerProgressReachesClient(void) {
     });
 
     std::mutex mu;
-    std::vector<double> progresses;
+    QList<double> progresses;
 
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
@@ -300,8 +300,7 @@ void CancellationIntegration::ClientCanSendCancelledNotification(void) {
     auto client_session = std::make_unique<mcp::Session>(std::move(pair.a));
     auto server_session = std::make_unique<mcp::Session>(std::move(pair.b));
     server_session->set_notification_handler(
-        std::string{mcp::method_notifications_cancelled},
-        [&](const Json& params) {
+        QString{mcp::method_notifications_cancelled}, [&](const Json& params) {
             try {
                 got.set_value(
                     mcp::from_json<mcp::CancelledNotificationParams>(params));
@@ -312,7 +311,7 @@ void CancellationIntegration::ClientCanSendCancelledNotification(void) {
     server_session->start();
 
     QVERIFY(!(client_session->send_notification(
-        std::string{mcp::method_notifications_cancelled},
+        QString{mcp::method_notifications_cancelled},
         mcp::to_json(mcp::CancelledNotificationParams{
             .request_id = mcp::RequestId{7},
             .reason = "stopped",
@@ -361,3 +360,5 @@ int main(int argc, char** argv) {
 }
 
 #include "utilities_test.moc"
+#include <QList>
+#include <QString>

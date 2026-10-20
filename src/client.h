@@ -21,6 +21,8 @@
 
 #include "json.h"
 
+#include <QHash>
+#include <QString>
 #include <atomic>
 #include <future>
 #include <memory>
@@ -54,11 +56,10 @@ public:
 
     /// `tools/list`. Optional cursor for pagination (Phase 3 will fully
     /// support paginated iteration; for now you get the whole list).
-    [[nodiscard]] std::future<ListToolsResult>
-    list_tools(std::optional<std::string> cursor = std::nullopt);
+    [[nodiscard]] std::future<ListToolsResult> list_tools(QString cursor = {});
 
     /// `tools/call` with the given name and JSON-shaped arguments.
-    [[nodiscard]] std::future<CallToolResult> call_tool(std::string name,
+    [[nodiscard]] std::future<CallToolResult> call_tool(QString name,
                                                         Json arguments = {});
 
     /// `tools/call` with a `task` augmentation. The server returns a
@@ -68,26 +69,25 @@ public:
     /// `ttl_ms` is the per-call retention override; nullopt uses the
     /// server's default.
     [[nodiscard]] std::future<CreateTaskResult>
-    call_tool_as_task(std::string name, Json arguments = {},
+    call_tool_as_task(QString name, Json arguments = {},
                       std::optional<std::int64_t> ttl_ms = std::nullopt);
 
     /// `tasks/get` — fetch the current envelope for a task.
-    [[nodiscard]] std::future<Task> task_get(std::string task_id);
+    [[nodiscard]] std::future<Task> task_get(QString task_id);
 
     /// `tasks/result` — block on the server until the task is
     /// terminal, then return the underlying request's result as raw
     /// JSON. Decode it as the appropriate result type (e.g.
     /// `CallToolResult`) by calling `mcp::from_json<T>(...)`.
-    [[nodiscard]] std::future<Json> task_result(std::string task_id);
+    [[nodiscard]] std::future<Json> task_result(QString task_id);
 
     /// `tasks/list` — paginated enumeration of all tasks the server
     /// currently knows about.
-    [[nodiscard]] std::future<ListTasksResult>
-    task_list(std::optional<std::string> cursor = std::nullopt);
+    [[nodiscard]] std::future<ListTasksResult> task_list(QString cursor = {});
 
     /// `tasks/cancel` — request cancellation. Returns the task
     /// envelope post-transition (status: cancelled).
-    [[nodiscard]] std::future<Task> task_cancel(std::string task_id);
+    [[nodiscard]] std::future<Task> task_cancel(QString task_id);
 
     /// Hook for inbound `notifications/tasks/status`. The handler
     /// receives the latest Task projection on every transition.
@@ -97,24 +97,23 @@ public:
     /// `resources/list`. Cursor optional; pagination support is
     /// callee-side for Phase 2.
     [[nodiscard]] std::future<ListResourcesResult>
-    list_resources(std::optional<std::string> cursor = std::nullopt);
+    list_resources(QString cursor = {});
 
     /// `resources/templates/list`.
     [[nodiscard]] std::future<ListResourceTemplatesResult>
-    list_resource_templates(std::optional<std::string> cursor = std::nullopt);
+    list_resource_templates(QString cursor = {});
 
     /// `resources/read` for the given URI.
-    [[nodiscard]] std::future<ReadResourceResult>
-    read_resource(std::string uri);
+    [[nodiscard]] std::future<ReadResourceResult> read_resource(QString uri);
 
     /// `resources/subscribe` — request `notifications/resources/updated`
     /// frames whenever this URI's contents change. Subscribe handlers
     /// for incoming updates: see `set_resource_updated_handler`. The
     /// future resolves on success and throws mcp::Error on failure.
-    [[nodiscard]] std::future<void> subscribe(std::string uri);
+    [[nodiscard]] std::future<void> subscribe(QString uri);
 
     /// `resources/unsubscribe`.
-    [[nodiscard]] std::future<void> unsubscribe(std::string uri);
+    [[nodiscard]] std::future<void> unsubscribe(QString uri);
 
     /// Register a handler for inbound resource-update notifications.
     /// The handler is called whenever the server sends
@@ -129,14 +128,13 @@ public:
 
     /// `prompts/list`.
     [[nodiscard]] std::future<ListPromptsResult>
-    list_prompts(std::optional<std::string> cursor = std::nullopt);
+    list_prompts(QString cursor = {});
 
     /// `prompts/get` with the given prompt name and (optional) string-keyed
     /// arguments to fill in template parameters.
-    [[nodiscard]] std::future<GetPromptResult> get_prompt(
-        std::string name,
-        std::optional<std::unordered_map<std::string, std::string>> arguments =
-            std::nullopt);
+    [[nodiscard]] std::future<GetPromptResult>
+    get_prompt(QString name,
+               std::optional<QHash<QString, QString>> arguments = std::nullopt);
 
     /// Hook for inbound notifications/prompts/list_changed.
     void set_prompts_list_changed_handler(ListChangedHandler handler);
@@ -147,9 +145,7 @@ public:
     /// id (typically obtained via a future Phase 3 cancellation token).
     /// Returns the underlying transport error_code on failure (e.g.
     /// transport closed); empty error_code on success.
-    std::error_code
-    cancel_request(RequestId request_id,
-                   std::optional<std::string> reason = std::nullopt);
+    std::error_code cancel_request(RequestId request_id, QString reason = {});
 
     /// Send `ping` and wait for a response. Returns void on success;
     /// the future throws on timeout / error.
@@ -195,21 +191,21 @@ public:
     /// completion). Receives the elicitation_id of the flow that
     /// finished out of band. Pass nullptr to clear.
     using ElicitationCompleteHandler =
-        std::function<void(std::string elicitation_id)>;
+        std::function<void(QString elicitation_id)>;
     void set_elicitation_complete_handler(ElicitationCompleteHandler handler);
 
     /// Send `notifications/elicitation/complete` to the server. The
     /// spec lets either side emit it; the typical case is the client
     /// notifying the server once the OAuth redirect_uri (or other
     /// URL flow) completes.
-    std::error_code notify_elicitation_complete(std::string elicitation_id);
+    std::error_code notify_elicitation_complete(QString elicitation_id);
 
     /// `completion/complete` — ask the server for autocompletion
     /// suggestions.
     [[nodiscard]] std::future<CompleteResult>
     complete(CompletionReference reference, CompleteArgument argument,
-             std::optional<std::unordered_map<std::string, std::string>>
-                 context_arguments = std::nullopt);
+             std::optional<QHash<QString, QString>> context_arguments =
+                 std::nullopt);
 
     /// Layer extra / narrowed capabilities on top of the ones derived
     /// from registered handlers. Engaged fields in `caps` REPLACE the

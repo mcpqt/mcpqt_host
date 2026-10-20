@@ -11,6 +11,7 @@
 #include <QString>
 #include <QUrl>
 
+#include <QByteArrayView>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -44,8 +45,8 @@ namespace {
 /// the GET worker can implement spec-mandated resumability and
 /// retry timing.
 struct SseEvent {
-    std::string data;
-    std::optional<std::string> id;
+    QString data;
+    QString id;
     std::optional<int> retry_ms;  // server-suggested reconnect delay
 };
 
@@ -55,75 +56,59 @@ struct SseEvent {
 // `buf` for the next round. We capture `data:`, `id:`, and `retry:`
 // per the SSE spec; `event:` is ignored (MCP doesn't use named
 // events).
-template <typename Callback> void drain_sse(std::string& buf, Callback&& cb) {
+template <typename Callback> void drain_sse(QString& buf, Callback&& cb) {
     while (true) {
-        std::size_t end = std::string::npos;
-        std::size_t end_marker_len = 0;
-        for (std::size_t i = 0; i + 1 < buf.size(); ++i) {
-            if (buf[i] == '\n' && buf[i + 1] == '\n') {
+        qsizetype end = -1;
+        qsizetype marker = 0;
+        const qsizetype n = buf.size();
+        for (qsizetype i = 0; i + 1 < n; ++i) {
+            if (buf.at(i) == QLatin1Char('\n') &&
+                buf.at(i + 1) == QLatin1Char('\n')) {
                 end = i;
-                end_marker_len = 2;
+                marker = 2;
                 break;
             }
-            if (i + 3 < buf.size() && buf[i] == '\r' && buf[i + 1] == '\n' &&
-                buf[i + 2] == '\r' && buf[i + 3] == '\n') {
+            if (i + 3 < n && buf.at(i) == QLatin1Char('\r') &&
+                buf.at(i + 1) == QLatin1Char('\n') &&
+                buf.at(i + 2) == QLatin1Char('\r') &&
+                buf.at(i + 3) == QLatin1Char('\n')) {
                 end = i;
-                end_marker_len = 4;
+                marker = 4;
                 break;
             }
         }
-        if (end == std::string::npos)
+        if (end < 0)
             return;
 
-        const std::string event{buf.data(), end};
-        buf.erase(0, end + end_marker_len);
+        const QString event = buf.left(end);
+        buf.remove(0, end + marker);
 
         SseEvent se;
-        std::size_t line_start = 0;
-        while (line_start <= event.size()) {
-            const auto line_end = event.find('\n', line_start);
-            std::string_view line;
-            if (line_end == std::string::npos) {
-                line = std::string_view{event}.substr(line_start);
-                line_start = event.size() + 1;
-            } else {
-                line = std::string_view{event}.substr(line_start,
-                                                      line_end - line_start);
-                line_start = line_end + 1;
-            }
-            if (!line.empty() && line.back() == '\r')
-                line.remove_suffix(1);
-            if (line.empty() || line[0] == ':')
+        const QList<QStringView> lines = QStringView{event}.split(u'\n');
+        for (QStringView line : lines) {
+            if (line.endsWith(u'\r'))
+                line.chop(1);
+            if (line.isEmpty() || line.at(0) == u':')
                 continue;  // comment/keepalive
-            const auto colon = line.find(':');
-            std::string_view field, value;
-            if (colon == std::string_view::npos) {
-                field = line;
-                value = {};
-            } else {
-                field = line.substr(0, colon);
-                value = line.substr(colon + 1);
-                if (!value.empty() && value.front() == ' ')
-                    value.remove_prefix(1);
-            }
-            if (field == "data") {
-                if (!se.data.empty())
-                    se.data += '\n';
-                se.data.append(value);
-            } else if (field == "id") {
-                se.id = std::string{value};
-            } else if (field == "retry") {
-                // Per SSE spec: integer milliseconds. Ignore on
-                // parse error / negative.
-                try {
-                    int v = std::stoi(std::string{value});
-                    if (v >= 0)
-                        se.retry_ms = v;
-                } catch (...) {
-                }
+            const qsizetype colon = line.indexOf(u':');
+            const QStringView field = colon < 0 ? line : line.left(colon);
+            QStringView value = colon < 0 ? QStringView{} : line.mid(colon + 1);
+            if (value.startsWith(u' '))
+                value = value.mid(1);
+            if (field == QStringLiteral("data")) {
+                if (!se.data.isEmpty())
+                    se.data += QLatin1Char('\n');
+                se.data += value.toString();
+            } else if (field == QStringLiteral("id")) {
+                se.id = value.toString();
+            } else if (field == QStringLiteral("retry")) {
+                bool ok = false;
+                const int v = value.toInt(&ok);
+                if (ok && v >= 0)
+                    se.retry_ms = v;
             }
         }
-        if (!se.data.empty() || se.id.has_value() || se.retry_ms.has_value()) {
+        if (!se.data.isEmpty() || !se.id.isNull() || se.retry_ms.has_value()) {
             cb(std::move(se));
         }
     }
@@ -134,26 +119,22 @@ template <typename Callback> void drain_sse(std::string& buf, Callback&& cb) {
 // and caller-supplied extras.
 void set_common_headers(QNetworkRequest& req,
                         const HttpClientTransport::Options& opts,
-                        const std::optional<std::string>& sid,
-                        const std::string& access_token,
-                        const std::string& last_event_id) {
-    req.setRawHeader("MCP-Protocol-Version",
-                     QByteArray::fromStdString(opts.protocol_version));
-    if (sid.has_value()) {
-        req.setRawHeader("Mcp-Session-Id", QByteArray::fromStdString(*sid));
+                        const QString& sid, const QString& access_token,
+                        const QString& last_event_id) {
+    req.setRawHeader("MCP-Protocol-Version", opts.protocol_version.toUtf8());
+    if (!sid.isNull()) {
+        req.setRawHeader("Mcp-Session-Id", sid.toUtf8());
     }
-    if (!access_token.empty()) {
+    if (!access_token.isEmpty()) {
         req.setRawHeader("Authorization",
-                         QByteArray("Bearer ") +
-                             QByteArray::fromStdString(access_token));
+                         QByteArray("Bearer ") + access_token.toUtf8());
     }
-    if (!last_event_id.empty()) {
-        req.setRawHeader("Last-Event-ID",
-                         QByteArray::fromStdString(last_event_id));
+    if (!last_event_id.isEmpty()) {
+        req.setRawHeader("Last-Event-ID", last_event_id.toUtf8());
     }
-    for (const auto& [k, v] : opts.extra_headers) {
-        req.setRawHeader(QByteArray::fromStdString(k),
-                         QByteArray::fromStdString(v));
+    for (auto it = opts.extra_headers.constBegin();
+         it != opts.extra_headers.constEnd(); ++it) {
+        req.setRawHeader(it.key().toUtf8(), it.value().toUtf8());
     }
 }
 
@@ -165,21 +146,21 @@ void set_common_headers(QNetworkRequest& req,
 
 HttpClientTransport::HttpClientTransport(Options opts)
     : m_opts(std::move(opts)) {
-    QUrl url{QString::fromStdString(m_opts.url)};
+    QUrl url{m_opts.url};
     if (!url.isValid() || url.scheme().isEmpty()) {
         throw std::invalid_argument(
             "HttpClientTransport: URL must contain a scheme "
             "(http:// or https://)");
     }
     m_impl = std::make_unique<ClientImpl>(std::move(url));
-    if (m_opts.session_id.has_value()) {
-        m_session_id = *m_opts.session_id;
+    if (!m_opts.session_id.isNull()) {
+        m_session_id = m_opts.session_id;
     }
     // Seed the mutable m_access_token from Options. The Options copy
     // is no longer the source of truth; set_access_token rotates this
     // member so on_unauthorized callbacks can drive a token refresh.
-    if (m_opts.access_token.has_value()) {
-        m_access_token = *m_opts.access_token;
+    if (!m_opts.access_token.isNull()) {
+        m_access_token = m_opts.access_token;
     }
 }
 
@@ -197,7 +178,7 @@ void HttpClientTransport::on_close(CloseCallback cb) {
     m_on_close = std::move(cb);
 }
 
-std::optional<std::string> HttpClientTransport::session_id(void) const {
+QString HttpClientTransport::session_id(void) const {
     std::lock_guard<std::mutex> lk(m_session_id_mu);
     return m_session_id;
 }
@@ -233,14 +214,14 @@ void HttpClientTransport::close(void) {
     // HTTP DELETE on the MCP path so the server can free per-session
     // state immediately. Best-effort: failure here is fine — close()
     // always proceeds.
-    std::optional<std::string> sid;
+    QString sid;
     {
         std::lock_guard<std::mutex> lk(m_session_id_mu);
         sid = m_session_id;
     }
-    if (sid.has_value() && !sid->empty() && m_impl) {
+    if (!sid.isNull() && !sid.isEmpty() && m_impl) {
         try {
-            std::string token;
+            QString token;
             {
                 std::lock_guard<std::mutex> lk(m_auth_mu);
                 token = m_access_token;
@@ -288,7 +269,7 @@ void HttpClientTransport::fire_close(void) noexcept {
     try {
         m_on_close();
     } catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"HttpClientTransport on_close threw: "} +
+        MCP_LOG_ERROR(QString{"HttpClientTransport on_close threw: "} +
                       e.what());
     } catch (...) {
         MCP_LOG_ERROR("HttpClientTransport on_close threw a non-std exception");
@@ -301,20 +282,20 @@ void HttpClientTransport::deliver_error(std::error_code ec) noexcept {
     try {
         m_on_error(ec);
     } catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"HttpClientTransport on_error threw: "} +
+        MCP_LOG_ERROR(QString{"HttpClientTransport on_error threw: "} +
                       e.what());
     } catch (...) {
         MCP_LOG_ERROR("HttpClientTransport on_error threw a non-std exception");
     }
 }
 
-void HttpClientTransport::deliver_frame(std::string raw) {
+void HttpClientTransport::deliver_frame(QByteArray raw) {
     if (!m_on_message)
         return;
     try {
         m_on_message(std::move(raw));
     } catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"HttpClientTransport on_message threw: "} +
+        MCP_LOG_ERROR(QString{"HttpClientTransport on_message threw: "} +
                       e.what());
     } catch (...) {
         MCP_LOG_ERROR(
@@ -326,14 +307,14 @@ void HttpClientTransport::deliver_frame(std::string raw) {
 // Send path
 // =====================================================================
 
-std::error_code HttpClientTransport::send(std::string_view frame) {
+std::error_code HttpClientTransport::send(QByteArrayView frame) {
     if (!m_started.load(std::memory_order_acquire) ||
         m_closed.load(std::memory_order_acquire)) {
         return std::make_error_code(std::errc::not_connected);
     }
     {
         std::lock_guard<std::mutex> lk(m_out_mu);
-        m_out.emplace_back(frame);
+        m_out.emplace_back(frame.toByteArray());
         m_out_cv.notify_one();
     }
     return {};
@@ -349,7 +330,7 @@ void HttpClientTransport::worker_loop(void) {
     // transport had before (and each thread drives its own QNAM +
     // QEventLoop).
     while (true) {
-        std::string frame;
+        QByteArray frame;
         {
             std::unique_lock<std::mutex> lk(m_out_mu);
             m_out_cv.wait(lk, [this] {
@@ -374,13 +355,13 @@ void HttpClientTransport::worker_loop(void) {
     }
 }
 
-void HttpClientTransport::process_send(std::string frame) {
-    std::optional<std::string> sid;
+void HttpClientTransport::process_send(QByteArray frame) {
+    QString sid;
     {
         std::lock_guard<std::mutex> lk(m_session_id_mu);
         sid = m_session_id;
     }
-    std::string token;
+    QString token;
     {
         std::lock_guard<std::mutex> lk(m_auth_mu);
         token = m_access_token;
@@ -401,8 +382,7 @@ void HttpClientTransport::process_send(std::string frame) {
             static_cast<int>(m_opts.request_timeout.count()));
     }
 
-    QNetworkReply* reply = nam.post(
-        req, QByteArray(frame.data(), static_cast<qsizetype>(frame.size())));
+    QNetworkReply* reply = nam.post(req, frame);
     QEventLoop loop;
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     loop.exec();
@@ -418,8 +398,8 @@ void HttpClientTransport::process_send(std::string frame) {
         bool first_set = false;
         {
             std::lock_guard<std::mutex> lk(m_session_id_mu);
-            first_set = !m_session_id.has_value();
-            m_session_id = sid_hdr.toStdString();
+            first_set = m_session_id.isNull();
+            m_session_id = sid_hdr;
         }
         if (first_set)
             m_session_id_cv.notify_all();
@@ -448,8 +428,7 @@ void HttpClientTransport::process_send(std::string frame) {
         // Many in-flight POSTs hitting a 401 batch would otherwise
         // each call the callback, racing the application's refresh.
         // Fire ONCE per batch — re-arm on the next 2xx.
-        const std::string challenge =
-            reply->rawHeader("WWW-Authenticate").toStdString();
+        const QString challenge = reply->rawHeader("WWW-Authenticate");
         bool expected = true;
         if (m_opts.on_unauthorized &&
             m_auth_callback_armed.compare_exchange_strong(
@@ -469,26 +448,27 @@ void HttpClientTransport::process_send(std::string frame) {
     // Any 2xx re-arms the dedup flag.
     m_auth_callback_armed.store(true, std::memory_order_release);
 
-    const std::string ct = reply->rawHeader("Content-Type").toStdString();
-    std::string body = reply->readAll().toStdString();
+    const QByteArray ct = reply->rawHeader("Content-Type");
+    const QByteArray body = reply->readAll();
 
-    if (ct.find("text/event-stream") != std::string::npos) {
-        drain_sse(body, [this](SseEvent se) {
+    if (ct.contains("text/event-stream")) {
+        QString text = QString::fromUtf8(body);
+        drain_sse(text, [this](SseEvent se) {
             // Track the last-seen event id so a future reconnect
             // (typically on the GET stream) can resume via
             // Last-Event-ID.
-            if (se.id.has_value() && !se.id->empty()) {
+            if (!se.id.isNull() && !se.id.isEmpty()) {
                 std::lock_guard<std::mutex> lk(m_get_mu_state);
-                m_last_event_id = *se.id;
+                m_last_event_id = se.id;
             }
-            if (!se.data.empty())
-                deliver_frame(std::move(se.data));
+            if (!se.data.isEmpty())
+                deliver_frame(se.data.toUtf8());
         });
         return;
     }
     // `application/json` and unknown content-types both pass the body
     // through unchanged.
-    deliver_frame(std::move(body));
+    deliver_frame(body);
 }
 
 // =====================================================================
@@ -505,21 +485,21 @@ void HttpClientTransport::run_get_stream(void) noexcept {
     // would otherwise race).
     while (m_started.load(std::memory_order_acquire) &&
            !m_closed.load(std::memory_order_acquire)) {
-        std::optional<std::string> sid;
+        QString sid;
         {
             std::unique_lock<std::mutex> lk(m_session_id_mu);
             m_session_id_cv.wait(lk, [this] {
-                return m_session_id.has_value() ||
+                return !m_session_id.isNull() ||
                        m_closed.load(std::memory_order_acquire);
             });
             if (m_closed.load(std::memory_order_acquire))
                 return;
             sid = m_session_id;
         }
-        if (!sid.has_value())
+        if (sid.isNull())
             continue;
 
-        std::string token;
+        QString token;
         {
             std::lock_guard<std::mutex> lk(m_auth_mu);
             token = m_access_token;
@@ -527,7 +507,7 @@ void HttpClientTransport::run_get_stream(void) noexcept {
         // Resumability: hand back the last event id we saw on this
         // session so the server can replay anything we missed during
         // the disconnect.
-        std::string last_event_id;
+        QString last_event_id;
         {
             std::lock_guard<std::mutex> lk(m_get_mu_state);
             last_event_id = m_last_event_id;
@@ -540,22 +520,22 @@ void HttpClientTransport::run_get_stream(void) noexcept {
         // The GET stream stays open indefinitely; no transfer timeout.
         // Heartbeats keep it alive.
 
-        std::string buf;
+        QString buf;
         QNetworkReply* reply = nam.get(req);
         QEventLoop loop;
         QObject::connect(reply, &QNetworkReply::readyRead, &loop, [&] {
-            buf.append(reply->readAll());
+            buf += QString::fromUtf8(reply->readAll());
             drain_sse(buf, [this](SseEvent se) {
-                if (se.id.has_value() && !se.id->empty()) {
+                if (!se.id.isNull() && !se.id.isEmpty()) {
                     std::lock_guard<std::mutex> lk(m_get_mu_state);
-                    m_last_event_id = *se.id;
+                    m_last_event_id = se.id;
                 }
                 if (se.retry_ms.has_value()) {
                     std::lock_guard<std::mutex> lk(m_get_mu_state);
                     m_next_retry_ms = se.retry_ms;
                 }
-                if (!se.data.empty())
-                    deliver_frame(std::move(se.data));
+                if (!se.data.isEmpty())
+                    deliver_frame(se.data.toUtf8());
             });
         });
         QObject::connect(reply, &QNetworkReply::finished, &loop,
@@ -563,18 +543,18 @@ void HttpClientTransport::run_get_stream(void) noexcept {
         loop.exec();
 
         // Drain anything that arrived after the last readyRead.
-        buf.append(reply->readAll());
+        buf += QString::fromUtf8(reply->readAll());
         drain_sse(buf, [this](SseEvent se) {
-            if (se.id.has_value() && !se.id->empty()) {
+            if (!se.id.isNull() && !se.id.isEmpty()) {
                 std::lock_guard<std::mutex> lk(m_get_mu_state);
-                m_last_event_id = *se.id;
+                m_last_event_id = se.id;
             }
             if (se.retry_ms.has_value()) {
                 std::lock_guard<std::mutex> lk(m_get_mu_state);
                 m_next_retry_ms = se.retry_ms;
             }
-            if (!se.data.empty())
-                deliver_frame(std::move(se.data));
+            if (!se.data.isEmpty())
+                deliver_frame(se.data.toUtf8());
         });
 
         const int status =
@@ -594,8 +574,7 @@ void HttpClientTransport::run_get_stream(void) noexcept {
         // this one) to recover.
         if (status == 401 || status == 403) {
             if (m_opts.on_unauthorized) {
-                const std::string challenge =
-                    reply->rawHeader("WWW-Authenticate").toStdString();
+                const QString challenge = reply->rawHeader("WWW-Authenticate");
                 try {
                     m_opts.on_unauthorized(status, challenge);
                 } catch (...) {
@@ -613,7 +592,7 @@ void HttpClientTransport::run_get_stream(void) noexcept {
         if (status == 404) {
             {
                 std::lock_guard<std::mutex> lk(m_session_id_mu);
-                m_session_id.reset();
+                m_session_id = QString();
             }
             return;
         }
@@ -646,12 +625,12 @@ void HttpClientTransport::run_get_stream(void) noexcept {
 // Mutable access-token API
 // =====================================================================
 
-void HttpClientTransport::set_access_token(std::string token) {
+void HttpClientTransport::set_access_token(QString token) {
     std::lock_guard<std::mutex> lk(m_auth_mu);
     m_access_token = std::move(token);
 }
 
-std::string HttpClientTransport::access_token(void) const {
+QString HttpClientTransport::access_token(void) const {
     std::lock_guard<std::mutex> lk(m_auth_mu);
     return m_access_token;
 }

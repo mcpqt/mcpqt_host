@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (plugin-first server)
 
+- **Qt value types throughout.** The wire types and public APIs now use
+  `QString`, `QList`, `QStringView`, and `QByteArrayView` instead of
+  `std::string`, `std::vector`, and `std::string_view`. Optional strings are
+  represented by a null `QString` (`put_optional_string`/`take_optional_string`)
+  instead of `std::optional<QString>`; `std::optional` remains for non-string
+  fields, and closed sum types keep `std::variant`. Transport frames and raw
+  HTTP/SSE parsing use `QByteArray`/`QByteArrayView` (bytes, not text).
 - **Host services are registry functions.** `claimLogging` and `elicit` are no
   longer members of `HostInterface`. They are listed by `getFuncs()` as
   `bool mcp::Host::claimLogging(QString)` and

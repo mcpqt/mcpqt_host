@@ -132,7 +132,7 @@ void Session::HandlerThrowingMcpErrorPropagates(void) {
         QFAIL("expected Error");
     } catch (const mcp::Error& e) {
         QCOMPARE(e.code(), mcp::error_code::invalid_params);
-        QCOMPARE(e.message(), std::string{"bad"});
+        QCOMPARE(e.message(), QString{"bad"});
         QCOMPARE(e.data()["why"], mcp::test::jv("missing"));
     }
 
@@ -206,7 +206,7 @@ void Session::RequestTimeoutFiresErrorOnFuture(void) {
         QFAIL("expected timeout error");
     } catch (const mcp::Error& e) {
         QCOMPARE(e.code(), mcp::error_code::internal_error);
-        QVERIFY(e.message().find("timed out") != std::string::npos);
+        QVERIFY(e.message().contains("timed out"));
     }
 
     sp.a->close();
@@ -238,10 +238,10 @@ void Session::IdsForDifferentRequestsAreDistinct(void) {
     // can run on either thread first — the bookkeeping must be
     // thread-safe.
     std::mutex ids_mu;
-    std::vector<std::string> ids;
+    QList<QString> ids;
     sp.b->set_request_handler("tag", [&](const Json& p) -> Json {
         std::lock_guard<std::mutex> lk(ids_mu);
-        ids.push_back(mcp::from_json<std::string>(p["id"]));
+        ids.push_back(mcp::from_json<QString>(p["id"]));
         return {};
     });
     auto f1 = sp.a->send_request("tag", QJsonObject{{"id", "x"}}, 2s);
@@ -328,3 +328,5 @@ int main(int argc, char** argv) {
 }
 
 #include "session_test.moc"
+#include <QList>
+#include <QString>

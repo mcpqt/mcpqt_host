@@ -28,7 +28,7 @@ private slots:
 void ErrorObject::DefaultConstructibleAndDataAbsent(void) {
     mcp::ErrorObject e{};
     QCOMPARE(e.code, 0);
-    QVERIFY(e.message.empty());
+    QVERIFY(e.message.isEmpty());
     QVERIFY(!e.has_data());
 }
 
@@ -42,7 +42,7 @@ void ErrorException::CarriesCodeMessageAndData(void) {
     const QJsonObject extra{{"why", "because"}};
     mcp::Error err{mcp::error_code::invalid_params, "bad arg", extra};
     QCOMPARE(err.code(), mcp::error_code::invalid_params);
-    QCOMPARE(err.message(), std::string{"bad arg"});
+    QCOMPARE(err.message(), QString{"bad arg"});
     QCOMPARE(err.data(), mcp::Json{extra});
     QCOMPARE(QString::fromUtf8(err.what()), QStringLiteral("bad arg"));
 }
@@ -83,3 +83,4 @@ int main(int argc, char** argv) {
 }
 
 #include "error_test.moc"
+#include <QString>

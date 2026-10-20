@@ -7,6 +7,8 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <QByteArrayView>
+#include <QString>
 #include <cerrno>
 #include <cstring>
 #include <string>
@@ -147,18 +149,18 @@ void StdioTransport::close(void) {
     fire_close();
 }
 
-std::error_code StdioTransport::send(std::string_view frame) {
+std::error_code StdioTransport::send(QByteArrayView frame) {
     if (!m_running.load(std::memory_order_acquire)) {
         return std::make_error_code(std::errc::not_connected);
     }
-    if (frame.find('\n') != std::string_view::npos) {
+    if (frame.indexOf('\n') != -1) {
         // Per spec: frames MUST NOT contain embedded newlines.
         return std::make_error_code(std::errc::invalid_argument);
     }
 
     std::lock_guard<std::mutex> lk(m_write_mutex);
     const char* data = frame.data();
-    std::size_t left = frame.size();
+    std::size_t left = static_cast<std::size_t>(frame.size());
     while (left > 0) {
         ssize_t n = ::write(m_opts.write_fd, data, left);
         if (n < 0) {
@@ -183,7 +185,7 @@ std::error_code StdioTransport::send(std::string_view frame) {
 }
 
 void StdioTransport::read_loop(void) noexcept {
-    std::string buffer;
+    QByteArray buffer;
     buffer.reserve(kReadChunkBytes);
 
     char chunk[kReadChunkBytes];
@@ -239,14 +241,14 @@ void StdioTransport::read_loop(void) noexcept {
                     // we hand the buffer up. Per MCP spec the delimiter
                     // is '\n', so this keeps interop with peers that
                     // happen to ship CRLF without a fight.
-                    if (!buffer.empty() && buffer.back() == '\r') {
-                        buffer.pop_back();
+                    if (!buffer.isEmpty() && buffer.back() == '\r') {
+                        buffer.chop(1);
                     }
-                    if (!buffer.empty() && m_on_message) {
+                    if (!buffer.isEmpty() && m_on_message) {
                         try {
                             m_on_message(std::move(buffer));
                         } catch (const std::exception& e) {
-                            MCP_LOG_ERROR(std::string{"on_message threw: "} +
+                            MCP_LOG_ERROR(QString{"on_message threw: "} +
                                           e.what());
                         } catch (...) {
                             MCP_LOG_ERROR(
@@ -257,7 +259,8 @@ void StdioTransport::read_loop(void) noexcept {
                     buffer.reserve(kReadChunkBytes);
                     continue;
                 }
-                if (buffer.size() >= m_opts.max_frame_bytes) {
+                if (static_cast<std::size_t>(buffer.size()) >=
+                    m_opts.max_frame_bytes) {
                     deliver_error(
                         std::make_error_code(std::errc::message_size));
                     return fire_close();
@@ -278,7 +281,7 @@ void StdioTransport::deliver_error(std::error_code ec) noexcept {
     try {
         m_on_error(ec);
     } catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"on_error threw: "} + e.what());
+        MCP_LOG_ERROR(QString{"on_error threw: "} + e.what());
     } catch (...) {
         MCP_LOG_ERROR("on_error threw a non-std exception");
     }
@@ -299,7 +302,7 @@ void StdioTransport::fire_close(void) noexcept {
     try {
         m_on_close();
     } catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"on_close threw: "} + e.what());
+        MCP_LOG_ERROR(QString{"on_close threw: "} + e.what());
     } catch (...) {
         MCP_LOG_ERROR("on_close threw a non-std exception");
     }

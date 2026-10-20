@@ -197,7 +197,7 @@ void ResourcesIntegration::ListAndRead(void) {
                 .name = "hello",
                 .mime_type = "text/plain",
             },
-            [](const std::string& uri) {
+            [](const QString& uri) {
                 return mcp::ReadResourceResult{
                     .contents = {mcp::TextResourceContents{
                         .uri = uri,
@@ -212,7 +212,7 @@ void ResourcesIntegration::ListAndRead(void) {
                 .name = "bin",
                 .mime_type = "application/octet-stream",
             },
-            [](const std::string& uri) {
+            [](const QString& uri) {
                 return mcp::ReadResourceResult{
                     .contents = {mcp::BlobResourceContents{
                         .uri = uri,
@@ -236,7 +236,7 @@ void ResourcesIntegration::ListAndRead(void) {
     QVERIFY(
         std::holds_alternative<mcp::TextResourceContents>(read.contents[0]));
     QCOMPARE(std::get<mcp::TextResourceContents>(read.contents[0]).text,
-             std::string{"hello, world\n"});
+             QString{"hello, world\n"});
 
     auto blob = client.read_resource("file:///bin").get();
     QCOMPARE(blob.contents.size(), std::size_t{1});
@@ -249,9 +249,8 @@ void ResourcesIntegration::ListAndRead(void) {
 void ResourcesIntegration::MissingResourceMapsToError(void) {
     auto p = mcp::test::make_in_memory_pair();
     ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.resource(
-            mcp::Resource{.uri = "file:///x", .name = "x"},
-            [](const std::string&) { return mcp::ReadResourceResult{}; });
+        s.resource(mcp::Resource{.uri = "file:///x", .name = "x"},
+                   [](const QString&) { return mcp::ReadResourceResult{}; });
     });
 
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
@@ -272,7 +271,7 @@ void ResourcesIntegration::MissingResourceMapsToError(void) {
 void ResourcesIntegration::FallbackHandlesUnknownUri(void) {
     auto p = mcp::test::make_in_memory_pair();
     ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.fallback_resource_handler([](const std::string& uri) {
+        s.fallback_resource_handler([](const QString& uri) {
             return mcp::ReadResourceResult{
                 .contents = {mcp::TextResourceContents{
                     .uri = uri,
@@ -289,7 +288,7 @@ void ResourcesIntegration::FallbackHandlesUnknownUri(void) {
     auto read = client.read_resource("file:///anything").get();
     QCOMPARE(read.contents.size(), std::size_t{1});
     QVERIFY(std::get<mcp::TextResourceContents>(read.contents[0])
-                .text.find("fallback") != std::string::npos);
+                .text.contains("fallback"));
 
     client.disconnect();
 }
@@ -310,7 +309,7 @@ void ResourcesIntegration::ResourceTemplateIsReturned(void) {
     auto list = client.list_resource_templates().get();
     QCOMPARE(list.resource_templates.size(), std::size_t{1});
     QCOMPARE(list.resource_templates[0].uri_template,
-             std::string{"file:///{name}.txt"});
+             QString{"file:///{name}.txt"});
 
     client.disconnect();
 }
@@ -330,3 +329,4 @@ int main(int argc, char** argv) {
 }
 
 #include "resources_test.moc"
+#include <QString>

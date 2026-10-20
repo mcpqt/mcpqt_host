@@ -9,6 +9,7 @@
 #include <QMetaMethod>
 #include <QMetaObject>
 
+#include <QString>
 #include <cstring>
 
 namespace mcp {

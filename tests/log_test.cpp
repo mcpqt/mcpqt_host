@@ -16,7 +16,7 @@ namespace {
 
 struct CapturedLine {
     mcp::LogLevel level;
-    std::string message;
+    QString message;
 };
 
 }  // namespace
@@ -34,13 +34,13 @@ private slots:
     void ResettingSinkRestoresDefault(void);
 
 private:
-    std::vector<CapturedLine> drain(void) {
+    QList<CapturedLine> drain(void) {
         std::lock_guard<std::mutex> lk(m_mu);
         return std::move(m_captured);
     }
 
     std::mutex m_mu;
-    std::vector<CapturedLine> m_captured;
+    QList<CapturedLine> m_captured;
     mcp::LogLevel m_prev_level{mcp::LogLevel::info};
 };
 
@@ -53,9 +53,9 @@ private slots:
 void LogTest::init(void) {
     m_prev_level = mcp::log_level();
     mcp::set_log_level(mcp::LogLevel::trace);
-    (void)mcp::set_log_sink([this](mcp::LogLevel lvl, std::string_view msg) {
+    (void)mcp::set_log_sink([this](mcp::LogLevel lvl, QString msg) {
         std::lock_guard<std::mutex> lk(m_mu);
-        m_captured.push_back({lvl, std::string(msg)});
+        m_captured.push_back({lvl, QString(msg)});
     });
 }
 
@@ -74,7 +74,7 @@ void LogTest::EmitsAtAllLevels(void) {
     auto lines = drain();
     QCOMPARE(lines.size(), std::size_t{5});
     QCOMPARE(lines[0].level, mcp::LogLevel::trace);
-    QCOMPARE(lines[0].message, std::string("t"));
+    QCOMPARE(lines[0].message, QString("t"));
     QCOMPARE(lines[4].level, mcp::LogLevel::error);
 }
 
@@ -107,7 +107,7 @@ void LogTest::ConcurrentEmittersAreSerialized(void) {
     for (int t = 0; t < kThreads; ++t) {
         ts.emplace_back([t]() {
             for (int i = 0; i < kPer; ++i) {
-                MCP_LOG_INFO(std::string("thread ") + std::to_string(t));
+                MCP_LOG_INFO(QString("thread ") + QString::number(t));
             }
         });
     }
@@ -147,3 +147,5 @@ int main(int argc, char** argv) {
 }
 
 #include "log_test.moc"
+#include <QList>
+#include <QString>

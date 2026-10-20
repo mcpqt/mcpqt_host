@@ -7,6 +7,8 @@
 #include "session.h"
 #include "transport.h"
 
+#include <QHash>
+#include <QString>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -121,7 +123,7 @@ std::future<InitializeResult> Client::initialize(void) {
         }
     }
     InitializeRequestParams params{
-        .protocol_version = std::string{kLatestProtocolVersion},
+        .protocol_version = QString{kLatestProtocolVersion},
         .capabilities = std::move(caps),
         .client_info = m_client_info,
     };
@@ -130,19 +132,20 @@ std::future<InitializeResult> Client::initialize(void) {
         std::launch::async,
         [this, session, payload = to_json(params)]() -> InitializeResult {
             auto raw =
-                session->send_request(std::string{method_initialize}, payload)
+                session->send_request(QString{method_initialize}, payload)
                     .get();
             auto res = from_json<InitializeResult>(raw);
             {
                 std::lock_guard<std::mutex> lk(m_server_mu);
                 m_server = res;
             }
-            const auto note_ec = session->send_notification(
-                std::string{method_notifications_initialized});
+            const auto note_ec =
+                session->send_notification(method_notifications_initialized);
             if (note_ec) {
                 throw Error{error_code::internal_error,
-                            "failed to send notifications/initialized: " +
-                                note_ec.message()};
+                            QStringLiteral(
+                                "failed to send notifications/initialized: ") +
+                                note_ec.message().c_str()};
             }
             return res;
         });
@@ -152,20 +155,18 @@ std::future<InitializeResult> Client::initialize(void) {
 // tools
 // =====================================================================
 
-std::future<ListToolsResult>
-Client::list_tools(std::optional<std::string> cursor) {
+std::future<ListToolsResult> Client::list_tools(QString cursor) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
     }
     ListToolsRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListToolsResult>(
-        std::string{method_tools_list}, to_json(params),
+        QString{method_tools_list}, to_json(params),
         [](Json j) { return from_json<ListToolsResult>(j); });
 }
 
-std::future<CallToolResult> Client::call_tool(std::string name,
-                                              Json arguments) {
+std::future<CallToolResult> Client::call_tool(QString name, Json arguments) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
@@ -178,12 +179,12 @@ std::future<CallToolResult> Client::call_tool(std::string name,
         .task = std::nullopt,
     };
     return session->send_request_for<CallToolResult>(
-        std::string{method_tools_call}, to_json(params),
+        QString{method_tools_call}, to_json(params),
         [](Json j) { return from_json<CallToolResult>(j); });
 }
 
 std::future<CreateTaskResult>
-Client::call_tool_as_task(std::string name, Json arguments,
+Client::call_tool_as_task(QString name, Json arguments,
                           std::optional<std::int64_t> ttl_ms) {
     auto session = acquire_session();
     if (!session) {
@@ -197,22 +198,22 @@ Client::call_tool_as_task(std::string name, Json arguments,
         .task = TaskAugmentation{.ttl = ttl_ms},
     };
     return session->send_request_for<CreateTaskResult>(
-        std::string{method_tools_call}, to_json(params),
+        QString{method_tools_call}, to_json(params),
         [](Json j) { return from_json<CreateTaskResult>(j); });
 }
 
-std::future<Task> Client::task_get(std::string task_id) {
+std::future<Task> Client::task_get(QString task_id) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
     }
     return session->send_request_for<Task>(
-        std::string{method_tasks_get},
+        QString{method_tasks_get},
         to_json(GetTaskRequestParams{.task_id = std::move(task_id)}),
         [](Json j) { return from_json<Task>(j); });
 }
 
-std::future<Json> Client::task_result(std::string task_id) {
+std::future<Json> Client::task_result(QString task_id) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
@@ -220,29 +221,28 @@ std::future<Json> Client::task_result(std::string task_id) {
     // Already a future<json>; no conversion needed, so return the
     // Session future directly (no per-call worker thread).
     return session->send_request(
-        std::string{method_tasks_result},
+        QString{method_tasks_result},
         to_json(GetTaskResultRequestParams{.task_id = std::move(task_id)}));
 }
 
-std::future<ListTasksResult>
-Client::task_list(std::optional<std::string> cursor) {
+std::future<ListTasksResult> Client::task_list(QString cursor) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
     }
     ListTasksRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListTasksResult>(
-        std::string{method_tasks_list}, to_json(params),
+        QString{method_tasks_list}, to_json(params),
         [](Json j) { return from_json<ListTasksResult>(j); });
 }
 
-std::future<Task> Client::task_cancel(std::string task_id) {
+std::future<Task> Client::task_cancel(QString task_id) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
     }
     return session->send_request_for<Task>(
-        std::string{method_tasks_cancel},
+        QString{method_tasks_cancel},
         to_json(CancelTaskRequestParams{.task_id = std::move(task_id)}),
         [](Json j) { return from_json<Task>(j); });
 }
@@ -255,7 +255,7 @@ void Client::set_task_status_handler(TaskStatusHandler handler) {
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         m_task_status_handler = handler;
     }
-    const std::string method{method_notifications_tasks_status};
+    const QString method{method_notifications_tasks_status};
     if (handler) {
         session->set_notification_handler(
             method, [h = std::move(handler)](const Json& params) {
@@ -280,53 +280,52 @@ void Client::set_task_status_handler(TaskStatusHandler handler) {
 // resources
 // =====================================================================
 
-std::future<ListResourcesResult>
-Client::list_resources(std::optional<std::string> cursor) {
+std::future<ListResourcesResult> Client::list_resources(QString cursor) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
     ListResourcesRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListResourcesResult>(
-        std::string{method_resources_list}, to_json(params),
+        QString{method_resources_list}, to_json(params),
         [](Json j) { return from_json<ListResourcesResult>(j); });
 }
 
 std::future<ListResourceTemplatesResult>
-Client::list_resource_templates(std::optional<std::string> cursor) {
+Client::list_resource_templates(QString cursor) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
     ListResourceTemplatesRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListResourceTemplatesResult>(
-        std::string{method_resources_templates_list}, to_json(params),
+        QString{method_resources_templates_list}, to_json(params),
         [](Json j) { return from_json<ListResourceTemplatesResult>(j); });
 }
 
-std::future<ReadResourceResult> Client::read_resource(std::string uri) {
+std::future<ReadResourceResult> Client::read_resource(QString uri) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
     ReadResourceRequestParams params{.uri = std::move(uri)};
     return session->send_request_for<ReadResourceResult>(
-        std::string{method_resources_read}, to_json(params),
+        QString{method_resources_read}, to_json(params),
         [](Json j) { return from_json<ReadResourceResult>(j); });
 }
 
-std::future<void> Client::subscribe(std::string uri) {
+std::future<void> Client::subscribe(QString uri) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
     SubscribeRequestParams params{.uri = std::move(uri)};
-    return session->send_request_void(std::string{method_resources_subscribe},
+    return session->send_request_void(QString{method_resources_subscribe},
                                       to_json(params));
 }
 
-std::future<void> Client::unsubscribe(std::string uri) {
+std::future<void> Client::unsubscribe(QString uri) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
     UnsubscribeRequestParams params{.uri = std::move(uri)};
-    return session->send_request_void(std::string{method_resources_unsubscribe},
+    return session->send_request_void(QString{method_resources_unsubscribe},
                                       to_json(params));
 }
 
@@ -334,7 +333,7 @@ void Client::set_resource_updated_handler(ResourceUpdatedHandler handler) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
-    const std::string method{method_notifications_resources_updated};
+    const QString method{method_notifications_resources_updated};
     if (handler) {
         session->set_notification_handler(
             method, [h = std::move(handler)](const Json& params) {
@@ -351,7 +350,7 @@ void Client::set_resources_list_changed_handler(ListChangedHandler handler) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
-    const std::string method{method_notifications_resources_list_changed};
+    const QString method{method_notifications_resources_list_changed};
     if (handler) {
         session->set_notification_handler(
             method, [h = std::move(handler)](const Json&) { h(); });
@@ -364,20 +363,19 @@ void Client::set_resources_list_changed_handler(ListChangedHandler handler) {
 // prompts
 // =====================================================================
 
-std::future<ListPromptsResult>
-Client::list_prompts(std::optional<std::string> cursor) {
+std::future<ListPromptsResult> Client::list_prompts(QString cursor) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
     ListPromptsRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListPromptsResult>(
-        std::string{method_prompts_list}, to_json(params),
+        QString{method_prompts_list}, to_json(params),
         [](Json j) { return from_json<ListPromptsResult>(j); });
 }
 
-std::future<GetPromptResult> Client::get_prompt(
-    std::string name,
-    std::optional<std::unordered_map<std::string, std::string>> arguments) {
+std::future<GetPromptResult>
+Client::get_prompt(QString name,
+                   std::optional<QHash<QString, QString>> arguments) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
@@ -386,7 +384,7 @@ std::future<GetPromptResult> Client::get_prompt(
         .arguments = std::move(arguments),
     };
     return session->send_request_for<GetPromptResult>(
-        std::string{method_prompts_get}, to_json(params),
+        QString{method_prompts_get}, to_json(params),
         [](Json j) { return from_json<GetPromptResult>(j); });
 }
 
@@ -394,7 +392,7 @@ void Client::set_prompts_list_changed_handler(ListChangedHandler handler) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
-    const std::string method{method_notifications_prompts_list_changed};
+    const QString method{method_notifications_prompts_list_changed};
     if (handler) {
         session->set_notification_handler(
             method, [h = std::move(handler)](const Json&) { h(); });
@@ -407,8 +405,7 @@ void Client::set_prompts_list_changed_handler(ListChangedHandler handler) {
 // Cancellation, ping, log, progress
 // =====================================================================
 
-std::error_code Client::cancel_request(RequestId request_id,
-                                       std::optional<std::string> reason) {
+std::error_code Client::cancel_request(RequestId request_id, QString reason) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
@@ -417,15 +414,15 @@ std::error_code Client::cancel_request(RequestId request_id,
         .request_id = std::move(request_id),
         .reason = std::move(reason),
     };
-    return session->send_notification(
-        std::string{method_notifications_cancelled}, to_json(params));
+    return session->send_notification(QString{method_notifications_cancelled},
+                                      to_json(params));
 }
 
 std::future<void> Client::ping(void) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
-    return session->send_request_void(std::string{method_ping}, {});
+    return session->send_request_void(QString{method_ping}, {});
 }
 
 std::future<void> Client::set_log_level(LoggingLevel level) {
@@ -433,7 +430,7 @@ std::future<void> Client::set_log_level(LoggingLevel level) {
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
     SetLevelRequestParams params{.level = level};
-    return session->send_request_void(std::string{method_logging_set_level},
+    return session->send_request_void(QString{method_logging_set_level},
                                       to_json(params));
 }
 
@@ -441,7 +438,7 @@ void Client::set_log_message_handler(LogMessageHandler handler) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
-    const std::string method{method_notifications_message};
+    const QString method{method_notifications_message};
     if (handler) {
         session->set_notification_handler(
             method, [h = std::move(handler)](const Json& params) {
@@ -458,7 +455,7 @@ void Client::set_progress_handler(ProgressHandler handler) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
-    const std::string method{method_notifications_progress};
+    const QString method{method_notifications_progress};
     if (handler) {
         session->set_notification_handler(
             method, [h = std::move(handler)](const Json& params) {
@@ -483,7 +480,7 @@ void Client::set_sampling_handler(SamplingHandler handler) {
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         m_sampling_handler = handler;
     }
-    const std::string method{method_sampling_create_message};
+    const QString method{method_sampling_create_message};
     if (handler) {
         session->set_request_handler(
             method, [h = std::move(handler)](const Json& params) -> Json {
@@ -496,7 +493,7 @@ void Client::set_sampling_handler(SamplingHandler handler) {
                     parsed = from_json<CreateMessageRequestParams>(params);
                 } catch (const std::exception& e) {
                     throw Error{error_code::invalid_params,
-                                std::string{"invalid sampling params: "} +
+                                QString{"invalid sampling params: "} +
                                     e.what()};
                 }
                 return to_json(h(parsed));
@@ -514,7 +511,7 @@ void Client::set_elicitation_handler(ElicitationHandler handler) {
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         m_elicitation_handler = handler;
     }
-    const std::string method{method_elicitation_create};
+    const QString method{method_elicitation_create};
     if (handler) {
         session->set_request_handler(
             method, [h = std::move(handler)](const Json& params) -> Json {
@@ -529,7 +526,7 @@ void Client::set_elicitation_handler(ElicitationHandler handler) {
                     throw;
                 } catch (const std::exception& e) {
                     throw Error{error_code::invalid_params,
-                                std::string{"invalid elicitation params: "} +
+                                QString{"invalid elicitation params: "} +
                                     e.what()};
                 }
                 return to_json(h(parsed));
@@ -548,7 +545,7 @@ void Client::set_elicitation_complete_handler(
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         m_elicitation_complete_handler = handler;
     }
-    const std::string method{method_notifications_elicitation_complete};
+    const QString method{method_notifications_elicitation_complete};
     if (handler) {
         session->set_notification_handler(method, [h = std::move(handler)](
                                                       const Json& params) {
@@ -559,7 +556,7 @@ void Client::set_elicitation_complete_handler(
                 parsed =
                     from_json<ElicitationCompleteNotificationParams>(params);
             } catch (const std::exception& e) {
-                MCP_LOG_WARN(std::string{"malformed elicitation/complete: "} +
+                MCP_LOG_WARN(QString{"malformed elicitation/complete: "} +
                              e.what());
                 return;
             } catch (...) {
@@ -581,7 +578,7 @@ void Client::set_roots_list_handler(RootsListHandler handler) {
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         m_roots_handler = handler;
     }
-    const std::string method{method_roots_list};
+    const QString method{method_roots_list};
     if (handler) {
         session->set_request_handler(
             method, [h = std::move(handler)](const Json&) -> Json {
@@ -594,8 +591,7 @@ void Client::set_roots_list_handler(RootsListHandler handler) {
 
 std::future<CompleteResult>
 Client::complete(CompletionReference reference, CompleteArgument argument,
-                 std::optional<std::unordered_map<std::string, std::string>>
-                     context_arguments) {
+                 std::optional<QHash<QString, QString>> context_arguments) {
     auto session = acquire_session();
     if (!session)
         throw Error{error_code::internal_error, "client not connected"};
@@ -605,7 +601,7 @@ Client::complete(CompletionReference reference, CompleteArgument argument,
         .context_arguments = std::move(context_arguments),
     };
     return session->send_request_for<CompleteResult>(
-        std::string{method_completion_complete}, to_json(params),
+        QString{method_completion_complete}, to_json(params),
         [](Json j) { return from_json<CompleteResult>(j); });
 }
 
@@ -620,16 +616,15 @@ std::error_code Client::notify_roots_list_changed(void) {
         return std::make_error_code(std::errc::not_connected);
     }
     return session->send_notification(
-        std::string{method_notifications_roots_list_changed});
+        QString{method_notifications_roots_list_changed});
 }
 
-std::error_code
-Client::notify_elicitation_complete(std::string elicitation_id) {
+std::error_code Client::notify_elicitation_complete(QString elicitation_id) {
     auto session = acquire_session();
     if (!session)
         return std::make_error_code(std::errc::not_connected);
     return session->send_notification(
-        std::string{method_notifications_elicitation_complete},
+        QString{method_notifications_elicitation_complete},
         to_json(ElicitationCompleteNotificationParams{
             .elicitation_id = std::move(elicitation_id),
         }));

@@ -23,9 +23,12 @@ share.
 - **Spec-faithful.** Field names, method names, and behaviors match the
   [official TypeScript schema](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.ts)
   verbatim.
-- **Idiomatic C++20.** RAII, value semantics, `std::variant` for sum types,
-  futures for async results, no inheritance hierarchies where composition will
-  do.
+- **Qt-native value types.** Strings and byte frames use `QString` /
+  `QByteArray` / `QStringView` / `QByteArrayView`; lists use `QList`. Closed
+  sum types use `std::variant`, and `std::optional` remains for non-string
+  optionals (optional strings are null `QString`s).
+- **Idiomatic C++20.** RAII, value semantics, futures for async results, no
+  inheritance hierarchies where composition will do.
 - **Small surface, big leverage.** A focused public API; most of the work
   happens behind a few well-named types.
 - **Production-ready.** Sanitizer-clean, thread-safe where it must be, no

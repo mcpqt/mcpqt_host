@@ -30,6 +30,9 @@
 #include "protocol.h"
 #include "transport.h"
 
+#include <QByteArray>
+#include <QHash>
+#include <QString>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -76,18 +79,18 @@ public:
     /// for races against the first frame to be impossible; calling later
     /// is also safe but the first matching frame may have already been
     /// rejected as method-not-found.
-    void set_request_handler(std::string method, RequestHandler h);
+    void set_request_handler(QString method, RequestHandler h);
 
     /// Register a handler for inbound notifications with the given method.
-    void set_notification_handler(std::string method, NotificationHandler h);
+    void set_notification_handler(QString method, NotificationHandler h);
 
     /// Remove a previously-registered request handler. After this returns,
     /// inbound requests with `method` route to the fallback handler (or
     /// produce method_not_found if no fallback is set).
-    void clear_request_handler(const std::string& method);
+    void clear_request_handler(const QString& method);
 
     /// Remove a previously-registered notification handler.
-    void clear_notification_handler(const std::string& method);
+    void clear_notification_handler(const QString& method);
 
     /// Fallback handler invoked when no method-specific request handler
     /// matches. The default rejects with method_not_found.
@@ -112,7 +115,7 @@ public:
     /// Send a JSON-RPC request and return a future for its result.
     /// `timeout` of zero means use `Options::default_request_timeout`.
     [[nodiscard]] std::future<Json> send_request(
-        std::string method, Json params = {},
+        QString method, Json params = {},
         std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
 
     /// Send a JSON-RPC request and return a future for a *typed* result.
@@ -125,7 +128,7 @@ public:
     /// background).
     template <class T>
     [[nodiscard]] std::future<T> send_request_for(
-        std::string method, Json params, std::function<T(Json)> convert,
+        QString method, Json params, std::function<T(Json)> convert,
         std::chrono::milliseconds timeout = std::chrono::milliseconds{0}) {
         auto pr = std::make_shared<std::promise<T>>();
         auto fut = pr->get_future();
@@ -147,11 +150,11 @@ public:
     /// payload the caller cares about (`ping`, `subscribe`, ...). The
     /// future resolves to void on success and throws on error.
     [[nodiscard]] std::future<void> send_request_void(
-        std::string method, Json params = {},
+        QString method, Json params = {},
         std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
 
     /// Send a JSON-RPC notification (fire-and-forget).
-    std::error_code send_notification(std::string method, Json params = {});
+    std::error_code send_notification(QString method, Json params = {});
 
     [[nodiscard]] bool is_open(void) const noexcept {
         return m_started.load(std::memory_order_acquire) &&
@@ -159,7 +162,7 @@ public:
     }
 
 private:
-    void handle_frame(std::string raw);
+    void handle_frame(QByteArray raw);
     void handle_request(JsonRpcRequest req);
     void handle_notification(JsonRpcNotification note);
     void handle_response(JsonRpcResponse resp);
@@ -183,7 +186,7 @@ private:
     /// Allocate an id, park `pending`, and send the request frame. On a
     /// closed session, duplicate id, or transport failure it invokes
     /// `pending.reject` (after releasing the lock) instead.
-    void register_pending(std::string method, Json params, Pending pending,
+    void register_pending(QString method, Json params, Pending pending,
                           std::chrono::milliseconds timeout);
 
     std::unique_ptr<Transport> m_transport;
@@ -196,15 +199,15 @@ private:
     // Pending outbound requests awaiting a response. Keyed by canonical
     // RequestId string so int and string ids never collide.
     std::mutex m_pending_mu;
-    std::unordered_map<RequestId, Pending> m_pending;
+    QHash<RequestId, Pending> m_pending;
     std::condition_variable m_timeout_cv;
     std::thread m_timeout_thread;
 
     // Handler tables. Read-mostly; protected by m_handlers_mu so they can
     // be modified after start() without UB.
     std::mutex m_handlers_mu;
-    std::unordered_map<std::string, RequestHandler> m_req_handlers;
-    std::unordered_map<std::string, NotificationHandler> m_note_handlers;
+    QHash<QString, RequestHandler> m_req_handlers;
+    QHash<QString, NotificationHandler> m_note_handlers;
     RequestHandler m_fallback_req;
     NotificationHandler m_fallback_note;
 

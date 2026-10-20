@@ -50,9 +50,9 @@ void RequestId::IntegerRoundTrip(void) {
 }
 
 void RequestId::StringRoundTrip(void) {
-    mcp::RequestId id{std::string{"abc"}};
+    mcp::RequestId id{QString{"abc"}};
     QVERIFY(id.is_string());
-    QCOMPARE(id.as_string(), std::string{"abc"});
+    QCOMPARE(id.as_string(), QString{"abc"});
     Json j = mcp::to_json(id);
     QCOMPARE(j, mcp::test::jv("abc"));
     auto back = mcp::from_json<mcp::RequestId>(j);
@@ -149,7 +149,7 @@ void JsonRpc::ResponseError(void) {
     auto back = mcp::from_json<mcp::JsonRpcResponse>(j);
     QVERIFY(back.is_error());
     QCOMPARE(back.error().code, mcp::error_code::method_not_found);
-    QCOMPARE(back.error().message, std::string{"no"});
+    QCOMPARE(back.error().message, QString{"no"});
 }
 
 void JsonRpc::ResponseRejectsBothResultAndError(void) {
@@ -222,7 +222,7 @@ void Implementation::MinimalShape(void) {
     QVERIFY(!mcp::test::has_key(j, "description"));
     QVERIFY(!mcp::test::has_key(j, "websiteUrl"));
     auto back = mcp::from_json<mcp::Implementation>(j);
-    QVERIFY(!back.title.has_value());
+    QVERIFY(back.title.isNull());
 }
 
 class Capabilities : public QObject {
@@ -300,7 +300,7 @@ private slots:
 
 void Initialize::RequestParamsRoundTrip(void) {
     mcp::InitializeRequestParams p{
-        .protocol_version = std::string{mcp::kLatestProtocolVersion},
+        .protocol_version = QString{mcp::kLatestProtocolVersion},
         .capabilities = {},
         .client_info = {.name = "c", .version = "1"},
     };
@@ -336,9 +336,9 @@ void Initialize::ResultRoundTrip(void) {
 }
 
 void Initialize::NotificationMethodConstantsAreSpecCorrect(void) {
-    QCOMPARE(mcp::method_initialize, std::string_view{"initialize"});
+    QCOMPARE(mcp::method_initialize, QString{"initialize"});
     QCOMPARE(mcp::method_notifications_initialized,
-             std::string_view{"notifications/initialized"});
+             QString{"notifications/initialized"});
 }
 
 // -------------------------------------------------------------------------
@@ -386,7 +386,7 @@ void Content::BlockVariantDispatchesOnType(void) {
     Json text = QJsonObject{{"type", "text"}, {"text", "x"}};
     auto block = mcp::from_json<mcp::ContentBlock>(text);
     QVERIFY(std::holds_alternative<mcp::TextContent>(block));
-    QCOMPARE(std::get<mcp::TextContent>(block).text, std::string{"x"});
+    QCOMPARE(std::get<mcp::TextContent>(block).text, QString{"x"});
 
     Json image = QJsonObject{
         {"type", "image"}, {"data", "Zm9v"}, {"mimeType", "image/png"}};
@@ -402,7 +402,7 @@ void Content::BlockVariantRejectsUnknownType(void) {
 
 void Content::AnnotationsRoundTrip(void) {
     mcp::Annotations a;
-    a.audience = std::vector<mcp::Role>{mcp::Role::user, mcp::Role::assistant};
+    a.audience = QList<mcp::Role>{mcp::Role::user, mcp::Role::assistant};
     a.priority = 0.5;
     a.last_modified = "2025-01-12T15:00:58Z";
     Json j = mcp::to_json(a);
@@ -463,8 +463,8 @@ void Tools::ListToolsResultRoundTrip(void) {
     QCOMPARE(j["nextCursor"], mcp::test::jv("next"));
     auto back = mcp::from_json<mcp::ListToolsResult>(j);
     QCOMPARE(back.tools.size(), std::size_t{1});
-    QCOMPARE(back.tools[0].name, std::string{"x"});
-    QCOMPARE(back.next_cursor, std::string{"next"});
+    QCOMPARE(back.tools[0].name, QString{"x"});
+    QCOMPARE(back.next_cursor, QString{"next"});
 }
 
 void Tools::CallToolRequestParamsShape(void) {
@@ -491,8 +491,7 @@ void Tools::CallToolResultRoundTrip(void) {
     auto back = mcp::from_json<mcp::CallToolResult>(j);
     QCOMPARE(back.content.size(), std::size_t{1});
     QVERIFY(std::holds_alternative<mcp::TextContent>(back.content[0]));
-    QCOMPARE(std::get<mcp::TextContent>(back.content[0]).text,
-             std::string{"3"});
+    QCOMPARE(std::get<mcp::TextContent>(back.content[0]).text, QString{"3"});
 }
 
 void Tools::ToolAnnotationsRoundTrip(void) {
@@ -543,7 +542,7 @@ void SpecAdditions::ToolUseContentRoundTrip(void) {
     QCOMPARE(j["input"]["q"], mcp::test::jv("lima beans"));
     auto back = mcp::from_json<mcp::ContentBlock>(j);
     QVERIFY(std::holds_alternative<mcp::ToolUseContent>(back));
-    QCOMPARE(std::get<mcp::ToolUseContent>(back).id, std::string{"tu_abc"});
+    QCOMPARE(std::get<mcp::ToolUseContent>(back).id, QString{"tu_abc"});
 }
 
 void SpecAdditions::ToolResultContentRoundTrip(void) {
@@ -561,7 +560,7 @@ void SpecAdditions::ToolResultContentRoundTrip(void) {
     auto back = mcp::from_json<mcp::ContentBlock>(j);
     QVERIFY(std::holds_alternative<mcp::ToolResultContent>(back));
     QCOMPARE(std::get<mcp::ToolResultContent>(back).tool_use_id,
-             std::string{"tu_abc"});
+             QString{"tu_abc"});
 }
 
 void SpecAdditions::ToolResultRejectsNestedToolUseInContent(void) {
@@ -589,7 +588,7 @@ void SpecAdditions::SamplingToolsAndToolChoiceRoundTrip(void) {
         }},
         .max_tokens = 100,
     };
-    p.tools = std::vector<mcp::Tool>{mcp::Tool{
+    p.tools = QList<mcp::Tool>{mcp::Tool{
         .name = "search",
         .input_schema = QJsonObject{{"type", "object"}},
     }};
@@ -618,14 +617,14 @@ void SpecAdditions::ToolChoiceObjectFormForNamedTool(void) {
     QCOMPARE(j["name"], mcp::test::jv("search"));
     auto back = mcp::from_json<mcp::ToolChoice>(j);
     QCOMPARE(*back.mode, mcp::ToolChoiceMode::tool);
-    QCOMPARE(*back.name, std::string{"search"});
+    QCOMPARE(back.name, QString{"search"});
 }
 
 void SpecAdditions::IconsAndMetaOnImplementation(void) {
     mcp::Implementation impl{
         .name = "x",
         .version = "1",
-        .icons = std::vector<mcp::Icon>{{
+        .icons = QList<mcp::Icon>{{
             .src = "https://example.com/icon.png",
             .mime_type = "image/png",
         }},
@@ -637,8 +636,7 @@ void SpecAdditions::IconsAndMetaOnImplementation(void) {
     QCOMPARE(j["_meta"]["app.example/internal"], mcp::test::jv(42));
     auto back = mcp::from_json<mcp::Implementation>(j);
     QVERIFY(back.icons.has_value());
-    QCOMPARE(back.icons->front().src,
-             std::string{"https://example.com/icon.png"});
+    QCOMPARE(back.icons->front().src, QString{"https://example.com/icon.png"});
     QVERIFY(back.meta.has_value());
     QCOMPARE((*back.meta)["app.example/internal"], mcp::test::jv(42));
 }
@@ -685,7 +683,7 @@ void SpecAdditions::UrlElicitationRequiredErrorDataRoundTrip(void) {
     QCOMPARE(j["elicitations"][0]["url"],
              mcp::test::jv("https://idp.example/auth"));
     auto back = mcp::from_json<mcp::UrlElicitationRequiredErrorData>(j);
-    QCOMPARE(back.elicitations.front().elicitation_id, std::string{"eid-1"});
+    QCOMPARE(back.elicitations.front().elicitation_id, QString{"eid-1"});
 }
 
 int main(int argc, char** argv) {
@@ -727,3 +725,5 @@ int main(int argc, char** argv) {
 }
 
 #include "protocol_test.moc"
+#include <QList>
+#include <QString>

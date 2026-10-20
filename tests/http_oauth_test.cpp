@@ -72,7 +72,7 @@ void HttpOAuth::MissingAuthorizationProduces401(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status = mcp::HttpServerHost::Options::BearerStatus::
                             invalid_token,
@@ -107,7 +107,7 @@ void HttpOAuth::InvalidBearerProduces401(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view t) {
+                [](QString t) {
                     using O = mcp::HttpServerHost::Options;
                     return O::BearerOutcome{
                         .status = (t == "good")
@@ -138,7 +138,7 @@ void HttpOAuth::NonBearerSchemeRejected(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status =
                             mcp::HttpServerHost::Options::BearerStatus::allow,
@@ -168,7 +168,7 @@ void HttpOAuth::ValidBearerEndToEnd(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [&](std::string_view t) {
+                [&](QString t) {
                     validations.fetch_add(1, std::memory_order_relaxed);
                     using O = mcp::HttpServerHost::Options;
                     return O::BearerOutcome{
@@ -188,7 +188,7 @@ void HttpOAuth::ValidBearerEndToEnd(void) {
     host.start();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.access_token = "secret";
     topts.open_get_stream = false;
 
@@ -198,8 +198,7 @@ void HttpOAuth::ValidBearerEndToEnd(void) {
     (void)client.initialize().get();
     auto out = client.call_tool("ping").get();
     QVERIFY(!out.is_error.value_or(false));
-    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"pong"});
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, QString{"pong"});
 
     // At least one validation per inbound POST. We sent at least
     // initialize + tools/call.
@@ -216,7 +215,7 @@ void HttpOAuth::ClientReceives401Callback(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status = mcp::HttpServerHost::Options::BearerStatus::
                             invalid_token,
@@ -229,16 +228,16 @@ void HttpOAuth::ClientReceives401Callback(void) {
     };
     host.start();
 
-    std::promise<std::string> challenge_p;
+    std::promise<QString> challenge_p;
     auto challenge_f = challenge_p.get_future();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.access_token = "anything";
     topts.open_get_stream = false;
-    topts.on_unauthorized = [&](int, std::string_view ch) {
+    topts.on_unauthorized = [&](int, QString ch) {
         try {
-            challenge_p.set_value(std::string{ch});
+            challenge_p.set_value(QString{ch});
         } catch (...) {
         }
     };
@@ -250,9 +249,8 @@ void HttpOAuth::ClientReceives401Callback(void) {
 
     QCOMPARE(challenge_f.wait_for(2s), std::future_status::ready);
     const auto challenge = challenge_f.get();
-    QVERIFY(challenge.find("Bearer") != std::string::npos);
-    QVERIFY(challenge.find("resource_metadata=\"https://idp.example") !=
-            std::string::npos);
+    QVERIFY(challenge.contains("Bearer"));
+    QVERIFY(challenge.contains("resource_metadata=\"https://idp.example"));
 
     transport->close();
     host.stop();
@@ -282,7 +280,7 @@ void HttpOAuth::ResourceMetadataDocumentIsServed(void) {
             host.port(), "GET", "/.well-known/oauth-protected-resource", {});
         QVERIFY(res.connected);
         QCOMPARE(res.status, 200);
-        const mcp::Json body = mcp::parse_json(res.body.toStdString());
+        const mcp::Json body = mcp::parse_json(res.body);
         QCOMPARE(body.toObject().value("resource").toString(),
                  QStringLiteral("https://example.com/mcp"));
         QCOMPARE(body.toObject()
@@ -329,7 +327,7 @@ void HttpOAuth::CaseInsensitiveBearerScheme(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view t) {
+                [](QString t) {
                     using O = mcp::HttpServerHost::Options;
                     return O::BearerOutcome{
                         .status = (t == "tok") ? O::BearerStatus::allow
@@ -363,7 +361,7 @@ void HttpOAuth::MultipleAuthorizationHeadersRejected(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status =
                             mcp::HttpServerHost::Options::BearerStatus::allow,
@@ -395,7 +393,7 @@ void HttpOAuth::InsufficientScopeProduces403(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     using O = mcp::HttpServerHost::Options;
                     return O::BearerOutcome{
                         .status = O::BearerStatus::insufficient_scope,
@@ -428,7 +426,7 @@ void HttpOAuth::ChallengeIncludesInvalidTokenError(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status = mcp::HttpServerHost::Options::BearerStatus::
                             invalid_token,
@@ -460,7 +458,7 @@ void HttpOAuth::EmptyBearerTokenRejected(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status =
                             mcp::HttpServerHost::Options::BearerStatus::allow,
@@ -512,7 +510,7 @@ void HttpOAuth::RealmInjectionRejectedAtStart(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status =
                             mcp::HttpServerHost::Options::BearerStatus::allow,
@@ -533,7 +531,7 @@ void HttpOAuth::MetadataUrlInjectionRejectedAtStart(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status =
                             mcp::HttpServerHost::Options::BearerStatus::allow,
@@ -554,7 +552,7 @@ void HttpOAuth::ClientSetAccessTokenRotates(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [&](std::string_view t) {
+                [&](QString t) {
                     using O = mcp::HttpServerHost::Options;
                     if (t == "v2") {
                         valid_count.fetch_add(1, std::memory_order_relaxed);
@@ -575,24 +573,21 @@ void HttpOAuth::ClientSetAccessTokenRotates(void) {
     host.start();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.access_token = "v1";  // wrong
     topts.open_get_stream = false;
     auto* transport_raw = new mcp::HttpClientTransport{topts};
     std::unique_ptr<mcp::HttpClientTransport> transport{transport_raw};
 
-    QCOMPARE(QString::fromStdString(transport_raw->access_token()),
-             QStringLiteral("v1"));
+    QCOMPARE(QString(transport_raw->access_token()), QStringLiteral("v1"));
     transport_raw->set_access_token("v2");
-    QCOMPARE(QString::fromStdString(transport_raw->access_token()),
-             QStringLiteral("v2"));
+    QCOMPARE(QString(transport_raw->access_token()), QStringLiteral("v2"));
 
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(transport));
     (void)client.initialize().get();
     auto out = client.call_tool("noop").get();
-    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"ok"});
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, QString{"ok"});
     QVERIFY(valid_count.load() >= 2);
 
     client.disconnect();
@@ -608,7 +603,7 @@ void HttpOAuth::BindToNonLoopbackRequiresAllowInsecureHttp(void) {
             .host = "0.0.0.0",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status =
                             mcp::HttpServerHost::Options::BearerStatus::allow,
@@ -627,7 +622,7 @@ void HttpOAuth::BindToNonLoopbackWithAllowInsecureHttpStartsCleanly(void) {
             .host = "127.0.0.1",
             .path = "/mcp",
             .bearer_validator =
-                [](std::string_view) {
+                [](QString) {
                     return mcp::HttpServerHost::Options::BearerOutcome{
                         .status =
                             mcp::HttpServerHost::Options::BearerStatus::allow,
@@ -720,15 +715,14 @@ void HttpOAuth::NoValidatorMeansNoAuth(void) {
     host.start();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
+    topts.url = "http://127.0.0.1:" + QString::number(host.port()) + "/mcp";
     topts.open_get_stream = false;
 
     mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::make_unique<mcp::HttpClientTransport>(topts));
     (void)client.initialize().get();
     auto out = client.call_tool("noop").get();
-    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
-             std::string{"ok"});
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, QString{"ok"});
 
     client.disconnect();
     host.stop();
@@ -736,3 +730,5 @@ void HttpOAuth::NoValidatorMeansNoAuth(void) {
 
 QTEST_GUILESS_MAIN(HttpOAuth)
 #include "http_oauth_test.moc"
+#include <QList>
+#include <QString>
