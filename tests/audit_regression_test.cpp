@@ -38,20 +38,21 @@ using namespace std::chrono_literals;
 
 struct ServerThread {
     std::shared_ptr<mcp::Server> server;
-    std::thread                  thread;
+    std::thread thread;
     template <typename Configure>
     ServerThread(std::unique_ptr<mcp::Transport> t, Configure cfg)
         : server(std::make_shared<mcp::Server>(mcp::Implementation{
-              .name = "audit", .version = "1.0",
+              .name = "audit",
+              .version = "1.0",
           })) {
         cfg(*server);
-        thread = std::thread([s = server, t = std::move(t)]() mutable {
-            s->run(std::move(t));
-        });
+        thread = std::thread(
+            [s = server, t = std::move(t)]() mutable { s->run(std::move(t)); });
     }
     ~ServerThread() {
         server->stop();
-        if (thread.joinable()) thread.join();
+        if (thread.joinable())
+            thread.join();
     }
 };
 
@@ -92,16 +93,16 @@ void AuditRegression::PaginationCursorRejectsNegative(void) {
         s.set_page_size(1);
         s.tool("t1", QJsonObject{{"type", "object"}},
                [](const Json&) -> mcp::CallToolResult {
-                   return {.content = { mcp::TextContent{.text = "ok"} }};
+                   return {.content = {mcp::TextContent{.text = "ok"}}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "x", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "x", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    for (const std::string bad : {"-1", "1abc", " 5", "5 ", "0xFF", "+5",
-                                   "99999999999999999999"}) {
+    for (const std::string bad :
+         {"-1", "1abc", " 5", "5 ", "0xFF", "+5", "99999999999999999999"}) {
         try {
             (void)client.list_tools(bad).get();
             QFAIL(("expected error for cursor=\"" + bad + "\"").c_str());
@@ -119,12 +120,12 @@ void AuditRegression::PaginationCursorAcceptsValidDigits(void) {
         for (int i = 0; i < 5; ++i) {
             s.tool("t" + std::to_string(i), QJsonObject{{"type", "object"}},
                    [](const Json&) -> mcp::CallToolResult {
-                       return {.content = { mcp::TextContent{.text = "ok"} }};
+                       return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         }
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "x", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "x", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -142,17 +143,24 @@ void AuditRegression::PaginationCursorAcceptsValidDigits(void) {
 
 void AuditRegression::MaxTokensRejectsNegative(void) {
     Json j = mcp::parse_json(R"({"messages":[],"maxTokens":-1})");
-    QVERIFY_EXCEPTION_THROWN(([&]{ (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(
+        ([&] { (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()),
+        mcp::Error);
 }
 
 void AuditRegression::MaxTokensRejectsOverflow(void) {
-    Json j = mcp::parse_json(R"({"messages":[],"maxTokens":99999999999999999999})");
-    QVERIFY_EXCEPTION_THROWN(([&]{ (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()), mcp::Error);
+    Json j =
+        mcp::parse_json(R"({"messages":[],"maxTokens":99999999999999999999})");
+    QVERIFY_EXCEPTION_THROWN(
+        ([&] { (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()),
+        mcp::Error);
 }
 
 void AuditRegression::MaxTokensRejectsNonInteger(void) {
     Json j = mcp::parse_json(R"({"messages":[],"maxTokens":"large"})");
-    QVERIFY_EXCEPTION_THROWN(([&]{ (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(
+        ([&] { (void)mcp::from_json<mcp::CreateMessageRequestParams>(j); }()),
+        mcp::Error);
 }
 
 // -------------------------------------------------------------------------
@@ -166,7 +174,7 @@ void AuditRegression::MalformedListToolsParamsYieldsInvalidParams(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.tool("x", QJsonObject{{"type", "object"}},
                [](const Json&) -> mcp::CallToolResult {
-                   return {.content = { mcp::TextContent{.text = "ok"} }};
+                   return {.content = {mcp::TextContent{.text = "ok"}}};
                });
     });
 
@@ -213,8 +221,8 @@ void AuditRegression::SamplingMessageContentArrayPreservesAll(void) {
 
 void AuditRegression::SamplingMessageSingleBlockOnWire(void) {
     mcp::SamplingMessage m{
-        .role    = mcp::Role::assistant,
-        .content = { mcp::TextContent{.text = "x"} },
+        .role = mcp::Role::assistant,
+        .content = {mcp::TextContent{.text = "x"}},
     };
     Json j = mcp::to_json(m);
     QVERIFY(j.toObject().value("content").isObject());
@@ -233,7 +241,9 @@ void AuditRegression::RequestIdAcceptsWholeFloat(void) {
 }
 
 void AuditRegression::RequestIdRejectsFractionalFloat(void) {
-    QVERIFY_EXCEPTION_THROWN(([&]{ (void)mcp::from_json<mcp::RequestId>(QJsonValue(1.5)); }()), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(
+        ([&] { (void)mcp::from_json<mcp::RequestId>(QJsonValue(1.5)); }()),
+        mcp::Error);
 }
 
 void AuditRegression::ProgressTokenAcceptsWholeFloat(void) {
@@ -254,8 +264,7 @@ void AuditRegression::NullSetNotificationHandlerActuallyClears(void) {
     auto b = std::make_unique<mcp::Session>(std::move(p.b));
 
     std::atomic<int> hits{0};
-    a->set_notification_handler("ping",
-        [&](const Json&) { ++hits; });
+    a->set_notification_handler("ping", [&](const Json&) { ++hits; });
     a->start();
     b->start();
 
@@ -281,34 +290,36 @@ void AuditRegression::ClientSetSamplingHandlerNullClears(void) {
     // the client honors a cleared handler.
     std::shared_ptr<mcp::Server> server = std::make_shared<mcp::Server>(
         mcp::Implementation{.name = "x", .version = "0"});
-    server->tool("ask", QJsonObject{{"type", "object"}},
+    server->tool(
+        "ask", QJsonObject{{"type", "object"}},
         [&server](const Json&) -> mcp::CallToolResult {
             try {
-                (void)server->sample(mcp::CreateMessageRequestParams{
-                    .messages = { mcp::SamplingMessage{
-                        .role    = mcp::Role::user,
-                        .content = { mcp::TextContent{.text = "x"} },
-                    }},
-                    .max_tokens = 1,
-                }).get();
-                return {.content = { mcp::TextContent{.text = "ok"} }};
+                (void)server
+                    ->sample(mcp::CreateMessageRequestParams{
+                        .messages = {mcp::SamplingMessage{
+                            .role = mcp::Role::user,
+                            .content = {mcp::TextContent{.text = "x"}},
+                        }},
+                        .max_tokens = 1,
+                    })
+                    .get();
+                return {.content = {mcp::TextContent{.text = "ok"}}};
             } catch (const mcp::Error&) {
-                return {.content = { mcp::TextContent{.text = "no-sampling"} },
+                return {.content = {mcp::TextContent{.text = "no-sampling"}},
                         .is_error = true};
             }
         });
-    std::thread srv_thread([s = server, t = std::move(p.b)]() mutable {
-        s->run(std::move(t));
-    });
+    std::thread srv_thread(
+        [s = server, t = std::move(p.b)]() mutable { s->run(std::move(t)); });
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     client.set_sampling_handler(
         [](const mcp::CreateMessageRequestParams&) -> mcp::CreateMessageResult {
             return {
-                .role    = mcp::Role::assistant,
-                .content = { mcp::TextContent{.text = "ok"} },
-                .model   = "test",
+                .role = mcp::Role::assistant,
+                .content = {mcp::TextContent{.text = "ok"}},
+                .model = "test",
             };
         });
     (void)client.initialize().get();
@@ -325,7 +336,8 @@ void AuditRegression::ClientSetSamplingHandlerNullClears(void) {
 
     client.disconnect();
     server->stop();
-    if (srv_thread.joinable()) srv_thread.join();
+    if (srv_thread.joinable())
+        srv_thread.join();
 }
 
 // -------------------------------------------------------------------------
@@ -339,15 +351,14 @@ void AuditRegression::DisconnectRaceWithInFlightCallIsSafe(void) {
     std::shared_ptr<mcp::Server> server = std::make_shared<mcp::Server>(
         mcp::Implementation{.name = "x", .version = "0"});
     server->tool("slow", QJsonObject{{"type", "object"}},
-        [](const Json&) -> mcp::CallToolResult {
-            std::this_thread::sleep_for(50ms);
-            return {.content = { mcp::TextContent{.text = "ok"} }};
-        });
-    std::thread srv_thread([s = server, t = std::move(p.b)]() mutable {
-        s->run(std::move(t));
-    });
+                 [](const Json&) -> mcp::CallToolResult {
+                     std::this_thread::sleep_for(50ms);
+                     return {.content = {mcp::TextContent{.text = "ok"}}};
+                 });
+    std::thread srv_thread(
+        [s = server, t = std::move(p.b)]() mutable { s->run(std::move(t)); });
 
-    mcp::Client client{ mcp::Implementation{.name = "x", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "x", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -356,12 +367,16 @@ void AuditRegression::DisconnectRaceWithInFlightCallIsSafe(void) {
     std::this_thread::sleep_for(5ms);  // small window for the request to leave
     client.disconnect();               // race here used to be UAF on m_session
 
-    try { (void)fut.get(); }
-    catch (const mcp::Error&) {}        // either error or success — both OK
-    catch (const std::future_error&) {} // future broken_promise also OK
+    try {
+        (void)fut.get();
+    } catch (const mcp::Error&) {
+    }  // either error or success — both OK
+    catch (const std::future_error&) {
+    }  // future broken_promise also OK
 
     server->stop();
-    if (srv_thread.joinable()) srv_thread.join();
+    if (srv_thread.joinable())
+        srv_thread.join();
 }
 
 // -------------------------------------------------------------------------
@@ -379,7 +394,7 @@ void AuditRegression::SendRequestAfterCloseFailsImmediately(void) {
 
     auto fut = a->send_request("any-method", Json(QJsonValue::Null), 5s);
     QVERIFY(fut.wait_for(500ms) == std::future_status::ready);
-    QVERIFY_EXCEPTION_THROWN(([&]{ (void)fut.get(); }()), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(([&] { (void)fut.get(); }()), mcp::Error);
 
     b->close();
 }
@@ -394,35 +409,40 @@ void AuditRegression::ConcurrentInitializeRequestsExactlyOneSucceeds(void) {
     std::shared_ptr<mcp::Server> server = std::make_shared<mcp::Server>(
         mcp::Implementation{.name = "x", .version = "0"});
     server->tool("noop", QJsonObject{{"type", "object"}},
-        [](const Json&) -> mcp::CallToolResult {
-            return {.content = { mcp::TextContent{.text = "ok"} }};
-        });
-    std::thread srv_thread([s = server, t = std::move(p.b)]() mutable {
-        s->run(std::move(t));
-    });
+                 [](const Json&) -> mcp::CallToolResult {
+                     return {.content = {mcp::TextContent{.text = "ok"}}};
+                 });
+    std::thread srv_thread(
+        [s = server, t = std::move(p.b)]() mutable { s->run(std::move(t)); });
 
     auto session = std::make_unique<mcp::Session>(std::move(p.a));
     session->start();
 
     Json init_payload = mcp::to_json(mcp::InitializeRequestParams{
         .protocol_version = std::string{mcp::kLatestProtocolVersion},
-        .capabilities     = {},
-        .client_info      = {.name = "tester", .version = "0"},
+        .capabilities = {},
+        .client_info = {.name = "tester", .version = "0"},
     });
 
-    auto f1 = session->send_request(std::string{mcp::method_initialize}, init_payload, 5s);
-    auto f2 = session->send_request(std::string{mcp::method_initialize}, init_payload, 5s);
+    auto f1 = session->send_request(std::string{mcp::method_initialize},
+                                    init_payload, 5s);
+    auto f2 = session->send_request(std::string{mcp::method_initialize},
+                                    init_payload, 5s);
 
     int succeeded = 0;
     for (auto* f : {&f1, &f2}) {
-        try { (void)f->get(); ++succeeded; }
-        catch (const mcp::Error&) {}
+        try {
+            (void)f->get();
+            ++succeeded;
+        } catch (const mcp::Error&) {
+        }
     }
     QCOMPARE(succeeded, 1);
 
     session->close();
     server->stop();
-    if (srv_thread.joinable()) srv_thread.join();
+    if (srv_thread.joinable())
+        srv_thread.join();
 }
 
 // -------------------------------------------------------------------------
@@ -437,13 +457,18 @@ void AuditRegression::StdioStripsCrBeforeNewline(void) {
     QVERIFY(::pipe(t2) == 0);
     QVERIFY(::pipe(f2) == 0);
     mcp::StdioTransport::Options opts{};
-    opts.read_fd = t2[0]; opts.write_fd = f2[1]; opts.owns_fds = true;
+    opts.read_fd = t2[0];
+    opts.write_fd = f2[1];
+    opts.owns_fds = true;
 
     auto transport = std::make_unique<mcp::StdioTransport>(opts);
     std::promise<std::string> got;
     auto fut = got.get_future();
     transport->on_message([&](std::string s) {
-        try { got.set_value(std::move(s)); } catch (...) {}
+        try {
+            got.set_value(std::move(s));
+        } catch (...) {
+        }
     });
     transport->start();
 
@@ -456,7 +481,8 @@ void AuditRegression::StdioStripsCrBeforeNewline(void) {
     QCOMPARE(frame, std::string("{\"k\":1}"));
 
     transport->close();
-    ::close(t2[1]); ::close(f2[0]);
+    ::close(t2[1]);
+    ::close(f2[0]);
 }
 #endif  // !defined(_WIN32)
 
@@ -473,10 +499,12 @@ void AuditRegression::NonStringMethodIsDropped(void) {
 
     std::promise<Json> notify_received;
     auto fut = notify_received.get_future();
-    a_session->set_notification_handler("ping",
-        [&](const Json& params) {
-            try { notify_received.set_value(params); } catch (...) {}
-        });
+    a_session->set_notification_handler("ping", [&](const Json& params) {
+        try {
+            notify_received.set_value(params);
+        } catch (...) {
+        }
+    });
 
     a_session->start();
     b_session->start();
@@ -486,8 +514,8 @@ void AuditRegression::NonStringMethodIsDropped(void) {
     // code) and continue serving the next, well-formed frame.
     // Use the session's underlying notification path to send a
     // following well-formed frame. Reuse b_session's send_notification:
-    QVERIFY(!b_session->send_notification("ping",
-        Json(QJsonObject{{"k", "v"}})));
+    QVERIFY(
+        !b_session->send_notification("ping", Json(QJsonObject{{"k", "v"}})));
 
     QVERIFY(fut.wait_for(2s) == std::future_status::ready);
 

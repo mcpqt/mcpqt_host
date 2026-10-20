@@ -10,11 +10,12 @@
 //   // ... plugins call one another through the HostInterface ...
 //
 // Cross-plugin calls: every function is keyed by the fully-qualified signature
-// "<return_type> <class_name>::<function_name>(<param_types>)", e.g. "QString HelloPlugin::greet(QString)". A plugin calls
-// any other plugin's function through the HostInterface handed to it at
-// initialize() (HostInterface::callFunc), passing one QVariant per parameter.
-// The host builds the QGenericArguments and invokes the typed slot; plugins
-// never pack their parameters into a single QVariant.
+// "<return_type> <class_name>::<function_name>(<param_types>)", e.g. "QString
+// HelloPlugin::greet(QString)". A plugin calls any other plugin's function
+// through the HostInterface handed to it at initialize()
+// (HostInterface::callFunc), passing one QVariant per parameter. The host
+// builds the QGenericArguments and invokes the typed slot; plugins never pack
+// their parameters into a single QVariant.
 //
 // NOTE: functions are exposed only to other plugins for now. Automatically
 // publishing them as MCP tools is intentionally not part of this design yet.
@@ -70,7 +71,7 @@ namespace mcp {
 /// Only entries whose signature names a function the plugin actually publishes
 /// are retained.
 struct PluginTool {
-    QString        signature;
+    QString signature;
     Tool tool;
 };
 
@@ -79,7 +80,7 @@ public:
     PluginManager(void);
     ~PluginManager();
 
-    PluginManager(const PluginManager&)            = delete;
+    PluginManager(const PluginManager&) = delete;
     PluginManager& operator=(const PluginManager&) = delete;
 
     /// Load a single plugin shared library. Returns true on success. On
@@ -91,11 +92,11 @@ public:
     /// Dependencies: a plugin may declare, in its metadata JSON, a
     /// `dependencies` array of fully-qualified function signatures (and/or
     /// plugin ids) that must be available before it is initialized — e.g.
-    /// `"dependencies": ["QString HelloPlugin::greet(QString)"]`. Each entry is satisfied if
-    /// a previously-loaded plugin already published that signature, or if a
-    /// plugin with that id is already loaded. A plugin whose dependencies are
-    /// not yet satisfiable fails to load (false); `load_directory()` retries
-    /// such plugins automatically.
+    /// `"dependencies": ["QString HelloPlugin::greet(QString)"]`. Each entry is
+    /// satisfied if a previously-loaded plugin already published that
+    /// signature, or if a plugin with that id is already loaded. A plugin whose
+    /// dependencies are not yet satisfiable fails to load (false);
+    /// `load_directory()` retries such plugins automatically.
     bool load_file(const QString& file);
 
     /// Load every plugin library in `directory`, honoring plugin dependencies.
@@ -140,8 +141,7 @@ public:
 
     /// The Tool declared for `signature`, if any loaded plugin
     /// declared one for a published function.
-    [[nodiscard]] std::optional<Tool>
-    tool(const QString& signature) const;
+    [[nodiscard]] std::optional<Tool> tool(const QString& signature) const;
 
     /// Invoke a published function. `args` holds one QVariant per declared
     /// parameter, in order. Returns the QVariant result (invalid for a void
@@ -156,15 +156,17 @@ private:
 
     enum class LoadOutcome {
         Loaded,
-        UnsatisfiedDependencies,   ///< declared deps not all available yet
-        Failed,                    ///< any other failure
+        UnsatisfiedDependencies,  ///< declared deps not all available yet
+        Failed,                   ///< any other failure
     };
 
     /// Parse the `dependencies` array from a plugin's metadata JSON.
-    [[nodiscard]] QStringList plugin_dependencies(const QPluginLoader* loader) const;
+    [[nodiscard]] QStringList
+    plugin_dependencies(const QPluginLoader* loader) const;
 
     /// True when every entry of `dependencies` is satisfied.
-    [[nodiscard]] bool dependencies_satisfied(const QStringList& dependencies) const;
+    [[nodiscard]] bool
+    dependencies_satisfied(const QStringList& dependencies) const;
 
     LoadOutcome load_file_impl(const QString& file, bool quiet);
 
@@ -175,16 +177,17 @@ private:
 
     // Host-side callbacks bound into the HostInterface handed to plugins.
     QStringList host_get_funcs(void) const;
-    QVariant    host_call_func(const QString& signature, const QVariantList& args) const;
-    bool        host_reg_func(const std::shared_ptr<Instance>& inst,
-                              const QString& signature);
-    void        host_unload_self(const std::shared_ptr<Instance>& inst,
-                                 const QString& reason);
+    QVariant host_call_func(const QString& signature,
+                            const QVariantList& args) const;
+    bool host_reg_func(const std::shared_ptr<Instance>& inst,
+                       const QString& signature);
+    void host_unload_self(const std::shared_ptr<Instance>& inst,
+                          const QString& reason);
 
     /// Unload a single plugin (shutdown + detach + erase from the registry).
     void unload_instance(const std::shared_ptr<Instance>& inst);
 
-    QHash<QString, FunctionEntry>          m_registry;   // signature -> entry
+    QHash<QString, FunctionEntry> m_registry;  // signature -> entry
     std::vector<std::shared_ptr<Instance>> m_plugins;
 };
 

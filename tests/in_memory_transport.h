@@ -39,8 +39,8 @@ public:
     ~InMemoryTransport() override;
 
     void on_message(MessageCallback cb) override;
-    void on_error(ErrorCallback cb)     override;
-    void on_close(CloseCallback cb)     override;
+    void on_error(ErrorCallback cb) override;
+    void on_close(CloseCallback cb) override;
     void start(void) override;
     void close(void) override;
     [[nodiscard]] std::error_code send(std::string_view frame) override;
@@ -49,17 +49,17 @@ public:
 private:
     void run_dispatch(void);
 
-    Side                       m_side;
-    std::shared_ptr<Channel>   m_ch;
+    Side m_side;
+    std::shared_ptr<Channel> m_ch;
 
-    std::atomic<bool>          m_started{false};
-    std::atomic<bool>          m_closed{false};
+    std::atomic<bool> m_started{false};
+    std::atomic<bool> m_closed{false};
 
-    std::thread                m_worker;
+    std::thread m_worker;
 
-    MessageCallback            m_on_message;
-    ErrorCallback              m_on_error;
-    CloseCallback              m_on_close;
+    MessageCallback m_on_message;
+    ErrorCallback m_on_error;
+    CloseCallback m_on_close;
 };
 
 }  // namespace mcp::test

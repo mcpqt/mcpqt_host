@@ -30,7 +30,7 @@
 namespace {
 
 std::atomic<mcp::HttpServerHost*> g_host{nullptr};
-std::atomic_flag                  g_shutdown_requested = ATOMIC_FLAG_INIT;
+std::atomic_flag g_shutdown_requested = ATOMIC_FLAG_INIT;
 
 extern "C" void on_signal(int) {
     g_shutdown_requested.test_and_set(std::memory_order_release);
@@ -49,7 +49,7 @@ mcp::Json arith_schema(void) {
 
 mcp::CallToolResult text_result(std::string s, bool is_err = false) {
     return mcp::CallToolResult{
-        .content  = { mcp::TextContent{.text = std::move(s)} },
+        .content = {mcp::TextContent{.text = std::move(s)}},
         .is_error = is_err,
     };
 }
@@ -61,11 +61,14 @@ int main(int argc, char** argv) {
     mcp::set_log_level(mcp::LogLevel::info);
 
     std::string host = "127.0.0.1";
-    int         port = 8080;
+    int port = 8080;
     std::string path = "/mcp";
-    if (argc > 1) host = argv[1];
-    if (argc > 2) port = std::atoi(argv[2]);
-    if (argc > 3) path = argv[3];
+    if (argc > 1)
+        host = argv[1];
+    if (argc > 2)
+        port = std::atoi(argv[2]);
+    if (argc > 3)
+        path = argv[3];
 
     mcp::HttpServerHost::Options opts;
     opts.host = host;
@@ -74,8 +77,8 @@ int main(int argc, char** argv) {
 
     mcp::HttpServerHost server_host{
         mcp::Implementation{
-            .name        = "mcp-cpp-http-calculator",
-            .version     = "0.1.0",
+            .name = "mcp-cpp-http-calculator",
+            .version = "0.1.0",
             .description = "Streamable HTTP demo: arithmetic over MCP.",
         },
         opts,
@@ -84,7 +87,8 @@ int main(int argc, char** argv) {
                 "This server offers four arithmetic tools (add, subtract, "
                 "multiply, divide). Each takes two numbers `a` and `b`.");
 
-            s.tool("add", arith_schema(),
+            s.tool(
+                "add", arith_schema(),
                 [](const mcp::Json& args) {
                     const QJsonObject o = args.toObject();
                     const double a = mcp::require<double>(o, "a");
@@ -93,7 +97,8 @@ int main(int argc, char** argv) {
                 },
                 "Add", "Returns a + b.");
 
-            s.tool("subtract", arith_schema(),
+            s.tool(
+                "subtract", arith_schema(),
                 [](const mcp::Json& args) {
                     const QJsonObject o = args.toObject();
                     const double a = mcp::require<double>(o, "a");
@@ -102,7 +107,8 @@ int main(int argc, char** argv) {
                 },
                 "Subtract", "Returns a - b.");
 
-            s.tool("multiply", arith_schema(),
+            s.tool(
+                "multiply", arith_schema(),
                 [](const mcp::Json& args) {
                     const QJsonObject o = args.toObject();
                     const double a = mcp::require<double>(o, "a");
@@ -111,12 +117,14 @@ int main(int argc, char** argv) {
                 },
                 "Multiply", "Returns a * b.");
 
-            s.tool("divide", arith_schema(),
+            s.tool(
+                "divide", arith_schema(),
                 [](const mcp::Json& args) {
                     const QJsonObject o = args.toObject();
                     const double a = mcp::require<double>(o, "a");
                     const double b = mcp::require<double>(o, "b");
-                    if (b == 0.0) return text_result("division by zero", true);
+                    if (b == 0.0)
+                        return text_result("division by zero", true);
                     return text_result(std::to_string(a / b));
                 },
                 "Divide", "Returns a / b. Reports an error result on b == 0.");
@@ -124,13 +132,13 @@ int main(int argc, char** argv) {
     };
 
     g_host.store(&server_host, std::memory_order_release);
-    std::signal(SIGINT,  on_signal);
+    std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);
 
     server_host.start();
     std::fprintf(stderr,
-        "[mcp-cpp-http-calculator] listening on http://%s:%d%s\n",
-        host.c_str(), server_host.port(), path.c_str());
+                 "[mcp-cpp-http-calculator] listening on http://%s:%d%s\n",
+                 host.c_str(), server_host.port(), path.c_str());
 
     // Park until a signal arrives. The signal handler only flips an
     // atomic flag — the actual stop() call (which uses mutex/cv) runs

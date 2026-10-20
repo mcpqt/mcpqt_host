@@ -31,7 +31,8 @@
 #pragma once
 
 #if !defined(MCP_ENABLE_HTTP)
-#error "mcp::HttpServerHost requires MCP_ENABLE_HTTP=1 (CMake option MCP_ENABLE_HTTP=ON)"
+#error                                                                         \
+    "mcp::HttpServerHost requires MCP_ENABLE_HTTP=1 (CMake option MCP_ENABLE_HTTP=ON)"
 #endif
 
 #include "json.h"
@@ -117,7 +118,7 @@ public:
             BearerStatus status = BearerStatus::invalid_token;
             /// For `insufficient_scope` only: space-separated scope
             /// string echoed as `scope="..."` in the 403 challenge.
-            std::string  required_scopes;
+            std::string required_scopes;
         };
         using BearerValidator =
             std::function<BearerOutcome(std::string_view token)>;
@@ -201,8 +202,7 @@ public:
         SessionClosedHook on_session_closed;
     };
 
-    HttpServerHost(Implementation server_info,
-                   Options        opts,
+    HttpServerHost(Implementation server_info, Options opts,
                    SessionFactory factory);
     ~HttpServerHost();
 
@@ -230,13 +230,13 @@ private:
     struct SessionContext;
     struct Impl;
 
-    Implementation                                          m_server_info;
-    Options                                                 m_opts;
-    SessionFactory                                          m_factory;
+    Implementation m_server_info;
+    Options m_opts;
+    SessionFactory m_factory;
 
-    std::atomic<bool>                                       m_started{false};
-    std::atomic<bool>                                       m_stopping{false};
-    std::unique_ptr<Impl>                                   m_impl;
+    std::atomic<bool> m_started{false};
+    std::atomic<bool> m_stopping{false};
+    std::unique_ptr<Impl> m_impl;
 };
 
 }  // namespace mcp

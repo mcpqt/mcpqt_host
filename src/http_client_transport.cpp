@@ -45,9 +45,9 @@ namespace {
 /// the GET worker can implement spec-mandated resumability and
 /// retry timing.
 struct SseEvent {
-    std::string                data;
+    std::string data;
     std::optional<std::string> id;
-    std::optional<int>         retry_ms;  // server-suggested reconnect delay
+    std::optional<int> retry_ms;  // server-suggested reconnect delay
 };
 
 // Iterate SSE frames in a buffer, calling `cb(SseEvent)` for each
@@ -56,21 +56,25 @@ struct SseEvent {
 // `buf` for the next round. We capture `data:`, `id:`, and `retry:`
 // per the SSE spec; `event:` is ignored (MCP doesn't use named
 // events).
-template <typename Callback>
-void drain_sse(std::string& buf, Callback&& cb) {
+template <typename Callback> void drain_sse(std::string& buf, Callback&& cb) {
     while (true) {
         std::size_t end = std::string::npos;
         std::size_t end_marker_len = 0;
         for (std::size_t i = 0; i + 1 < buf.size(); ++i) {
             if (buf[i] == '\n' && buf[i + 1] == '\n') {
-                end = i; end_marker_len = 2; break;
+                end = i;
+                end_marker_len = 2;
+                break;
             }
-            if (i + 3 < buf.size() && buf[i] == '\r' && buf[i + 1] == '\n'
-                && buf[i + 2] == '\r' && buf[i + 3] == '\n') {
-                end = i; end_marker_len = 4; break;
+            if (i + 3 < buf.size() && buf[i] == '\r' && buf[i + 1] == '\n' &&
+                buf[i + 2] == '\r' && buf[i + 3] == '\n') {
+                end = i;
+                end_marker_len = 4;
+                break;
             }
         }
-        if (end == std::string::npos) return;
+        if (end == std::string::npos)
+            return;
 
         const std::string event{buf.data(), end};
         buf.erase(0, end + end_marker_len);
@@ -84,22 +88,28 @@ void drain_sse(std::string& buf, Callback&& cb) {
                 line = std::string_view{event}.substr(line_start);
                 line_start = event.size() + 1;
             } else {
-                line = std::string_view{event}.substr(line_start, line_end - line_start);
+                line = std::string_view{event}.substr(line_start,
+                                                      line_end - line_start);
                 line_start = line_end + 1;
             }
-            if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-            if (line.empty() || line[0] == ':') continue;  // comment/keepalive
+            if (!line.empty() && line.back() == '\r')
+                line.remove_suffix(1);
+            if (line.empty() || line[0] == ':')
+                continue;  // comment/keepalive
             const auto colon = line.find(':');
             std::string_view field, value;
             if (colon == std::string_view::npos) {
-                field = line; value = {};
+                field = line;
+                value = {};
             } else {
                 field = line.substr(0, colon);
                 value = line.substr(colon + 1);
-                if (!value.empty() && value.front() == ' ') value.remove_prefix(1);
+                if (!value.empty() && value.front() == ' ')
+                    value.remove_prefix(1);
             }
             if (field == "data") {
-                if (!se.data.empty()) se.data += '\n';
+                if (!se.data.empty())
+                    se.data += '\n';
                 se.data.append(value);
             } else if (field == "id") {
                 se.id = std::string{value};
@@ -108,8 +118,10 @@ void drain_sse(std::string& buf, Callback&& cb) {
                 // parse error / negative.
                 try {
                     int v = std::stoi(std::string{value});
-                    if (v >= 0) se.retry_ms = v;
-                } catch (...) {}
+                    if (v >= 0)
+                        se.retry_ms = v;
+                } catch (...) {
+                }
             }
         }
         if (!se.data.empty() || se.id.has_value() || se.retry_ms.has_value()) {
@@ -121,11 +133,11 @@ void drain_sse(std::string& buf, Callback&& cb) {
 // Attach the headers common to every outbound request: protocol
 // version, negotiated session id, bearer token, resumability cursor,
 // and caller-supplied extras.
-void set_common_headers(QNetworkRequest&                             req,
-                        const HttpClientTransport::Options&          opts,
-                        const std::optional<std::string>&            sid,
-                        const std::string&                           access_token,
-                        const std::string&                           last_event_id) {
+void set_common_headers(QNetworkRequest& req,
+                        const HttpClientTransport::Options& opts,
+                        const std::optional<std::string>& sid,
+                        const std::string& access_token,
+                        const std::string& last_event_id) {
     req.setRawHeader("MCP-Protocol-Version",
                      QByteArray::fromStdString(opts.protocol_version));
     if (sid.has_value()) {
@@ -152,7 +164,8 @@ void set_common_headers(QNetworkRequest&                             req,
 // Construction / destruction
 // =====================================================================
 
-HttpClientTransport::HttpClientTransport(Options opts) : m_opts(std::move(opts)) {
+HttpClientTransport::HttpClientTransport(Options opts)
+    : m_opts(std::move(opts)) {
     QUrl url{QString::fromStdString(m_opts.url)};
     if (!url.isValid() || url.scheme().isEmpty()) {
         throw std::invalid_argument(
@@ -171,11 +184,19 @@ HttpClientTransport::HttpClientTransport(Options opts) : m_opts(std::move(opts))
     }
 }
 
-HttpClientTransport::~HttpClientTransport() { close(); }
+HttpClientTransport::~HttpClientTransport() {
+    close();
+}
 
-void HttpClientTransport::on_message(MessageCallback cb) { m_on_message = std::move(cb); }
-void HttpClientTransport::on_error(ErrorCallback cb)     { m_on_error   = std::move(cb); }
-void HttpClientTransport::on_close(CloseCallback cb)     { m_on_close   = std::move(cb); }
+void HttpClientTransport::on_message(MessageCallback cb) {
+    m_on_message = std::move(cb);
+}
+void HttpClientTransport::on_error(ErrorCallback cb) {
+    m_on_error = std::move(cb);
+}
+void HttpClientTransport::on_close(CloseCallback cb) {
+    m_on_close = std::move(cb);
+}
 
 std::optional<std::string> HttpClientTransport::session_id(void) const {
     std::lock_guard<std::mutex> lk(m_session_id_mu);
@@ -189,7 +210,7 @@ std::optional<std::string> HttpClientTransport::session_id(void) const {
 void HttpClientTransport::start(void) {
     bool expected = false;
     if (!m_started.compare_exchange_strong(expected, true,
-                                          std::memory_order_acq_rel)) {
+                                           std::memory_order_acq_rel)) {
         return;
     }
     m_closed.store(false, std::memory_order_release);
@@ -202,8 +223,10 @@ void HttpClientTransport::start(void) {
 
 void HttpClientTransport::close(void) {
     if (m_closed.exchange(true, std::memory_order_acq_rel)) {
-        if (m_worker.joinable()) m_worker.join();
-        if (m_get_thread.joinable()) m_get_thread.join();
+        if (m_worker.joinable())
+            m_worker.join();
+        if (m_get_thread.joinable())
+            m_get_thread.join();
         return;
     }
 
@@ -229,8 +252,8 @@ void HttpClientTransport::close(void) {
             req.setTransferTimeout(2000);
             QNetworkReply* reply = nam.deleteResource(req);
             QEventLoop loop;
-            QObject::connect(reply, &QNetworkReply::finished,
-                             &loop, &QEventLoop::quit);
+            QObject::connect(reply, &QNetworkReply::finished, &loop,
+                             &QEventLoop::quit);
             loop.exec();
         } catch (...) {
             // best-effort; ignore
@@ -246,8 +269,10 @@ void HttpClientTransport::close(void) {
         m_session_id_cv.notify_all();
     }
 
-    if (m_worker.joinable()) m_worker.join();
-    if (m_get_thread.joinable()) m_get_thread.join();
+    if (m_worker.joinable())
+        m_worker.join();
+    if (m_get_thread.joinable())
+        m_get_thread.join();
 
     {
         std::unique_lock<std::mutex> lk(m_inflight_mu);
@@ -257,33 +282,44 @@ void HttpClientTransport::close(void) {
 }
 
 void HttpClientTransport::fire_close(void) noexcept {
-    if (m_close_fired.exchange(true, std::memory_order_acq_rel)) return;
-    if (!m_on_close) return;
-    try { m_on_close(); }
-    catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"HttpClientTransport on_close threw: "} + e.what());
+    if (m_close_fired.exchange(true, std::memory_order_acq_rel))
+        return;
+    if (!m_on_close)
+        return;
+    try {
+        m_on_close();
+    } catch (const std::exception& e) {
+        MCP_LOG_ERROR(std::string{"HttpClientTransport on_close threw: "} +
+                      e.what());
     } catch (...) {
         MCP_LOG_ERROR("HttpClientTransport on_close threw a non-std exception");
     }
 }
 
 void HttpClientTransport::deliver_error(std::error_code ec) noexcept {
-    if (!m_on_error) return;
-    try { m_on_error(ec); }
-    catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"HttpClientTransport on_error threw: "} + e.what());
+    if (!m_on_error)
+        return;
+    try {
+        m_on_error(ec);
+    } catch (const std::exception& e) {
+        MCP_LOG_ERROR(std::string{"HttpClientTransport on_error threw: "} +
+                      e.what());
     } catch (...) {
         MCP_LOG_ERROR("HttpClientTransport on_error threw a non-std exception");
     }
 }
 
 void HttpClientTransport::deliver_frame(std::string raw) {
-    if (!m_on_message) return;
-    try { m_on_message(std::move(raw)); }
-    catch (const std::exception& e) {
-        MCP_LOG_ERROR(std::string{"HttpClientTransport on_message threw: "} + e.what());
+    if (!m_on_message)
+        return;
+    try {
+        m_on_message(std::move(raw));
+    } catch (const std::exception& e) {
+        MCP_LOG_ERROR(std::string{"HttpClientTransport on_message threw: "} +
+                      e.what());
     } catch (...) {
-        MCP_LOG_ERROR("HttpClientTransport on_message threw a non-std exception");
+        MCP_LOG_ERROR(
+            "HttpClientTransport on_message threw a non-std exception");
     }
 }
 
@@ -293,7 +329,7 @@ void HttpClientTransport::deliver_frame(std::string raw) {
 
 std::error_code HttpClientTransport::send(std::string_view frame) {
     if (!m_started.load(std::memory_order_acquire) ||
-         m_closed.load(std::memory_order_acquire)) {
+        m_closed.load(std::memory_order_acquire)) {
         return std::make_error_code(std::errc::not_connected);
     }
     {
@@ -318,9 +354,11 @@ void HttpClientTransport::worker_loop(void) {
         {
             std::unique_lock<std::mutex> lk(m_out_mu);
             m_out_cv.wait(lk, [this] {
-                return m_closed.load(std::memory_order_acquire) || !m_out.empty();
+                return m_closed.load(std::memory_order_acquire) ||
+                       !m_out.empty();
             });
-            if (m_closed.load(std::memory_order_acquire) && m_out.empty()) return;
+            if (m_closed.load(std::memory_order_acquire) && m_out.empty())
+                return;
             frame = std::move(m_out.front());
             m_out.pop_front();
         }
@@ -360,11 +398,12 @@ void HttpClientTransport::process_send(std::string frame) {
     req.setRawHeader("Accept", "application/json, text/event-stream");
     set_common_headers(req, m_opts, sid, token, "");
     if (m_opts.request_timeout.count() > 0) {
-        req.setTransferTimeout(static_cast<int>(m_opts.request_timeout.count()));
+        req.setTransferTimeout(
+            static_cast<int>(m_opts.request_timeout.count()));
     }
 
-    QNetworkReply* reply =
-        nam.post(req, QByteArray(frame.data(), static_cast<qsizetype>(frame.size())));
+    QNetworkReply* reply = nam.post(
+        req, QByteArray(frame.data(), static_cast<qsizetype>(frame.size())));
     QEventLoop loop;
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     loop.exec();
@@ -383,7 +422,8 @@ void HttpClientTransport::process_send(std::string frame) {
             first_set = !m_session_id.has_value();
             m_session_id = sid_hdr.toStdString();
         }
-        if (first_set) m_session_id_cv.notify_all();
+        if (first_set)
+            m_session_id_cv.notify_all();
     }
 
     // A status of 0 means the request never got an HTTP response
@@ -415,8 +455,10 @@ void HttpClientTransport::process_send(std::string frame) {
         if (m_opts.on_unauthorized &&
             m_auth_callback_armed.compare_exchange_strong(
                 expected, false, std::memory_order_acq_rel)) {
-            try { m_opts.on_unauthorized(status, challenge); }
-            catch (...) {}
+            try {
+                m_opts.on_unauthorized(status, challenge);
+            } catch (...) {
+            }
         }
         deliver_error(std::make_error_code(std::errc::permission_denied));
         return;
@@ -440,7 +482,8 @@ void HttpClientTransport::process_send(std::string frame) {
                 std::lock_guard<std::mutex> lk(m_get_mu_state);
                 m_last_event_id = *se.id;
             }
-            if (!se.data.empty()) deliver_frame(std::move(se.data));
+            if (!se.data.empty())
+                deliver_frame(std::move(se.data));
         });
         return;
     }
@@ -462,7 +505,7 @@ void HttpClientTransport::run_get_stream(void) noexcept {
     // stream is open" (which a tool handler triggering server.sample()
     // would otherwise race).
     while (m_started.load(std::memory_order_acquire) &&
-          !m_closed.load(std::memory_order_acquire)) {
+           !m_closed.load(std::memory_order_acquire)) {
         std::optional<std::string> sid;
         {
             std::unique_lock<std::mutex> lk(m_session_id_mu);
@@ -470,10 +513,12 @@ void HttpClientTransport::run_get_stream(void) noexcept {
                 return m_session_id.has_value() ||
                        m_closed.load(std::memory_order_acquire);
             });
-            if (m_closed.load(std::memory_order_acquire)) return;
+            if (m_closed.load(std::memory_order_acquire))
+                return;
             sid = m_session_id;
         }
-        if (!sid.has_value()) continue;
+        if (!sid.has_value())
+            continue;
 
         std::string token;
         {
@@ -510,10 +555,12 @@ void HttpClientTransport::run_get_stream(void) noexcept {
                     std::lock_guard<std::mutex> lk(m_get_mu_state);
                     m_next_retry_ms = se.retry_ms;
                 }
-                if (!se.data.empty()) deliver_frame(std::move(se.data));
+                if (!se.data.empty())
+                    deliver_frame(std::move(se.data));
             });
         });
-        QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        QObject::connect(reply, &QNetworkReply::finished, &loop,
+                         &QEventLoop::quit);
         loop.exec();
 
         // Drain anything that arrived after the last readyRead.
@@ -527,7 +574,8 @@ void HttpClientTransport::run_get_stream(void) noexcept {
                 std::lock_guard<std::mutex> lk(m_get_mu_state);
                 m_next_retry_ms = se.retry_ms;
             }
-            if (!se.data.empty()) deliver_frame(std::move(se.data));
+            if (!se.data.empty())
+                deliver_frame(std::move(se.data));
         });
 
         const int status =
@@ -535,7 +583,8 @@ void HttpClientTransport::run_get_stream(void) noexcept {
 
         // 405 Method Not Allowed is the spec's way of saying "no
         // server-initiated stream"; retry isn't useful, exit cleanly.
-        if (status == 405) return;
+        if (status == 405)
+            return;
 
         // 401/403: the access token has expired or been revoked.
         // Without this branch, run_get_stream would busy-retry every
@@ -548,8 +597,10 @@ void HttpClientTransport::run_get_stream(void) noexcept {
             if (m_opts.on_unauthorized) {
                 const std::string challenge =
                     reply->rawHeader("WWW-Authenticate").toStdString();
-                try { m_opts.on_unauthorized(status, challenge); }
-                catch (...) {}
+                try {
+                    m_opts.on_unauthorized(status, challenge);
+                } catch (...) {
+                }
             }
             return;
         }
@@ -568,7 +619,8 @@ void HttpClientTransport::run_get_stream(void) noexcept {
             return;
         }
 
-        if (m_closed.load(std::memory_order_acquire)) return;
+        if (m_closed.load(std::memory_order_acquire))
+            return;
 
         // Backoff before reconnecting after EOF/error. Honour the
         // server's `retry:` if it sent one; clamp to a sane band so
@@ -580,8 +632,10 @@ void HttpClientTransport::run_get_stream(void) noexcept {
             std::lock_guard<std::mutex> lk(m_get_mu_state);
             if (m_next_retry_ms.has_value()) {
                 int v = *m_next_retry_ms;
-                if (v < 50) v = 50;
-                if (v > 60'000) v = 60'000;
+                if (v < 50)
+                    v = 50;
+                if (v > 60'000)
+                    v = 60'000;
                 delay = std::chrono::milliseconds{v};
             }
         }

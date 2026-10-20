@@ -38,9 +38,11 @@ namespace detail {
 inline std::string iso_utc_now(void) {
     using clock = std::chrono::system_clock;
     const auto now = clock::now();
-    const auto t   = clock::to_time_t(now);
-    const auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        now.time_since_epoch()).count() % 1000;
+    const auto t = clock::to_time_t(now);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now.time_since_epoch())
+                        .count() %
+                    1000;
     std::tm tm{};
 #if defined(_WIN32)
     gmtime_s(&tm, &t);
@@ -48,11 +50,10 @@ inline std::string iso_utc_now(void) {
     gmtime_r(&t, &tm);
 #endif
     char buf[40];
-    const int n = std::snprintf(buf, sizeof(buf),
-        "%04d-%02d-%02dT%02d:%02d:%02d.%03lldZ",
-        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-        tm.tm_hour, tm.tm_min, tm.tm_sec,
-        static_cast<long long>(ms));
+    const int n =
+        std::snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d.%03lldZ",
+                      tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
+                      tm.tm_min, tm.tm_sec, static_cast<long long>(ms));
     return std::string{buf, static_cast<std::size_t>(n)};
 }
 
@@ -105,12 +106,12 @@ public:
     /// elapses. Returns the final result payload on completed, throws
     /// Error on failed/cancelled, or returns std::nullopt if the task
     /// wasn't terminal in time.
-    std::optional<Json>
-    wait_result(const std::string& id, std::chrono::milliseconds timeout);
+    std::optional<Json> wait_result(const std::string& id,
+                                    std::chrono::milliseconds timeout);
 
     /// Paginated listing in creation order.
-    [[nodiscard]] ListTasksResult
-    list(std::optional<std::string> cursor, std::size_t page_size) const;
+    [[nodiscard]] ListTasksResult list(std::optional<std::string> cursor,
+                                       std::size_t page_size) const;
 
     /// Read the cooperative cancellation flag for a task. Returns
     /// false if the task isn't known.
@@ -143,52 +144,52 @@ public:
 
 private:
     struct Entry {
-        Task                                      task;
-        std::optional<Json>             result;
-        std::optional<std::string>                error;
-        std::atomic<bool>                         cancelled{false};
-        std::chrono::steady_clock::time_point     created_steady;
+        Task task;
+        std::optional<Json> result;
+        std::optional<std::string> error;
+        std::atomic<bool> cancelled{false};
+        std::chrono::steady_clock::time_point created_steady;
     };
 
     [[nodiscard]] static bool is_terminal(TaskStatus s) noexcept {
-        return s == TaskStatus::completed ||
-               s == TaskStatus::failed    ||
+        return s == TaskStatus::completed || s == TaskStatus::failed ||
                s == TaskStatus::cancelled;
     }
 
     void touch_locked(Entry& e, TaskStatus new_status,
                       std::optional<std::string> message) {
-        e.task.status          = new_status;
+        e.task.status = new_status;
         e.task.last_updated_at = iso_utc_now();
-        if (message.has_value()) e.task.status_message = std::move(*message);
+        if (message.has_value())
+            e.task.status_message = std::move(*message);
     }
 
-    mutable std::mutex                                         m_mu;
-    std::condition_variable                                    m_cv;
-    std::unordered_map<std::string, std::unique_ptr<Entry>>    m_entries;
-    std::vector<std::string>                                   m_order;
-    StatusListener                                             m_listener;
-    std::atomic<bool>                                          m_shutting_down{false};
+    mutable std::mutex m_mu;
+    std::condition_variable m_cv;
+    std::unordered_map<std::string, std::unique_ptr<Entry>> m_entries;
+    std::vector<std::string> m_order;
+    StatusListener m_listener;
+    std::atomic<bool> m_shutting_down{false};
 
     // In-flight worker bookkeeping. m_workers_mu + m_workers_cv are
     // held only briefly around increments/decrements; shutdown()
     // takes the lock and waits.
-    mutable std::mutex                                         m_workers_mu;
-    std::condition_variable                                    m_workers_cv;
-    int                                                        m_workers_inflight{0};
+    mutable std::mutex m_workers_mu;
+    std::condition_variable m_workers_cv;
+    int m_workers_inflight{0};
 };
 
 Task TaskStore::create(std::optional<std::int64_t> ttl_ms) {
     auto entry = std::make_unique<Entry>();
-    entry->task.taskId          = mint_task_id();
-    entry->task.status          = TaskStatus::working;
-    entry->task.created_at      = iso_utc_now();
+    entry->task.taskId = mint_task_id();
+    entry->task.status = TaskStatus::working;
+    entry->task.created_at = iso_utc_now();
     entry->task.last_updated_at = entry->task.created_at;
-    entry->task.ttl             = ttl_ms;
+    entry->task.ttl = ttl_ms;
     // Suggest 500 ms polling. The spec lets receivers advertise a
     // hint; fixed-rate polling is fine for in-process tasks.
-    entry->task.poll_interval   = 500;
-    entry->created_steady       = std::chrono::steady_clock::now();
+    entry->task.poll_interval = 500;
+    entry->created_steady = std::chrono::steady_clock::now();
 
     Task projection;
     StatusListener listener_copy;
@@ -199,7 +200,8 @@ Task TaskStore::create(std::optional<std::int64_t> ttl_ms) {
         m_entries.emplace(entry->task.taskId, std::move(entry));
         listener_copy = m_listener;
     }
-    if (listener_copy) listener_copy(projection);
+    if (listener_copy)
+        listener_copy(projection);
     return projection;
 }
 
@@ -210,7 +212,8 @@ void TaskStore::complete(const std::string& id, Json result) {
     {
         std::lock_guard<std::mutex> lk(m_mu);
         auto it = m_entries.find(id);
-        if (it == m_entries.end()) return;
+        if (it == m_entries.end())
+            return;
         auto& e = *it->second;
         if (is_terminal(e.task.status)) {
             // Already terminal — typical case is `cancel()` got
@@ -231,13 +234,14 @@ void TaskStore::complete(const std::string& id, Json result) {
             e.result = std::move(result);
             touch_locked(e, TaskStatus::completed, std::nullopt);
         }
-        projection    = e.task;
+        projection = e.task;
         listener_copy = m_listener;
-        fire_notify   = true;
+        fire_notify = true;
     }
     if (fire_notify) {
         m_cv.notify_all();
-        if (listener_copy) listener_copy(projection);
+        if (listener_copy)
+            listener_copy(projection);
     }
 }
 
@@ -247,16 +251,19 @@ void TaskStore::fail(const std::string& id, std::string message) {
     {
         std::lock_guard<std::mutex> lk(m_mu);
         auto it = m_entries.find(id);
-        if (it == m_entries.end()) return;
+        if (it == m_entries.end())
+            return;
         auto& e = *it->second;
-        if (is_terminal(e.task.status)) return;
+        if (is_terminal(e.task.status))
+            return;
         e.error = message;
         touch_locked(e, TaskStatus::failed, message);
-        projection    = e.task;
+        projection = e.task;
         listener_copy = m_listener;
     }
     m_cv.notify_all();
-    if (listener_copy) listener_copy(projection);
+    if (listener_copy)
+        listener_copy(projection);
 }
 
 std::optional<Task> TaskStore::cancel(const std::string& id) {
@@ -266,7 +273,8 @@ std::optional<Task> TaskStore::cancel(const std::string& id) {
     {
         std::lock_guard<std::mutex> lk(m_mu);
         auto it = m_entries.find(id);
-        if (it == m_entries.end()) return std::nullopt;
+        if (it == m_entries.end())
+            return std::nullopt;
         auto& e = *it->second;
         // Don't touch the cancelled flag for an already-terminal
         // task. The flag exists so an in-flight worker's complete()
@@ -274,19 +282,20 @@ std::optional<Task> TaskStore::cancel(const std::string& id) {
         // terminal there's no worker still racing, and flipping the
         // flag is purely confusing for any future invariant check.
         if (is_terminal(e.task.status)) {
-            projection    = e.task;
+            projection = e.task;
             listener_copy = m_listener;
         } else {
             e.cancelled.store(true, std::memory_order_release);
             touch_locked(e, TaskStatus::cancelled, std::string{"cancelled"});
-            projection    = e.task;
+            projection = e.task;
             listener_copy = m_listener;
             fire_listener = true;
         }
     }
     if (fire_listener) {
         m_cv.notify_all();
-        if (listener_copy) listener_copy(projection);
+        if (listener_copy)
+            listener_copy(projection);
     }
     return projection;
 }
@@ -294,24 +303,26 @@ std::optional<Task> TaskStore::cancel(const std::string& id) {
 std::optional<Task> TaskStore::get(const std::string& id) const {
     std::lock_guard<std::mutex> lk(m_mu);
     auto it = m_entries.find(id);
-    if (it == m_entries.end()) return std::nullopt;
+    if (it == m_entries.end())
+        return std::nullopt;
     return it->second->task;
 }
 
 bool TaskStore::is_cancelled(const std::string& id) const {
     std::lock_guard<std::mutex> lk(m_mu);
     auto it = m_entries.find(id);
-    if (it == m_entries.end()) return false;
+    if (it == m_entries.end())
+        return false;
     return it->second->cancelled.load(std::memory_order_acquire);
 }
 
-std::optional<Json>
-TaskStore::wait_result(const std::string& id,
-                       std::chrono::milliseconds timeout) {
+std::optional<Json> TaskStore::wait_result(const std::string& id,
+                                           std::chrono::milliseconds timeout) {
     std::unique_lock<std::mutex> lk(m_mu);
     if (!m_cv.wait_for(lk, timeout, [&] {
             auto it = m_entries.find(id);
-            if (it == m_entries.end()) return true;  // gone — also "terminal"
+            if (it == m_entries.end())
+                return true;  // gone — also "terminal"
             return is_terminal(it->second->task.status) ||
                    m_shutting_down.load(std::memory_order_acquire);
         })) {
@@ -323,32 +334,31 @@ TaskStore::wait_result(const std::string& id,
         // The id is well-formed; it just doesn't refer to a known
         // task. invalid_request is the closer error class than
         // invalid_params (the params shape was fine).
-        throw Error{error_code::invalid_request,
-                    "task not found: " + id};
+        throw Error{error_code::invalid_request, "task not found: " + id};
     }
     auto& e = *it->second;
     switch (e.task.status) {
-        case TaskStatus::completed:
-            if (e.result.has_value()) return *e.result;
-            // Shouldn't happen, but be defensive.
-            throw Error{error_code::internal_error,
-                        "task completed without a result payload"};
-        case TaskStatus::failed:
-            throw Error{error_code::internal_error,
-                        "task failed: " + e.error.value_or(std::string{"<no message>"})};
-        case TaskStatus::cancelled:
-            throw Error{error_code::invalid_request,
-                        "task cancelled: " + id};
-        default:
-            // Reached on shutdown if not terminal. Treat as failure.
-            throw Error{error_code::internal_error,
-                        "server shutting down before task completed"};
+    case TaskStatus::completed:
+        if (e.result.has_value())
+            return *e.result;
+        // Shouldn't happen, but be defensive.
+        throw Error{error_code::internal_error,
+                    "task completed without a result payload"};
+    case TaskStatus::failed:
+        throw Error{error_code::internal_error,
+                    "task failed: " +
+                        e.error.value_or(std::string{"<no message>"})};
+    case TaskStatus::cancelled:
+        throw Error{error_code::invalid_request, "task cancelled: " + id};
+    default:
+        // Reached on shutdown if not terminal. Treat as failure.
+        throw Error{error_code::internal_error,
+                    "server shutting down before task completed"};
     }
 }
 
-ListTasksResult
-TaskStore::list(std::optional<std::string> cursor,
-                std::size_t                page_size) const {
+ListTasksResult TaskStore::list(std::optional<std::string> cursor,
+                                std::size_t page_size) const {
     std::lock_guard<std::mutex> lk(m_mu);
 
     std::size_t offset = 0;
@@ -361,23 +371,29 @@ TaskStore::list(std::optional<std::string> cursor,
                             "invalid pagination cursor: " + s};
             }
         }
-        try { offset = static_cast<std::size_t>(std::stoull(s)); }
-        catch (...) { throw Error{error_code::invalid_params,
-                                  "invalid pagination cursor: " + s}; }
+        try {
+            offset = static_cast<std::size_t>(std::stoull(s));
+        } catch (...) {
+            throw Error{error_code::invalid_params,
+                        "invalid pagination cursor: " + s};
+        }
     }
 
     ListTasksResult out;
-    if (offset >= m_order.size()) return out;
+    if (offset >= m_order.size())
+        return out;
 
     const std::size_t end = (page_size == 0)
-        ? m_order.size()
-        : std::min(m_order.size(), offset + page_size);
+                                ? m_order.size()
+                                : std::min(m_order.size(), offset + page_size);
     out.tasks.reserve(end - offset);
     for (std::size_t i = offset; i < end; ++i) {
         auto it = m_entries.find(m_order[i]);
-        if (it != m_entries.end()) out.tasks.push_back(it->second->task);
+        if (it != m_entries.end())
+            out.tasks.push_back(it->second->task);
     }
-    if (end < m_order.size()) out.next_cursor = std::to_string(end);
+    if (end < m_order.size())
+        out.next_cursor = std::to_string(end);
     return out;
 }
 
@@ -394,14 +410,16 @@ std::size_t TaskStore::gc_expired(void) {
     while (it != m_entries.end()) {
         const auto& e = *it->second;
         if (is_terminal(e.task.status) && e.task.ttl.has_value()) {
-            const auto age = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now - e.created_steady).count();
+            const auto age =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - e.created_steady)
+                    .count();
             if (age >= *e.task.ttl) {
                 // Drop from m_order too. Linear, but ttl-driven gc is
                 // expected to be rare.
                 const auto id = it->first;
                 m_order.erase(std::remove(m_order.begin(), m_order.end(), id),
-                             m_order.end());
+                              m_order.end());
                 it = m_entries.erase(it);
                 ++removed;
                 continue;
@@ -468,7 +486,8 @@ Server::~Server() {
     }
     // Drain detached task workers before m_tasks is destroyed —
     // detached worker threads hold raw pointers to m_tasks.
-    if (m_tasks) m_tasks->shutdown();
+    if (m_tasks)
+        m_tasks->shutdown();
 }
 
 Server& Server::set_instructions(std::string s) {
@@ -490,7 +509,8 @@ namespace {
 // (silently wrapping to UINT64_MAX) and trailing junk like "1abc",
 // neither of which we want to treat as a valid offset.
 std::size_t decode_cursor(const std::optional<std::string>& cursor) {
-    if (!cursor.has_value() || cursor->empty()) return 0;
+    if (!cursor.has_value() || cursor->empty())
+        return 0;
     const auto& s = *cursor;
     if (s.size() > 20) {  // longer than UINT64_MAX's decimal length
         throw Error{error_code::invalid_params,
@@ -518,11 +538,14 @@ std::size_t decode_cursor(const std::optional<std::string>& cursor) {
 // `nextCursor` for the next call.
 template <typename T>
 std::pair<std::vector<T>, std::optional<std::string>>
-paginate(const std::vector<T>& items, std::size_t offset, std::size_t page_size) {
-    if (offset >= items.size()) return {{}, std::nullopt};
+paginate(const std::vector<T>& items, std::size_t offset,
+         std::size_t page_size) {
+    if (offset >= items.size())
+        return {{}, std::nullopt};
     if (page_size == 0 || offset + page_size >= items.size()) {
-        return {{items.begin() + static_cast<std::ptrdiff_t>(offset), items.end()},
-                std::nullopt};
+        return {
+            {items.begin() + static_cast<std::ptrdiff_t>(offset), items.end()},
+            std::nullopt};
     }
     const std::size_t next = offset + page_size;
     return {{items.begin() + static_cast<std::ptrdiff_t>(offset),
@@ -531,43 +554,39 @@ paginate(const std::vector<T>& items, std::size_t offset, std::size_t page_size)
 }
 }  // namespace
 
-Server& Server::tool(std::string                    name,
-                     Json                 input_schema,
-                     ToolHandler                    handler,
-                     std::optional<std::string>     title,
-                     std::optional<std::string>     description,
+Server& Server::tool(std::string name, Json input_schema, ToolHandler handler,
+                     std::optional<std::string> title,
+                     std::optional<std::string> description,
                      std::optional<ToolAnnotations> annotations,
-                     std::optional<Json>  output_schema) {
+                     std::optional<Json> output_schema) {
     Tool t{
-        .name          = name,
-        .title         = std::move(title),
-        .description   = std::move(description),
-        .input_schema  = std::move(input_schema),
+        .name = name,
+        .title = std::move(title),
+        .description = std::move(description),
+        .input_schema = std::move(input_schema),
         .output_schema = std::move(output_schema),
-        .annotations   = std::move(annotations),
-        .icons         = std::nullopt,
-        .execution     = std::nullopt,
-        .meta          = std::nullopt,
+        .annotations = std::move(annotations),
+        .icons = std::nullopt,
+        .execution = std::nullopt,
+        .meta = std::nullopt,
     };
     std::lock_guard<std::mutex> lk(m_tools_mu);
     m_tools[name] = ToolEntry{std::move(t), std::move(handler)};
     return *this;
 }
 
-Server& Server::tool(std::string    name,
-                     Json input_schema,
-                     ToolHandler    handler,
-                     ToolMetadata   meta) {
+Server& Server::tool(std::string name, Json input_schema, ToolHandler handler,
+                     ToolMetadata meta) {
     Tool t{
-        .name          = name,
-        .title         = std::nullopt,
-        .description   = std::nullopt,
-        .input_schema  = std::move(input_schema),
+        .name = name,
+        .title = std::nullopt,
+        .description = std::nullopt,
+        .input_schema = std::move(input_schema),
         .output_schema = std::nullopt,
-        .annotations   = std::nullopt,
-        .icons         = std::move(meta.icons),
-        .execution     = std::move(meta.execution),
-        .meta          = std::move(meta.meta),
+        .annotations = std::nullopt,
+        .icons = std::move(meta.icons),
+        .execution = std::move(meta.execution),
+        .meta = std::move(meta.meta),
     };
     std::lock_guard<std::mutex> lk(m_tools_mu);
     m_tools[name] = ToolEntry{std::move(t), std::move(handler)};
@@ -606,40 +625,40 @@ Server& Server::enable_logging(LoggingLevel initial_level) {
     return *this;
 }
 
-bool Server::log(LoggingLevel               level,
-                 Json             data,
+bool Server::log(LoggingLevel level, Json data,
                  std::optional<std::string> logger) {
-    if (!m_logging_enabled.load(std::memory_order_acquire)) return false;
+    if (!m_logging_enabled.load(std::memory_order_acquire))
+        return false;
     if (static_cast<int>(level) <
-        static_cast<int>(m_log_level.load(std::memory_order_acquire))) return false;
+        static_cast<int>(m_log_level.load(std::memory_order_acquire)))
+        return false;
     auto session = acquire_session();
-    if (!session) return false;
+    if (!session)
+        return false;
     LoggingMessageNotificationParams params{
-        .level  = level,
+        .level = level,
         .logger = std::move(logger),
-        .data   = std::move(data),
+        .data = std::move(data),
     };
     auto ec = session->send_notification(
-        std::string{method_notifications_message},
-        to_json(params));
+        std::string{method_notifications_message}, to_json(params));
     return !ec;
 }
 
-void Server::report_progress(const ProgressToken&        token,
-                             double                      progress,
-                             std::optional<double>       total,
-                             std::optional<std::string>  message) {
+void Server::report_progress(const ProgressToken& token, double progress,
+                             std::optional<double> total,
+                             std::optional<std::string> message) {
     auto session = acquire_session();
-    if (!session) return;
+    if (!session)
+        return;
     ProgressNotificationParams params{
         .progress_token = token,
-        .progress       = progress,
-        .total          = total,
-        .message        = std::move(message),
+        .progress = progress,
+        .total = total,
+        .message = std::move(message),
     };
-    (void)session->send_notification(
-        std::string{method_notifications_progress},
-        to_json(params));
+    (void)session->send_notification(std::string{method_notifications_progress},
+                                     to_json(params));
 }
 
 std::future<CreateMessageResult>
@@ -650,8 +669,7 @@ Server::sample(CreateMessageRequestParams params) {
                     "Server::sample: server is not running"};
     }
     return session->send_request_for<CreateMessageResult>(
-        std::string{method_sampling_create_message},
-        to_json(params),
+        std::string{method_sampling_create_message}, to_json(params),
         [](Json j) { return from_json<CreateMessageResult>(j); });
 }
 
@@ -666,14 +684,12 @@ std::future<ListRootsResult> Server::list_roots(void) {
         [](Json j) { return from_json<ListRootsResult>(j); });
 }
 
-std::future<ElicitResult>
-Server::elicit(ElicitRequestParams params) {
+std::future<ElicitResult> Server::elicit(ElicitRequestParams params) {
     return elicit(std::move(params), std::chrono::milliseconds{0});
 }
 
-std::future<ElicitResult>
-Server::elicit(ElicitRequestParams       params,
-               std::chrono::milliseconds timeout) {
+std::future<ElicitResult> Server::elicit(ElicitRequestParams params,
+                                         std::chrono::milliseconds timeout) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error,
@@ -682,10 +698,8 @@ Server::elicit(ElicitRequestParams       params,
     // 0 ⇒ Session's default request timeout (30 s). For URL-mode
     // human-in-the-loop flows callers should pass a larger value.
     return session->send_request_for<ElicitResult>(
-        std::string{method_elicitation_create},
-        to_json(params),
-        [](Json j) { return from_json<ElicitResult>(j); },
-        timeout);
+        std::string{method_elicitation_create}, to_json(params),
+        [](Json j) { return from_json<ElicitResult>(j); }, timeout);
 }
 
 void Server::set_elicitation_complete_handler(
@@ -697,7 +711,8 @@ void Server::set_elicitation_complete_handler(
 std::error_code
 Server::notify_elicitation_complete(std::string elicitation_id) {
     auto session = acquire_session();
-    if (!session) return std::make_error_code(std::errc::not_connected);
+    if (!session)
+        return std::make_error_code(std::errc::not_connected);
     return session->send_notification(
         std::string{method_notifications_elicitation_complete},
         to_json(ElicitationCompleteNotificationParams{
@@ -722,8 +737,9 @@ Server& Server::enable_completion(CompletionHandler handler) {
 }
 
 Server& Server::enable_tasks(std::optional<std::int64_t> default_ttl_ms,
-                              std::size_t                 max_concurrent) {
-    if (!m_tasks) m_tasks = std::make_unique<detail::TaskStore>();
+                             std::size_t max_concurrent) {
+    if (!m_tasks)
+        m_tasks = std::make_unique<detail::TaskStore>();
     m_tasks_default_ttl_ms = default_ttl_ms;
     m_tasks_max_concurrent = max_concurrent;
     return *this;
@@ -747,7 +763,7 @@ Json Server::handle_initialize(const Json& params) {
     // different worker threads.
     bool expected = false;
     if (!m_initialized.compare_exchange_strong(expected, true,
-                                              std::memory_order_acq_rel)) {
+                                               std::memory_order_acq_rel)) {
         throw Error{error_code::invalid_request, "already initialized"};
     }
 
@@ -765,15 +781,16 @@ Json Server::handle_initialize(const Json& params) {
     // disconnect. For Phase 1 we simply echo our own latest.
     InitializeResult result{};
     result.protocol_version = std::string{kLatestProtocolVersion};
-    result.server_info      = m_server_info;
-    result.instructions     = m_instructions;
+    result.server_info = m_server_info;
+    result.instructions = m_instructions;
 
     // Capabilities: we offer each capability iff something is registered
     // for it. listChanged is unset because we don't yet emit those
     // notifications (Phase 3).
     {
         std::lock_guard<std::mutex> lk(m_tools_mu);
-        if (!m_tools.empty()) result.capabilities.tools = ToolsCapability{};
+        if (!m_tools.empty())
+            result.capabilities.tools = ToolsCapability{};
     }
     {
         std::lock_guard<std::mutex> lk(m_resources_mu);
@@ -784,7 +801,8 @@ Json Server::handle_initialize(const Json& params) {
     }
     {
         std::lock_guard<std::mutex> lk(m_prompts_mu);
-        if (!m_prompts.empty()) result.capabilities.prompts = PromptsCapability{};
+        if (!m_prompts.empty())
+            result.capabilities.prompts = PromptsCapability{};
     }
     if (m_logging_enabled.load(std::memory_order_acquire)) {
         result.capabilities.logging = QJsonObject{};
@@ -797,10 +815,10 @@ Json Server::handle_initialize(const Json& params) {
     }
     if (m_tasks) {
         TasksCapability tc;
-        tc.list   = QJsonObject{};
+        tc.list = QJsonObject{};
         tc.cancel = QJsonObject{};
         TasksRequestsCapability rc;
-        rc.tools  = Json{{"call", QJsonObject{}}};
+        rc.tools = Json{{"call", QJsonObject{}}};
         tc.requests = std::move(rc);
         result.capabilities.tasks = std::move(tc);
     }
@@ -812,20 +830,21 @@ Json Server::handle_list_tools(const Json& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
-    auto parsed = params.isNull()
-                      ? ListToolsRequestParams{}
-                      : from_json<ListToolsRequestParams>(params);
+    auto parsed = params.isNull() ? ListToolsRequestParams{}
+                                  : from_json<ListToolsRequestParams>(params);
     std::vector<Tool> all;
     {
         std::lock_guard<std::mutex> lk(m_tools_mu);
         all.reserve(m_tools.size());
-        for (const auto& [name, entry] : m_tools) all.push_back(entry.descriptor);
+        for (const auto& [name, entry] : m_tools)
+            all.push_back(entry.descriptor);
     }
-    auto [page, next] = paginate(all, decode_cursor(parsed.cursor), m_page_size);
+    auto [page, next] =
+        paginate(all, decode_cursor(parsed.cursor), m_page_size);
     return to_json(ListToolsResult{
-        .tools       = std::move(page),
+        .tools = std::move(page),
         .next_cursor = std::move(next),
-        .meta        = std::nullopt,
+        .meta = std::nullopt,
     });
 }
 
@@ -863,15 +882,18 @@ Json Server::handle_call_tool(const Json& params) {
     // `forbidden`, an augmented call is rejected. Default ("optional"
     // / absent) accepts either path.
     if (tool_task_support.has_value()) {
-        if (*tool_task_support == TaskSupport::required && !parsed.task.has_value()) {
-            throw Error{error_code::invalid_request,
-                        "tool \"" + parsed.name +
-                        "\" requires task augmentation; pass `task` in params"};
+        if (*tool_task_support == TaskSupport::required &&
+            !parsed.task.has_value()) {
+            throw Error{
+                error_code::invalid_request,
+                "tool \"" + parsed.name +
+                    "\" requires task augmentation; pass `task` in params"};
         }
-        if (*tool_task_support == TaskSupport::forbidden && parsed.task.has_value()) {
+        if (*tool_task_support == TaskSupport::forbidden &&
+            parsed.task.has_value()) {
             throw Error{error_code::invalid_request,
                         "tool \"" + parsed.name +
-                        "\" forbids task augmentation"};
+                            "\" forbids task augmentation"};
         }
     }
 
@@ -884,18 +906,16 @@ Json Server::handle_call_tool(const Json& params) {
         // DoS hardening: reject if we'd exceed the configured
         // concurrent-task cap. 0 means unlimited (default).
         if (m_tasks_max_concurrent > 0 &&
-            static_cast<std::size_t>(m_tasks->workers_inflight())
-                >= m_tasks_max_concurrent) {
+            static_cast<std::size_t>(m_tasks->workers_inflight()) >=
+                m_tasks_max_concurrent) {
             throw Error{error_code::invalid_request,
                         "task concurrency limit reached (" +
-                        std::to_string(m_tasks_max_concurrent) +
-                        ")"};
+                            std::to_string(m_tasks_max_concurrent) + ")"};
         }
         // Resolve effective TTL: per-call override wins, else the
         // server-wide default.
-        const auto ttl = parsed.task->ttl.has_value()
-                             ? parsed.task->ttl
-                             : m_tasks_default_ttl_ms;
+        const auto ttl = parsed.task->ttl.has_value() ? parsed.task->ttl
+                                                      : m_tasks_default_ttl_ms;
         const Task task = m_tasks->create(ttl);
 
         // Dispatch the actual tool call onto a worker thread. The
@@ -911,7 +931,7 @@ Json Server::handle_call_tool(const Json& params) {
         const std::string id = task.taskId;
         m_tasks->worker_started();
         std::thread([store = m_tasks.get(), h = std::move(h),
-                      args = std::move(args), id]() mutable {
+                     args = std::move(args), id]() mutable {
             try {
                 CallToolResult res = h(args);
                 store->complete(id, to_json(res));
@@ -942,13 +962,15 @@ Json Server::handle_list_resources(const Json& params) {
     {
         std::lock_guard<std::mutex> lk(m_resources_mu);
         all.reserve(m_resources.size());
-        for (const auto& [uri, entry] : m_resources) all.push_back(entry.descriptor);
+        for (const auto& [uri, entry] : m_resources)
+            all.push_back(entry.descriptor);
     }
-    auto [page, next] = paginate(all, decode_cursor(parsed.cursor), m_page_size);
+    auto [page, next] =
+        paginate(all, decode_cursor(parsed.cursor), m_page_size);
     return to_json(ListResourcesResult{
-        .resources   = std::move(page),
+        .resources = std::move(page),
         .next_cursor = std::move(next),
-        .meta        = std::nullopt,
+        .meta = std::nullopt,
     });
 }
 
@@ -964,11 +986,12 @@ Json Server::handle_list_resource_templates(const Json& params) {
         std::lock_guard<std::mutex> lk(m_resources_mu);
         all = m_resource_templates;
     }
-    auto [page, next] = paginate(all, decode_cursor(parsed.cursor), m_page_size);
+    auto [page, next] =
+        paginate(all, decode_cursor(parsed.cursor), m_page_size);
     return to_json(ListResourceTemplatesResult{
         .resource_templates = std::move(page),
-        .next_cursor        = std::move(next),
-        .meta               = std::nullopt,
+        .next_cursor = std::move(next),
+        .meta = std::nullopt,
     });
 }
 
@@ -1005,20 +1028,21 @@ Json Server::handle_list_prompts(const Json& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
-    auto parsed = params.isNull()
-                      ? ListPromptsRequestParams{}
-                      : from_json<ListPromptsRequestParams>(params);
+    auto parsed = params.isNull() ? ListPromptsRequestParams{}
+                                  : from_json<ListPromptsRequestParams>(params);
     std::vector<Prompt> all;
     {
         std::lock_guard<std::mutex> lk(m_prompts_mu);
         all.reserve(m_prompts.size());
-        for (const auto& [name, entry] : m_prompts) all.push_back(entry.descriptor);
+        for (const auto& [name, entry] : m_prompts)
+            all.push_back(entry.descriptor);
     }
-    auto [page, next] = paginate(all, decode_cursor(parsed.cursor), m_page_size);
+    auto [page, next] =
+        paginate(all, decode_cursor(parsed.cursor), m_page_size);
     return to_json(ListPromptsResult{
-        .prompts     = std::move(page),
+        .prompts = std::move(page),
         .next_cursor = std::move(next),
-        .meta        = std::nullopt,
+        .meta = std::nullopt,
     });
 }
 
@@ -1038,7 +1062,8 @@ Json Server::handle_get_prompt(const Json& params) {
     {
         std::lock_guard<std::mutex> lk(m_prompts_mu);
         auto it = m_prompts.find(parsed.name);
-        if (it != m_prompts.end()) h = it->second.handler;
+        if (it != m_prompts.end())
+            h = it->second.handler;
     }
     if (!h) {
         throw Error{error_code::method_not_found,
@@ -1087,7 +1112,8 @@ Json Server::handle_complete(const Json& params) {
         parsed = from_json<CompleteRequestParams>(params);
     } catch (const std::exception& e) {
         throw Error{error_code::invalid_params,
-                    std::string{"invalid completion/complete params: "} + e.what()};
+                    std::string{"invalid completion/complete params: "} +
+                        e.what()};
     }
     return to_json(CompleteResult{.completion = h(parsed)});
 }
@@ -1148,8 +1174,8 @@ Json Server::handle_get_task_result(const Json& params) {
         }
         throw Error{error_code::invalid_request,
                     "task " + parsed.task_id +
-                    " not yet terminal; re-call tasks/result or "
-                    "poll tasks/get",
+                        " not yet terminal; re-call tasks/result or "
+                        "poll tasks/get",
                     data};
     }
     // Tag the result with the spec's mandated _meta key so callers
@@ -1159,13 +1185,12 @@ Json Server::handle_get_task_result(const Json& params) {
     // worse than the small loss of a wrongly-typed _meta value).
     if (value->isObject()) {
         QJsonObject obj = value->toObject();
-        QJsonObject meta =
-            obj.value(QStringLiteral("_meta")).isObject()
-                ? obj.value(QStringLiteral("_meta")).toObject()
-                : QJsonObject{};
-        meta.insert(QString::fromLatin1(tasks_related_task_meta_key),
-                    QJsonObject{{QStringLiteral("taskId"),
-                                 to_json(parsed.task_id)}});
+        QJsonObject meta = obj.value(QStringLiteral("_meta")).isObject()
+                               ? obj.value(QStringLiteral("_meta")).toObject()
+                               : QJsonObject{};
+        meta.insert(
+            QString::fromLatin1(tasks_related_task_meta_key),
+            QJsonObject{{QStringLiteral("taskId"), to_json(parsed.task_id)}});
         obj.insert(QStringLiteral("_meta"), meta);
         *value = obj;
     }
@@ -1222,8 +1247,9 @@ void Server::handle_cancelled(const Json& params) {
     try {
         auto p = from_json<CancelledNotificationParams>(params);
         if (p.request_id.has_value()) {
-            MCP_LOG_INFO("client cancelled request id=" + p.request_id->canonical()
-                         + (p.reason ? (" reason=" + *p.reason) : ""));
+            MCP_LOG_INFO(
+                "client cancelled request id=" + p.request_id->canonical() +
+                (p.reason ? (" reason=" + *p.reason) : ""));
         }
     } catch (...) {
         MCP_LOG_WARN("malformed notifications/cancelled payload");
@@ -1236,7 +1262,8 @@ void Server::handle_cancelled(const Json& params) {
 
 void Server::run(std::unique_ptr<Transport> transport) {
     if (!transport) {
-        throw Error{error_code::internal_error, "Server::run: transport is null"};
+        throw Error{error_code::internal_error,
+                    "Server::run: transport is null"};
     }
     m_initialized.store(false, std::memory_order_release);
     m_stop_requested.store(false, std::memory_order_release);
@@ -1247,37 +1274,52 @@ void Server::run(std::unique_ptr<Transport> transport) {
         m_session = local;
     }
 
-    local->set_request_handler(std::string{method_initialize},
+    local->set_request_handler(
+        std::string{method_initialize},
         [this](const Json& p) { return handle_initialize(p); });
-    local->set_request_handler(std::string{method_tools_list},
+    local->set_request_handler(
+        std::string{method_tools_list},
         [this](const Json& p) { return handle_list_tools(p); });
-    local->set_request_handler(std::string{method_tools_call},
+    local->set_request_handler(
+        std::string{method_tools_call},
         [this](const Json& p) { return handle_call_tool(p); });
-    local->set_request_handler(std::string{method_resources_list},
+    local->set_request_handler(
+        std::string{method_resources_list},
         [this](const Json& p) { return handle_list_resources(p); });
-    local->set_request_handler(std::string{method_resources_templates_list},
+    local->set_request_handler(
+        std::string{method_resources_templates_list},
         [this](const Json& p) { return handle_list_resource_templates(p); });
-    local->set_request_handler(std::string{method_resources_read},
+    local->set_request_handler(
+        std::string{method_resources_read},
         [this](const Json& p) { return handle_read_resource(p); });
-    local->set_request_handler(std::string{method_prompts_list},
+    local->set_request_handler(
+        std::string{method_prompts_list},
         [this](const Json& p) { return handle_list_prompts(p); });
-    local->set_request_handler(std::string{method_prompts_get},
+    local->set_request_handler(
+        std::string{method_prompts_get},
         [this](const Json& p) { return handle_get_prompt(p); });
-    local->set_request_handler(std::string{method_ping},
-        [this](const Json& p) { return handle_ping(p); });
-    local->set_request_handler(std::string{method_logging_set_level},
+    local->set_request_handler(std::string{method_ping}, [this](const Json& p) {
+        return handle_ping(p);
+    });
+    local->set_request_handler(
+        std::string{method_logging_set_level},
         [this](const Json& p) { return handle_set_level(p); });
-    local->set_request_handler(std::string{method_completion_complete},
+    local->set_request_handler(
+        std::string{method_completion_complete},
         [this](const Json& p) { return handle_complete(p); });
 
     if (m_tasks) {
-        local->set_request_handler(std::string{method_tasks_get},
+        local->set_request_handler(
+            std::string{method_tasks_get},
             [this](const Json& p) { return handle_get_task(p); });
-        local->set_request_handler(std::string{method_tasks_result},
+        local->set_request_handler(
+            std::string{method_tasks_result},
             [this](const Json& p) { return handle_get_task_result(p); });
-        local->set_request_handler(std::string{method_tasks_list},
+        local->set_request_handler(
+            std::string{method_tasks_list},
             [this](const Json& p) { return handle_list_tasks(p); });
-        local->set_request_handler(std::string{method_tasks_cancel},
+        local->set_request_handler(
+            std::string{method_tasks_cancel},
             [this](const Json& p) { return handle_cancel_task(p); });
 
         // Push status updates to the client over notifications/tasks/status.
@@ -1285,14 +1327,14 @@ void Server::run(std::unique_ptr<Transport> transport) {
         // we already drop the lock before calling the listener (see
         // TaskStore::complete/fail/cancel/create), so this is safe.
         std::weak_ptr<Session> weak{local};
-        m_tasks->set_status_listener(
-            [weak](const Task& t) {
-                auto s = weak.lock();
-                if (!s) return;
-                (void)s->send_notification(
-                    std::string{method_notifications_tasks_status},
-                    to_json(TaskStatusNotificationParams{.task = t}));
-            });
+        m_tasks->set_status_listener([weak](const Task& t) {
+            auto s = weak.lock();
+            if (!s)
+                return;
+            (void)s->send_notification(
+                std::string{method_notifications_tasks_status},
+                to_json(TaskStatusNotificationParams{.task = t}));
+        });
     }
 
     // notifications/elicitation/complete (URL-mode finalization). The
@@ -1306,32 +1348,38 @@ void Server::run(std::unique_ptr<Transport> transport) {
                 std::lock_guard<std::mutex> lk(m_completion_mu);
                 h = m_elicitation_complete_handler;
             }
-            if (!h || !params.isObject()) return;
+            if (!h || !params.isObject())
+                return;
             ElicitationCompleteNotificationParams parsed;
             try {
-                parsed = from_json<ElicitationCompleteNotificationParams>(params);
+                parsed =
+                    from_json<ElicitationCompleteNotificationParams>(params);
             } catch (const std::exception& e) {
-                MCP_LOG_WARN(std::string{"malformed elicitation/complete: "}
-                             + e.what());
+                MCP_LOG_WARN(std::string{"malformed elicitation/complete: "} +
+                             e.what());
                 return;
             } catch (...) {
                 MCP_LOG_WARN("malformed elicitation/complete");
                 return;
             }
-            try { h(std::move(parsed.elicitation_id)); }
-            catch (const std::exception& e) {
-                MCP_LOG_ERROR(std::string{"elicitation/complete handler threw: "}
-                              + e.what());
+            try {
+                h(std::move(parsed.elicitation_id));
+            } catch (const std::exception& e) {
+                MCP_LOG_ERROR(
+                    std::string{"elicitation/complete handler threw: "} +
+                    e.what());
             } catch (...) {
-                MCP_LOG_ERROR("elicitation/complete handler threw a non-std exception");
+                MCP_LOG_ERROR(
+                    "elicitation/complete handler threw a non-std exception");
             }
         });
 
-    local->set_notification_handler(std::string{method_notifications_cancelled},
+    local->set_notification_handler(
+        std::string{method_notifications_cancelled},
         [this](const Json& p) { handle_cancelled(p); });
 
-    local->set_notification_handler(std::string{method_notifications_initialized},
-        [](const Json&) {
+    local->set_notification_handler(
+        std::string{method_notifications_initialized}, [](const Json&) {
             // Per the spec, this notification just confirms the client is
             // ready for normal operation. We simply log it.
             MCP_LOG_DEBUG("client sent notifications/initialized");

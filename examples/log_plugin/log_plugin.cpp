@@ -32,17 +32,20 @@ class LogPlugin : public mcp::PluginInterface {
     Q_OBJECT
     Q_CLASSINFO("id", "logging")
     Q_CLASSINFO("version", "1.0.0")
-    Q_CLASSINFO("description", "Owns SDK diagnostic logging; renders events as JSON lines.")
+    Q_CLASSINFO("description",
+                "Owns SDK diagnostic logging; renders events as JSON lines.")
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "log_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 
 public:
-    explicit LogPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
+    explicit LogPlugin(QObject* parent = nullptr)
+        : mcp::PluginInterface(parent) {}
 
     void initialize(const mcp::HostInterface& host) override {
         m_host = host;
 
-        if (const char* path = std::getenv("MCP_LOG_FILE"); path != nullptr && *path != '\0') {
+        if (const char* path = std::getenv("MCP_LOG_FILE");
+            path != nullptr && *path != '\0') {
             m_file = std::fopen(path, "a");
         }
         m_output = m_file != nullptr ? m_file : stderr;
@@ -50,9 +53,12 @@ public:
         // Claim last: this must be the final step so a setup failure above
         // cannot leave a claimed sink pointing at a half-initialised plugin.
         const bool ok = m_host.claimLogging(
-            [this](mcp::LogLevel level, std::string_view msg) { write(level, msg); });
+            [this](mcp::LogLevel level, std::string_view msg) {
+                write(level, msg);
+            });
         if (!ok) {
-            qWarning("logging plugin: log sink already claimed; not taking over");
+            qWarning(
+                "logging plugin: log sink already claimed; not taking over");
         } else {
             // Demonstrate that the plugin controls rendering: a structured,
             // plugin-authored line (not the core fallback format).
@@ -73,19 +79,22 @@ public:
 private:
     void write(mcp::LogLevel level, std::string_view msg) {
         const QJsonObject record{
-            { QStringLiteral("level"), QString::fromLatin1(mcp::to_string(level).data()) },
-            { QStringLiteral("msg"),
-              QString::fromUtf8(msg.data(), static_cast<int>(msg.size())) },
+            {QStringLiteral("level"),
+             QString::fromLatin1(mcp::to_string(level).data())},
+            {QStringLiteral("msg"),
+             QString::fromUtf8(msg.data(), static_cast<int>(msg.size()))},
         };
-        const QByteArray line = QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n';
+        const QByteArray line =
+            QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n';
 
         std::lock_guard<std::mutex> lk(m_mu);
-        std::fwrite(line.constData(), 1, static_cast<std::size_t>(line.size()), m_output);
+        std::fwrite(line.constData(), 1, static_cast<std::size_t>(line.size()),
+                    m_output);
         std::fflush(m_output);
     }
 
     std::mutex m_mu;
-    std::FILE* m_file   = nullptr;
+    std::FILE* m_file = nullptr;
     std::FILE* m_output = stderr;
 };
 

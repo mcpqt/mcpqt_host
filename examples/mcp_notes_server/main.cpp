@@ -102,11 +102,10 @@ class Stmt {
 public:
     Stmt(void) = default;
     Stmt(sqlite3* db, std::string_view sql) {
-        if (sqlite3_prepare_v2(db, sql.data(),
-                                static_cast<int>(sql.size()),
-                                &m_raw, nullptr) != SQLITE_OK) {
-            throw SqliteError(std::string{"sqlite prepare failed: "}
-                              + sqlite3_errmsg(db));
+        if (sqlite3_prepare_v2(db, sql.data(), static_cast<int>(sql.size()),
+                               &m_raw, nullptr) != SQLITE_OK) {
+            throw SqliteError(std::string{"sqlite prepare failed: "} +
+                              sqlite3_errmsg(db));
         }
     }
     Stmt(const Stmt&) = delete;
@@ -114,12 +113,17 @@ public:
     Stmt(Stmt&& o) noexcept : m_raw(o.m_raw) { o.m_raw = nullptr; }
     Stmt& operator=(Stmt&& o) noexcept {
         if (this != &o) {
-            if (m_raw) sqlite3_finalize(m_raw);
-            m_raw = o.m_raw; o.m_raw = nullptr;
+            if (m_raw)
+                sqlite3_finalize(m_raw);
+            m_raw = o.m_raw;
+            o.m_raw = nullptr;
         }
         return *this;
     }
-    ~Stmt() { if (m_raw) sqlite3_finalize(m_raw); }
+    ~Stmt() {
+        if (m_raw)
+            sqlite3_finalize(m_raw);
+    }
     sqlite3_stmt* get(void) const noexcept { return m_raw; }
     sqlite3_stmt* operator->() const noexcept { return m_raw; }
 
@@ -127,9 +131,8 @@ public:
     void bind(int i, std::string_view s) {
         // SQLITE_TRANSIENT: SQLite copies the buffer, so we don't
         // have to keep `s` alive.
-        if (sqlite3_bind_text(m_raw, i, s.data(),
-                               static_cast<int>(s.size()),
-                               SQLITE_TRANSIENT) != SQLITE_OK) {
+        if (sqlite3_bind_text(m_raw, i, s.data(), static_cast<int>(s.size()),
+                              SQLITE_TRANSIENT) != SQLITE_OK) {
             throw SqliteError("sqlite bind failed");
         }
     }
@@ -149,9 +152,9 @@ public:
     // Column readers.
     std::string text(int col) const {
         const auto* p = sqlite3_column_text(m_raw, col);
-        const auto  n = sqlite3_column_bytes(m_raw, col);
+        const auto n = sqlite3_column_bytes(m_raw, col);
         return p ? std::string{reinterpret_cast<const char*>(p),
-                                static_cast<std::size_t>(n)}
+                               static_cast<std::size_t>(n)}
                  : std::string{};
     }
     std::int64_t i64(int col) const { return sqlite3_column_int64(m_raw, col); }
@@ -167,14 +170,15 @@ class Db {
 public:
     explicit Db(const std::string& path, bool readonly) {
         const int flags = readonly
-            ? (SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
-            : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
-               | SQLITE_OPEN_FULLMUTEX);
-        if (sqlite3_open_v2(path.c_str(), &m_handle, flags, nullptr) != SQLITE_OK) {
-            const std::string msg = m_handle
-                ? sqlite3_errmsg(m_handle)
-                : "unknown sqlite open failure";
-            if (m_handle) sqlite3_close(m_handle);
+                              ? (SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX)
+                              : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
+                                 SQLITE_OPEN_FULLMUTEX);
+        if (sqlite3_open_v2(path.c_str(), &m_handle, flags, nullptr) !=
+            SQLITE_OK) {
+            const std::string msg = m_handle ? sqlite3_errmsg(m_handle)
+                                             : "unknown sqlite open failure";
+            if (m_handle)
+                sqlite3_close(m_handle);
             m_handle = nullptr;
             throw SqliteError(std::string{"sqlite open failed: "} + msg);
         }
@@ -187,7 +191,10 @@ public:
     }
     Db(const Db&) = delete;
     Db& operator=(const Db&) = delete;
-    ~Db() { if (m_handle) sqlite3_close(m_handle); }
+    ~Db() {
+        if (m_handle)
+            sqlite3_close(m_handle);
+    }
 
     sqlite3* handle(void) const noexcept { return m_handle; }
 
@@ -196,10 +203,11 @@ public:
         // sqlite3_exec doesn't take a length — but our statements
         // are well-formed string_views over null-terminated
         // literals, so .data() is safe here.
-        if (sqlite3_exec(m_handle, std::string{sql}.c_str(),
-                          nullptr, nullptr, &err) != SQLITE_OK) {
+        if (sqlite3_exec(m_handle, std::string{sql}.c_str(), nullptr, nullptr,
+                         &err) != SQLITE_OK) {
             const std::string msg = err ? err : "unknown error";
-            if (err) sqlite3_free(err);
+            if (err)
+                sqlite3_free(err);
             throw SqliteError(std::string{"sqlite exec failed: "} + msg);
         }
     }
@@ -257,7 +265,8 @@ END;
 
 std::int64_t now_unix_seconds(void) {
     return std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
 }
 
 std::string default_db_path(void) {
@@ -280,18 +289,18 @@ std::string default_db_path(void) {
 
 mcp::CallToolResult ok_text(std::string s) {
     return mcp::CallToolResult{
-        .content = { mcp::TextContent{.text = std::move(s)} },
+        .content = {mcp::TextContent{.text = std::move(s)}},
     };
 }
 mcp::CallToolResult ok_json(Json structured, std::string human_summary) {
     return mcp::CallToolResult{
-        .content = { mcp::TextContent{.text = std::move(human_summary)} },
+        .content = {mcp::TextContent{.text = std::move(human_summary)}},
         .structured_content = std::move(structured),
     };
 }
 mcp::CallToolResult err_text(std::string s) {
     return mcp::CallToolResult{
-        .content = { mcp::TextContent{.text = std::move(s)} },
+        .content = {mcp::TextContent{.text = std::move(s)}},
         .is_error = true,
     };
 }
@@ -306,11 +315,13 @@ public:
         : m_db(std::move(db)), m_readonly(readonly) {}
 
     mcp::CallToolResult write(const Json& args) {
-        if (m_readonly) return err_text("notes/write: server is read-only");
-        const std::string key   = jstr(args, "key");
+        if (m_readonly)
+            return err_text("notes/write: server is read-only");
+        const std::string key = jstr(args, "key");
         const std::string value = jstr(args, "value");
-        const std::string tags  = jstr(args, "tags");
-        if (key.empty()) return err_text("notes/write: `key` is required");
+        const std::string tags = jstr(args, "tags");
+        if (key.empty())
+            return err_text("notes/write: `key` is required");
         if (key.size() > 256)
             return err_text("notes/write: key too long (>256 chars)");
         if (value.empty())
@@ -327,7 +338,10 @@ public:
         )sql");
         stmt.bind(1, key);
         stmt.bind(2, value);
-        if (tags.empty()) stmt.bind_null(3); else stmt.bind(3, tags);
+        if (tags.empty())
+            stmt.bind_null(3);
+        else
+            stmt.bind(3, tags);
         stmt.bind(4, now);
         if (stmt.step() != SQLITE_DONE) {
             return err_text(std::string{"notes/write: "} +
@@ -338,10 +352,10 @@ public:
 
     mcp::CallToolResult read(const Json& args) {
         const std::string key = jstr(args, "key");
-        if (key.empty()) return err_text("notes/read: `key` is required");
-        auto stmt = m_db->prepare(
-            "SELECT value, tags, created_at, updated_at "
-            "FROM notes WHERE key = ?1");
+        if (key.empty())
+            return err_text("notes/read: `key` is required");
+        auto stmt = m_db->prepare("SELECT value, tags, created_at, updated_at "
+                                  "FROM notes WHERE key = ?1");
         stmt.bind(1, key);
         const int rc = stmt.step();
         if (rc == SQLITE_DONE) {
@@ -352,9 +366,9 @@ public:
                             sqlite3_errmsg(m_db->handle()));
         }
         QJsonObject structured{
-            {"key",       jsv(key)},
-            {"value",     jsv(stmt.text(0))},
-            {"tags",      jsv(stmt.is_null(1) ? "" : stmt.text(1))},
+            {"key", jsv(key)},
+            {"value", jsv(stmt.text(0))},
+            {"tags", jsv(stmt.is_null(1) ? "" : stmt.text(1))},
             {"createdAt", jiv(stmt.i64(2))},
             {"updatedAt", jiv(stmt.i64(3))},
         };
@@ -362,13 +376,12 @@ public:
     }
 
     mcp::CallToolResult list(const Json& args) {
-        const std::string tag    = jstr(args, "tag");
+        const std::string tag = jstr(args, "tag");
         const std::string prefix = jstr(args, "prefix");
-        const auto        limit  =
+        const auto limit =
             std::clamp<std::int64_t>(jint(args, "limit", 50), 1, 1'000);
 
-        std::string sql =
-            "SELECT key, tags, updated_at FROM notes WHERE 1=1";
+        std::string sql = "SELECT key, tags, updated_at FROM notes WHERE 1=1";
         std::vector<std::string> binds;
         if (!prefix.empty()) {
             sql += " AND key LIKE ?";
@@ -384,27 +397,28 @@ public:
 
         auto stmt = m_db->prepare(sql);
         int idx = 1;
-        for (const auto& b : binds) stmt.bind(idx++, b);
+        for (const auto& b : binds)
+            stmt.bind(idx++, b);
         stmt.bind(idx, limit);
 
         QJsonArray items;
         while (stmt.step() == SQLITE_ROW) {
             items.append(QJsonObject{
-                {"key",       jsv(stmt.text(0))},
-                {"tags",      jsv(stmt.is_null(1) ? "" : stmt.text(1))},
+                {"key", jsv(stmt.text(0))},
+                {"tags", jsv(stmt.is_null(1) ? "" : stmt.text(1))},
                 {"updatedAt", jiv(stmt.i64(2))},
             });
         }
-        std::string summary = std::to_string(items.size())
-                            + " note(s) listed";
+        std::string summary = std::to_string(items.size()) + " note(s) listed";
         return ok_json(QJsonObject{{"notes", items}}, std::move(summary));
     }
 
     mcp::CallToolResult search(const Json& args) {
         const std::string query = jstr(args, "query");
-        const auto        limit =
+        const auto limit =
             std::clamp<std::int64_t>(jint(args, "limit", 25), 1, 200);
-        if (query.empty()) return err_text("notes/search: `query` is required");
+        if (query.empty())
+            return err_text("notes/search: `query` is required");
 
         // FTS5 query syntax — we hand the user's query through as-is
         // but defensively quote it as a single phrase if it looks like
@@ -418,7 +432,8 @@ public:
             // Escape internal double quotes by doubling, then wrap.
             std::string wrapped = "\"";
             for (char c : query) {
-                if (c == '"') wrapped += '"';
+                if (c == '"')
+                    wrapped += '"';
                 wrapped += c;
             }
             wrapped += '"';
@@ -441,15 +456,15 @@ public:
         QJsonArray hits;
         while (stmt.step() == SQLITE_ROW) {
             hits.append(QJsonObject{
-                {"key",       jsv(stmt.text(0))},
-                {"value",     jsv(stmt.text(1))},
-                {"tags",      jsv(stmt.is_null(2) ? "" : stmt.text(2))},
+                {"key", jsv(stmt.text(0))},
+                {"value", jsv(stmt.text(1))},
+                {"tags", jsv(stmt.is_null(2) ? "" : stmt.text(2))},
                 {"updatedAt", jiv(stmt.i64(3))},
-                {"snippet",   jsv(stmt.text(4))},
+                {"snippet", jsv(stmt.text(4))},
             });
         }
-        std::string summary = "found " + std::to_string(hits.size())
-                            + " match(es) for: " + query;
+        std::string summary =
+            "found " + std::to_string(hits.size()) + " match(es) for: " + query;
         return ok_json(QJsonObject{{"matches", hits}}, std::move(summary));
     }
 
@@ -458,35 +473,43 @@ public:
     /// the explicit `confirm` flag isn't set. Returns either the
     /// successful deletion message or a refused-by-user error.
     mcp::CallToolResult del(const Json& args, mcp::Server& server) {
-        if (m_readonly) return err_text("notes/delete: server is read-only");
-        const std::string key      = jstr(args, "key");
-        const bool        confirm  = jbool(args, "confirm", false);
-        if (key.empty()) return err_text("notes/delete: `key` is required");
+        if (m_readonly)
+            return err_text("notes/delete: server is read-only");
+        const std::string key = jstr(args, "key");
+        const bool confirm = jbool(args, "confirm", false);
+        if (key.empty())
+            return err_text("notes/delete: `key` is required");
 
         const bool is_glob = key.find_first_of("*%") != std::string::npos;
 
         if (is_glob || !confirm) {
             // Ask the human via the client.
             auto fut = server.elicit(mcp::ElicitFormRequestParams{
-                .message = "Delete note(s) matching key \"" + key + "\"?"
+                .message = "Delete note(s) matching key \"" + key +
+                           "\"?"
                            " This cannot be undone.",
-                .requested_schema = QJsonObject{
-                    {"type", "object"},
-                    {"properties", QJsonObject{
-                        {"confirm", QJsonObject{
-                            {"type", "boolean"},
-                            {"description",
-                             "Set true to delete; false / decline to abort."},
-                        }},
-                    }},
-                    {"required", QJsonArray{"confirm"}},
-                },
+                .requested_schema =
+                    QJsonObject{
+                        {"type", "object"},
+                        {"properties",
+                         QJsonObject{
+                             {"confirm",
+                              QJsonObject{
+                                  {"type", "boolean"},
+                                  {"description", "Set true to delete; false / "
+                                                  "decline to abort."},
+                              }},
+                         }},
+                        {"required", QJsonArray{"confirm"}},
+                    },
             });
             mcp::ElicitResult er;
-            try { er = fut.get(); }
-            catch (const std::exception& e) {
-                return err_text(std::string{"notes/delete: elicitation failed: "}
-                                + e.what());
+            try {
+                er = fut.get();
+            } catch (const std::exception& e) {
+                return err_text(
+                    std::string{"notes/delete: elicitation failed: "} +
+                    e.what());
             }
             if (er.action != mcp::ElicitAction::accept ||
                 !er.content.has_value() ||
@@ -496,13 +519,14 @@ public:
         }
 
         // Run the delete (LIKE if it has wildcards, else equality).
-        std::string sql = is_glob
-            ? "DELETE FROM notes WHERE key LIKE ?1"
-            : "DELETE FROM notes WHERE key = ?1";
+        std::string sql = is_glob ? "DELETE FROM notes WHERE key LIKE ?1"
+                                  : "DELETE FROM notes WHERE key = ?1";
         auto stmt = m_db->prepare(sql);
         // Translate '*' → '%' for the LIKE form.
         std::string bind_key = key;
-        for (char& c : bind_key) if (c == '*') c = '%';
+        for (char& c : bind_key)
+            if (c == '*')
+                c = '%';
         stmt.bind(1, bind_key);
         if (stmt.step() != SQLITE_DONE) {
             return err_text(std::string{"notes/delete: "} +
@@ -517,16 +541,17 @@ public:
         std::int64_t row_count = 0;
         {
             auto stmt = m_db->prepare("SELECT COUNT(*) FROM notes");
-            if (stmt.step() == SQLITE_ROW) row_count = stmt.i64(0);
+            if (stmt.step() == SQLITE_ROW)
+                row_count = stmt.i64(0);
         }
         QJsonObject structured{
-            {"path",          jsv(m_db_path)},
-            {"readOnly",      m_readonly},
-            {"noteCount",     jiv(row_count)},
+            {"path", jsv(m_db_path)},
+            {"readOnly", m_readonly},
+            {"noteCount", jiv(row_count)},
             {"sqliteVersion", jsv(sqlite3_libversion())},
         };
-        std::string summary = std::to_string(row_count)
-                            + " note(s) at " + m_db_path;
+        std::string summary =
+            std::to_string(row_count) + " note(s) at " + m_db_path;
         return ok_json(structured, std::move(summary));
     }
 
@@ -536,8 +561,8 @@ public:
 
 private:
     std::shared_ptr<Db> m_db;
-    bool                m_readonly;
-    std::string         m_db_path;
+    bool m_readonly;
+    std::string m_db_path;
 };
 
 // =====================================================================
@@ -546,24 +571,25 @@ private:
 
 mcp::ReadResourceResult read_all_notes(NotesService& svc) {
     QJsonArray items;
-    auto stmt = svc.db()->prepare(
-        "SELECT key, value, tags, updated_at FROM notes "
-        "ORDER BY key ASC");
+    auto stmt =
+        svc.db()->prepare("SELECT key, value, tags, updated_at FROM notes "
+                          "ORDER BY key ASC");
     while (stmt.step() == SQLITE_ROW) {
         items.append(QJsonObject{
-            {"key",       jsv(stmt.text(0))},
-            {"value",     jsv(stmt.text(1))},
-            {"tags",      jsv(stmt.is_null(2) ? "" : stmt.text(2))},
+            {"key", jsv(stmt.text(0))},
+            {"value", jsv(stmt.text(1))},
+            {"tags", jsv(stmt.is_null(2) ? "" : stmt.text(2))},
             {"updatedAt", jiv(stmt.i64(3))},
         });
     }
     const QJsonObject doc{{"notes", items}};
     return mcp::ReadResourceResult{
-        .contents = { mcp::TextResourceContents{
-            .uri       = "notes://all",
+        .contents = {mcp::TextResourceContents{
+            .uri = "notes://all",
             .mime_type = "application/json",
-            .text      = QJsonDocument(doc).toJson(
-                             QJsonDocument::Indented).toStdString(),
+            .text = QJsonDocument(doc)
+                        .toJson(QJsonDocument::Indented)
+                        .toStdString(),
         }},
     };
 }
@@ -584,7 +610,7 @@ extern "C" void on_signal(int) {
 
 struct Cli {
     std::string db_path;
-    bool        readonly = false;
+    bool readonly = false;
 };
 
 Cli parse_cli(int argc, char** argv) {
@@ -597,13 +623,13 @@ Cli parse_cli(int argc, char** argv) {
         } else if (a == "--readonly") {
             cli.readonly = true;
         } else if (a == "--help" || a == "-h") {
-            std::printf(
-                "mcp-notes-server — persistent SQLite-backed scratchpad over MCP\n\n"
-                "usage: %s [--db PATH] [--readonly]\n\n"
-                "  --db PATH    SQLite database (default: %s)\n"
-                "  --readonly   block notes/write and notes/delete\n\n"
-                "wires onto stdio. logs to stderr.\n",
-                argv[0], default_db_path().c_str());
+            std::printf("mcp-notes-server — persistent SQLite-backed "
+                        "scratchpad over MCP\n\n"
+                        "usage: %s [--db PATH] [--readonly]\n\n"
+                        "  --db PATH    SQLite database (default: %s)\n"
+                        "  --readonly   block notes/write and notes/delete\n\n"
+                        "wires onto stdio. logs to stderr.\n",
+                        argv[0], default_db_path().c_str());
             std::exit(0);
         } else {
             std::fprintf(stderr, "unknown argument: %s\n", argv[i]);
@@ -622,7 +648,8 @@ int main(int argc, char** argv) {
     std::shared_ptr<Db> db;
     try {
         db = std::make_shared<Db>(cli.db_path, cli.readonly);
-        if (!cli.readonly) db->exec(kSchemaSql);
+        if (!cli.readonly)
+            db->exec(kSchemaSql);
     } catch (const SqliteError& e) {
         std::fprintf(stderr, "fatal: %s\n", e.what());
         return EXIT_FAILURE;
@@ -631,9 +658,9 @@ int main(int argc, char** argv) {
     auto svc = std::make_shared<NotesService>(db, cli.readonly);
     svc->set_db_path(cli.db_path);
 
-    mcp::Server server{ mcp::Implementation{
-        .name        = "mcp-notes",
-        .version     = "0.1.0",
+    mcp::Server server{mcp::Implementation{
+        .name = "mcp-notes",
+        .version = "0.1.0",
         .description = "Persistent SQLite-backed scratchpad with FTS5 search.",
     }};
     server.set_instructions(
@@ -645,17 +672,21 @@ int main(int argc, char** argv) {
 
     QJsonObject write_schema{
         {"type", "object"},
-        {"properties", QJsonObject{
-            {"key",   QJsonObject{{"type", "string"},
-                       {"description", "stable identifier; max 256 chars"}}},
-            {"value", QJsonObject{{"type", "string"},
-                       {"description", "free-form note body"}}},
-            {"tags",  QJsonObject{{"type", "string"},
-                       {"description", "comma-separated, lowercased tags"}}},
-        }},
+        {"properties",
+         QJsonObject{
+             {"key",
+              QJsonObject{{"type", "string"},
+                          {"description", "stable identifier; max 256 chars"}}},
+             {"value", QJsonObject{{"type", "string"},
+                                   {"description", "free-form note body"}}},
+             {"tags",
+              QJsonObject{{"type", "string"},
+                          {"description", "comma-separated, lowercased tags"}}},
+         }},
         {"required", QJsonArray{"key", "value"}},
     };
-    server.tool("notes/write", write_schema,
+    server.tool(
+        "notes/write", write_schema,
         [svc](const Json& args) { return svc->write(args); },
         "Write or update a note",
         "UPSERT a note under `key`. `value` is the note body; "
@@ -666,39 +697,48 @@ int main(int argc, char** argv) {
         {"properties", QJsonObject{{"key", QJsonObject{{"type", "string"}}}}},
         {"required", QJsonArray{"key"}},
     };
-    server.tool("notes/read", read_schema,
+    server.tool(
+        "notes/read", read_schema,
         [svc](const Json& args) { return svc->read(args); },
         "Read a note by key",
         "Fetch a single note. Returns the value plus tags + timestamps.");
 
     QJsonObject list_schema{
         {"type", "object"},
-        {"properties", QJsonObject{
-            {"tag",    QJsonObject{{"type", "string"},
-                        {"description", "filter to notes tagged this"}}},
-            {"prefix", QJsonObject{{"type", "string"},
-                        {"description", "filter to keys with this prefix"}}},
-            {"limit",  QJsonObject{{"type", "integer"},
-                        {"description", "default 50; max 1000"}}},
-        }},
+        {"properties",
+         QJsonObject{
+             {"tag",
+              QJsonObject{{"type", "string"},
+                          {"description", "filter to notes tagged this"}}},
+             {"prefix",
+              QJsonObject{{"type", "string"},
+                          {"description", "filter to keys with this prefix"}}},
+             {"limit", QJsonObject{{"type", "integer"},
+                                   {"description", "default 50; max 1000"}}},
+         }},
     };
-    server.tool("notes/list", list_schema,
-        [svc](const Json& args) { return svc->list(args); },
-        "List notes",
+    server.tool(
+        "notes/list", list_schema,
+        [svc](const Json& args) { return svc->list(args); }, "List notes",
         "List note keys, optionally filtered by tag or key prefix. "
         "Sorted by updatedAt DESC.");
 
     QJsonObject search_schema{
         {"type", "object"},
-        {"properties", QJsonObject{
-            {"query", QJsonObject{{"type", "string"},
-                       {"description", "FTS5 query — words match anywhere in key/value/tags"}}},
-            {"limit", QJsonObject{{"type", "integer"},
-                       {"description", "default 25; max 200"}}},
-        }},
+        {"properties",
+         QJsonObject{
+             {"query",
+              QJsonObject{
+                  {"type", "string"},
+                  {"description",
+                   "FTS5 query — words match anywhere in key/value/tags"}}},
+             {"limit", QJsonObject{{"type", "integer"},
+                                   {"description", "default 25; max 200"}}},
+         }},
         {"required", QJsonArray{"query"}},
     };
-    server.tool("notes/search", search_schema,
+    server.tool(
+        "notes/search", search_schema,
         [svc](const Json& args) { return svc->search(args); },
         "Full-text search",
         "BM25-ranked FTS5 search over key+value+tags. Matches are "
@@ -706,16 +746,19 @@ int main(int argc, char** argv) {
 
     QJsonObject delete_schema{
         {"type", "object"},
-        {"properties", QJsonObject{
-            {"key",     QJsonObject{{"type", "string"},
-                         {"description", "exact key, or a `*` glob"}}},
-            {"confirm", QJsonObject{{"type", "boolean"},
-                         {"description",
-                          "skip the elicitation prompt for non-glob keys"}}},
-        }},
+        {"properties",
+         QJsonObject{
+             {"key", QJsonObject{{"type", "string"},
+                                 {"description", "exact key, or a `*` glob"}}},
+             {"confirm",
+              QJsonObject{{"type", "boolean"},
+                          {"description",
+                           "skip the elicitation prompt for non-glob keys"}}},
+         }},
         {"required", QJsonArray{"key"}},
     };
-    server.tool("notes/delete", delete_schema,
+    server.tool(
+        "notes/delete", delete_schema,
         [svc, &server](const Json& args) { return svc->del(args, server); },
         "Delete a note",
         "Removes a note. Glob (e.g. `db.*`) deletes are routed through "
@@ -725,42 +768,45 @@ int main(int argc, char** argv) {
         {"type", "object"},
         {"properties", QJsonObject{}},
     };
-    server.tool("notes/info", info_schema,
-        [svc](const Json& args) { return svc->info(args); },
-        "Server info",
+    server.tool(
+        "notes/info", info_schema,
+        [svc](const Json& args) { return svc->info(args); }, "Server info",
         "Report db path, note count, and SQLite version.");
 
     // Resource: full notes dump as JSON.
-    server.resource(mcp::Resource{
-        .uri         = "notes://all",
-        .name        = "all-notes",
-        .title       = "All notes",
-        .description = "Every note as a JSON document",
-        .mime_type   = "application/json",
-    },
-    [svc](const std::string&) { return read_all_notes(*svc); });
+    server.resource(
+        mcp::Resource{
+            .uri = "notes://all",
+            .name = "all-notes",
+            .title = "All notes",
+            .description = "Every note as a JSON document",
+            .mime_type = "application/json",
+        },
+        [svc](const std::string&) { return read_all_notes(*svc); });
 
     g_server.store(&server, std::memory_order_release);
-    std::signal(SIGINT,  on_signal);
+    std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);
 
     std::atomic<bool> supervisor_done{false};
     std::thread supervisor([&]() {
         while (!supervisor_done.load(std::memory_order_acquire)) {
             if (g_shutdown_requested.test(std::memory_order_acquire)) {
-                if (auto* s = g_server.load(std::memory_order_acquire)) s->stop();
+                if (auto* s = g_server.load(std::memory_order_acquire))
+                    s->stop();
                 return;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds{100});
         }
     });
 
-    MCP_LOG_INFO("mcp-notes-server starting; db=" + cli.db_path
-                 + (cli.readonly ? " (read-only)" : ""));
+    MCP_LOG_INFO("mcp-notes-server starting; db=" + cli.db_path +
+                 (cli.readonly ? " (read-only)" : ""));
     server.run(std::make_unique<mcp::StdioTransport>());
     MCP_LOG_INFO("mcp-notes-server stopped");
 
     supervisor_done.store(true, std::memory_order_release);
-    if (supervisor.joinable()) supervisor.join();
+    if (supervisor.joinable())
+        supervisor.join();
     return EXIT_SUCCESS;
 }

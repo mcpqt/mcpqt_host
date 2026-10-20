@@ -47,13 +47,14 @@ private slots:
 };
 
 void HttpClientTransport::PostSingleJsonResponseIsDelivered(void) {
-    std::mutex  mu;
+    std::mutex mu;
     std::string observed_body;
-    mcp::test::FakeHttpServer fake([&](const mcp::test::FakeHttpServer::Request& req) {
-        std::lock_guard<std::mutex> lk(mu);
-        observed_body = req.body.toStdString();
-        return mcp::test::json_response(R"({"ok":true})");
-    });
+    mcp::test::FakeHttpServer fake(
+        [&](const mcp::test::FakeHttpServer::Request& req) {
+            std::lock_guard<std::mutex> lk(mu);
+            observed_body = req.body.toStdString();
+            return mcp::test::json_response(R"({"ok":true})");
+        });
 
     mcp::HttpClientTransport::Options opts;
     opts.url = fake.url().toStdString();
@@ -63,13 +64,17 @@ void HttpClientTransport::PostSingleJsonResponseIsDelivered(void) {
     std::promise<std::string> got;
     auto fut = got.get_future();
     transport->on_message([&](std::string s) {
-        try { got.set_value(std::move(s)); } catch (...) {}
+        try {
+            got.set_value(std::move(s));
+        } catch (...) {
+        }
     });
     transport->start();
 
     QVERIFY(!transport->send(R"({"hello":1})"));
     QCOMPARE(fut.wait_for(2s), std::future_status::ready);
-    QCOMPARE(QString::fromStdString(fut.get()), QString::fromUtf8(R"({"ok":true})"));
+    QCOMPARE(QString::fromStdString(fut.get()),
+             QString::fromUtf8(R"({"ok":true})"));
     {
         std::lock_guard<std::mutex> lk(mu);
         QCOMPARE(QString::fromStdString(observed_body),
@@ -79,17 +84,19 @@ void HttpClientTransport::PostSingleJsonResponseIsDelivered(void) {
 }
 
 void HttpClientTransport::PostSseResponseDeliversMultipleFrames(void) {
-    mcp::test::FakeHttpServer fake([](const mcp::test::FakeHttpServer::Request&) {
-        return mcp::test::sse_response("data: {\"a\":1}\n\ndata: {\"b\":2}\n\n");
-    });
+    mcp::test::FakeHttpServer fake(
+        [](const mcp::test::FakeHttpServer::Request&) {
+            return mcp::test::sse_response(
+                "data: {\"a\":1}\n\ndata: {\"b\":2}\n\n");
+        });
 
     mcp::HttpClientTransport::Options opts;
     opts.url = fake.url().toStdString();
     opts.open_get_stream = false;
     auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
-    std::mutex               mu;
-    std::condition_variable  cv;
+    std::mutex mu;
+    std::condition_variable cv;
     std::vector<std::string> frames;
     transport->on_message([&](std::string s) {
         std::lock_guard<std::mutex> lk(mu);
@@ -104,17 +111,20 @@ void HttpClientTransport::PostSseResponseDeliversMultipleFrames(void) {
         QVERIFY(cv.wait_for(lk, 2s, [&] { return frames.size() >= 2; }));
     }
     QCOMPARE(frames.size(), std::size_t{2});
-    QCOMPARE(QString::fromStdString(frames[0]), QString::fromUtf8(R"({"a":1})"));
-    QCOMPARE(QString::fromStdString(frames[1]), QString::fromUtf8(R"({"b":2})"));
+    QCOMPARE(QString::fromStdString(frames[0]),
+             QString::fromUtf8(R"({"a":1})"));
+    QCOMPARE(QString::fromStdString(frames[1]),
+             QString::fromUtf8(R"({"b":2})"));
     transport->close();
 }
 
 void HttpClientTransport::NotificationGets202AbsorbedSilently(void) {
     std::atomic<int> hits{0};
-    mcp::test::FakeHttpServer fake([&](const mcp::test::FakeHttpServer::Request&) {
-        ++hits;
-        return mcp::test::empty_response(202, "Accepted");
-    });
+    mcp::test::FakeHttpServer fake(
+        [&](const mcp::test::FakeHttpServer::Request&) {
+            ++hits;
+            return mcp::test::empty_response(202, "Accepted");
+        });
 
     mcp::HttpClientTransport::Options opts;
     opts.url = fake.url().toStdString();
@@ -134,21 +144,22 @@ void HttpClientTransport::NotificationGets202AbsorbedSilently(void) {
 
 void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void) {
     std::atomic<int> first_call{0};
-    std::mutex        mu;
-    std::string       captured_id_on_second_call;
-    mcp::test::FakeHttpServer fake([&](const mcp::test::FakeHttpServer::Request& req) {
-        const int n = ++first_call;
-        if (n == 1) {
-            return mcp::test::json_response(
-                "{}", 200, "OK", {{"Mcp-Session-Id", "deadbeef"}});
-        }
-        const QByteArray id = req.header("Mcp-Session-Id");
-        if (!id.isEmpty()) {
-            std::lock_guard<std::mutex> lk(mu);
-            captured_id_on_second_call = id.toStdString();
-        }
-        return mcp::test::json_response("{}");
-    });
+    std::mutex mu;
+    std::string captured_id_on_second_call;
+    mcp::test::FakeHttpServer fake(
+        [&](const mcp::test::FakeHttpServer::Request& req) {
+            const int n = ++first_call;
+            if (n == 1) {
+                return mcp::test::json_response(
+                    "{}", 200, "OK", {{"Mcp-Session-Id", "deadbeef"}});
+            }
+            const QByteArray id = req.header("Mcp-Session-Id");
+            if (!id.isEmpty()) {
+                std::lock_guard<std::mutex> lk(mu);
+                captured_id_on_second_call = id.toStdString();
+            }
+            return mcp::test::json_response("{}");
+        });
 
     mcp::HttpClientTransport::Options opts;
     opts.url = fake.url().toStdString();
@@ -160,12 +171,13 @@ void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void) {
     transport->start();
 
     QVERIFY(!transport->send("{}"));
-    while (messages.load() < 1) std::this_thread::sleep_for(5ms);
-    QVERIFY(transport->session_id() ==
-            std::optional<std::string>{"deadbeef"});
+    while (messages.load() < 1)
+        std::this_thread::sleep_for(5ms);
+    QVERIFY(transport->session_id() == std::optional<std::string>{"deadbeef"});
 
     QVERIFY(!transport->send("{}"));
-    while (messages.load() < 2) std::this_thread::sleep_for(5ms);
+    while (messages.load() < 2)
+        std::this_thread::sleep_for(5ms);
     {
         std::lock_guard<std::mutex> lk(mu);
         QCOMPARE(QString::fromStdString(captured_id_on_second_call),
@@ -176,42 +188,47 @@ void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void) {
 }
 
 void HttpClientTransport::McpProtocolVersionHeaderIsSent(void) {
-    std::mutex  mu;
+    std::mutex mu;
     std::string captured_pv;
-    mcp::test::FakeHttpServer fake([&](const mcp::test::FakeHttpServer::Request& req) {
-        const QByteArray pv = req.header("MCP-Protocol-Version");
-        if (!pv.isEmpty()) {
-            std::lock_guard<std::mutex> lk(mu);
-            captured_pv = pv.toStdString();
-        }
-        return mcp::test::json_response("{}");
-    });
+    mcp::test::FakeHttpServer fake(
+        [&](const mcp::test::FakeHttpServer::Request& req) {
+            const QByteArray pv = req.header("MCP-Protocol-Version");
+            if (!pv.isEmpty()) {
+                std::lock_guard<std::mutex> lk(mu);
+                captured_pv = pv.toStdString();
+            }
+            return mcp::test::json_response("{}");
+        });
 
     mcp::HttpClientTransport::Options opts;
     opts.url = fake.url().toStdString();
     opts.protocol_version = "2025-11-25";
-    opts.open_get_stream  = false;
+    opts.open_get_stream = false;
     auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
     std::atomic<int> messages{0};
     transport->on_message([&](std::string) { ++messages; });
     transport->start();
     QVERIFY(!transport->send("{}"));
-    while (messages.load() < 1) std::this_thread::sleep_for(5ms);
+    while (messages.load() < 1)
+        std::this_thread::sleep_for(5ms);
     {
         std::lock_guard<std::mutex> lk(mu);
-        QCOMPARE(QString::fromStdString(captured_pv), QStringLiteral("2025-11-25"));
+        QCOMPARE(QString::fromStdString(captured_pv),
+                 QStringLiteral("2025-11-25"));
     }
     transport->close();
 }
 
 void HttpClientTransport::GetStreamReceivesServerInitiatedFrames(void) {
-    mcp::test::FakeHttpServer fake([](const mcp::test::FakeHttpServer::Request& req) {
-        if (req.method == "GET") {
-            return mcp::test::sse_response("data: {\"server-said\":\"hi\"}\n\n");
-        }
-        return mcp::test::empty_response(202, "Accepted");
-    });
+    mcp::test::FakeHttpServer fake(
+        [](const mcp::test::FakeHttpServer::Request& req) {
+            if (req.method == "GET") {
+                return mcp::test::sse_response(
+                    "data: {\"server-said\":\"hi\"}\n\n");
+            }
+            return mcp::test::empty_response(202, "Accepted");
+        });
 
     mcp::HttpClientTransport::Options opts;
     opts.url = fake.url().toStdString();
@@ -225,7 +242,10 @@ void HttpClientTransport::GetStreamReceivesServerInitiatedFrames(void) {
     std::promise<std::string> got;
     auto fut = got.get_future();
     transport->on_message([&](std::string s) {
-        try { got.set_value(std::move(s)); } catch (...) {}
+        try {
+            got.set_value(std::move(s));
+        } catch (...) {
+        }
     });
     transport->start();
 

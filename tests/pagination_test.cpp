@@ -27,21 +27,22 @@ using mcp::Json;
 
 struct ServerThread {
     std::shared_ptr<mcp::Server> server;
-    std::thread                  thread;
+    std::thread thread;
 
     template <typename Configure>
     ServerThread(std::unique_ptr<mcp::Transport> t, Configure cfg)
         : server(std::make_shared<mcp::Server>(mcp::Implementation{
-              .name = "pagi", .version = "1.0",
+              .name = "pagi",
+              .version = "1.0",
           })) {
         cfg(*server);
-        thread = std::thread([s = server, t = std::move(t)]() mutable {
-            s->run(std::move(t));
-        });
+        thread = std::thread(
+            [s = server, t = std::move(t)]() mutable { s->run(std::move(t)); });
     }
     ~ServerThread() {
         server->stop();
-        if (thread.joinable()) thread.join();
+        if (thread.joinable())
+            thread.join();
     }
 };
 
@@ -61,15 +62,14 @@ void Pagination::ToolsListReturnsPagesWithCursor(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(3);
         for (int i = 0; i < 7; ++i) {
-            s.tool("t" + std::to_string(i),
-                   QJsonObject{{"type", "object"}},
+            s.tool("t" + std::to_string(i), QJsonObject{{"type", "object"}},
                    [](const Json&) -> mcp::CallToolResult {
-                       return {.content = { mcp::TextContent{.text = "ok"} }};
+                       return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         }
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -79,7 +79,8 @@ void Pagination::ToolsListReturnsPagesWithCursor(void) {
     do {
         auto res = client.list_tools(cursor).get();
         QVERIFY(res.tools.size() <= 3u);
-        for (const auto& t : res.tools) seen.insert(t.name);
+        for (const auto& t : res.tools)
+            seen.insert(t.name);
         cursor = res.next_cursor;
         ++pages;
         QVERIFY(pages < 10);
@@ -94,15 +95,14 @@ void Pagination::NoPaginationByDefault(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         for (int i = 0; i < 5; ++i) {
-            s.tool("t" + std::to_string(i),
-                   QJsonObject{{"type", "object"}},
+            s.tool("t" + std::to_string(i), QJsonObject{{"type", "object"}},
                    [](const Json&) -> mcp::CallToolResult {
-                       return {.content = { mcp::TextContent{.text = "ok"} }};
+                       return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         }
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -117,19 +117,21 @@ void Pagination::ResourcesPaginate(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);
         for (int i = 0; i < 5; ++i) {
-            s.resource(mcp::Resource{
-                           .uri  = "file:///x" + std::to_string(i),
-                           .name = "n" + std::to_string(i),
-                       },
-                       [](const std::string& uri) {
-                           return mcp::ReadResourceResult{
-                               .contents = { mcp::TextResourceContents{.uri = uri, .text = "y"} },
-                           };
-                       });
+            s.resource(
+                mcp::Resource{
+                    .uri = "file:///x" + std::to_string(i),
+                    .name = "n" + std::to_string(i),
+                },
+                [](const std::string& uri) {
+                    return mcp::ReadResourceResult{
+                        .contents = {mcp::TextResourceContents{.uri = uri,
+                                                               .text = "y"}},
+                    };
+                });
         }
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -153,15 +155,14 @@ void Pagination::MalformedCursorRejected(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.set_page_size(2);
         for (int i = 0; i < 5; ++i) {
-            s.tool("t" + std::to_string(i),
-                   QJsonObject{{"type", "object"}},
+            s.tool("t" + std::to_string(i), QJsonObject{{"type", "object"}},
                    [](const Json&) -> mcp::CallToolResult {
-                       return {.content = { mcp::TextContent{.text = "ok"} }};
+                       return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         }
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 

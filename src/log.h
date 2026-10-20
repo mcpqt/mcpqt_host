@@ -19,10 +19,10 @@ namespace mcp {
 enum class LogLevel : int {
     trace = 0,
     debug = 1,
-    info  = 2,
-    warn  = 3,
+    info = 2,
+    warn = 3,
     error = 4,
-    off   = 5,
+    off = 5,
 };
 
 [[nodiscard]] std::string_view to_string(LogLevel l) noexcept;

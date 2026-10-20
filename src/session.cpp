@@ -32,7 +32,8 @@ Session::Session(std::unique_ptr<Transport> transport, Options opts)
     if (!m_transport) {
         throw Error{error_code::internal_error, "Session: transport is null"};
     }
-    m_transport->on_message([this](std::string raw) { this->handle_frame(std::move(raw)); });
+    m_transport->on_message(
+        [this](std::string raw) { this->handle_frame(std::move(raw)); });
     m_transport->on_error([](std::error_code ec) {
         MCP_LOG_WARN(std::string{"transport error: "} + ec.message());
     });
@@ -54,8 +55,9 @@ Session::Session(std::unique_ptr<Transport> transport, Options opts)
             }
         }
         if (cb) {
-            try { cb(); }
-            catch (const std::exception& e) {
+            try {
+                cb();
+            } catch (const std::exception& e) {
                 MCP_LOG_ERROR(std::string{"on_closed threw: "} + e.what());
             }
         }
@@ -75,7 +77,8 @@ void Session::set_request_handler(std::string method, RequestHandler h) {
     m_req_handlers[std::move(method)] = std::move(h);
 }
 
-void Session::set_notification_handler(std::string method, NotificationHandler h) {
+void Session::set_notification_handler(std::string method,
+                                       NotificationHandler h) {
     std::lock_guard<std::mutex> lk(m_handlers_mu);
     m_note_handlers[std::move(method)] = std::move(h);
 }
@@ -112,7 +115,7 @@ void Session::set_on_closed(ClosedCallback cb) {
 void Session::start(void) {
     bool expected = false;
     if (!m_started.compare_exchange_strong(expected, true,
-                                          std::memory_order_acq_rel)) {
+                                           std::memory_order_acq_rel)) {
         return;
     }
     m_closed.store(false, std::memory_order_release);
@@ -127,13 +130,15 @@ void Session::close(void) {
     // double-destruction can't leave the timeout thread joinable
     // (which would call std::terminate from ~thread).
     bool expected = false;
-    const bool first = m_closed.compare_exchange_strong(expected, true,
-                                                       std::memory_order_acq_rel);
+    const bool first = m_closed.compare_exchange_strong(
+        expected, true, std::memory_order_acq_rel);
 
     // Cancel pending request promises so any worker awaiting a future
     // (e.g. server.sample()) unblocks and the worker can return.
     cancel_all_pending(ErrorObject{
-        error_code::internal_error, "session closed", {},
+        error_code::internal_error,
+        "session closed",
+        {},
     });
 
     // Wait for in-flight request workers to finish before we close
@@ -148,13 +153,15 @@ void Session::close(void) {
     // Now actually shut down the transport. Only the first close()
     // does this; subsequent calls (e.g. from ~Session) ride through
     // the join-and-fire path the transport already provides.
-    if (first && m_transport) m_transport->close();
+    if (first && m_transport)
+        m_transport->close();
 
     {
         std::lock_guard<std::mutex> lk(m_pending_mu);
         m_timeout_cv.notify_all();
     }
-    if (m_timeout_thread.joinable()) m_timeout_thread.join();
+    if (m_timeout_thread.joinable())
+        m_timeout_thread.join();
 }
 
 // =====================================================================
@@ -165,42 +172,39 @@ RequestId Session::next_id(void) noexcept {
     return RequestId{m_next_id.fetch_add(1, std::memory_order_relaxed)};
 }
 
-std::future<Json>
-Session::send_request(std::string method,
-                      Json params,
-                      std::chrono::milliseconds timeout) {
+std::future<Json> Session::send_request(std::string method, Json params,
+                                        std::chrono::milliseconds timeout) {
     return send_request_for<Json>(
-        std::move(method), std::move(params),
-        [](Json j) { return j; }, timeout);
+        std::move(method), std::move(params), [](Json j) { return j; },
+        timeout);
 }
 
 std::future<void>
-Session::send_request_void(std::string method,
-                           Json params,
+Session::send_request_void(std::string method, Json params,
                            std::chrono::milliseconds timeout) {
-    auto pr  = std::make_shared<std::promise<void>>();
+    auto pr = std::make_shared<std::promise<void>>();
     auto fut = pr->get_future();
     Pending pending;
     pending.resolve = [pr](Json) { pr->set_value(); };
-    pending.reject  = [pr](std::exception_ptr e) { pr->set_exception(e); };
-    register_pending(std::move(method), std::move(params),
-                     std::move(pending), timeout);
+    pending.reject = [pr](std::exception_ptr e) { pr->set_exception(e); };
+    register_pending(std::move(method), std::move(params), std::move(pending),
+                     timeout);
     return fut;
 }
 
-void Session::register_pending(std::string    method,
-                               Json params,
-                               Pending        pending,
+void Session::register_pending(std::string method, Json params, Pending pending,
                                std::chrono::milliseconds timeout) {
     auto id = next_id();
 
     JsonRpcRequest req;
-    req.id     = id;
+    req.id = id;
     req.method = std::move(method);
-    if (!params.isNull()) req.params = std::move(params);
+    if (!params.isNull())
+        req.params = std::move(params);
 
-    const auto effective_timeout =
-        timeout == std::chrono::milliseconds{0} ? m_opts.default_request_timeout : timeout;
+    const auto effective_timeout = timeout == std::chrono::milliseconds{0}
+                                       ? m_opts.default_request_timeout
+                                       : timeout;
     pending.deadline = steady_clock::now() + effective_timeout;
 
     // Keep a copy of the reject callback for the error paths below, which
@@ -261,15 +265,16 @@ void Session::register_pending(std::string    method,
                 found = true;
             }
         }
-        if (found && parked.reject) parked.reject(std::current_exception());
+        if (found && parked.reject)
+            parked.reject(std::current_exception());
     }
 }
 
-std::error_code
-Session::send_notification(std::string method, Json params) {
+std::error_code Session::send_notification(std::string method, Json params) {
     JsonRpcNotification note;
     note.method = std::move(method);
-    if (!params.isNull()) note.params = std::move(params);
+    if (!params.isNull())
+        note.params = std::move(params);
     try {
         send_message(note);
     } catch (const std::system_error& e) {
@@ -281,11 +286,12 @@ Session::send_notification(std::string method, Json params) {
 }
 
 void Session::send_message(const JsonRpcMessage& msg) {
-    const auto j   = serialize_message(msg);
+    const auto j = serialize_message(msg);
     const auto str = dump(j);
     auto ec = m_transport->send(str);
     if (ec) {
-        throw std::system_error{ec, "Session::send_message: transport->send failed"};
+        throw std::system_error{
+            ec, "Session::send_message: transport->send failed"};
     }
 }
 
@@ -307,48 +313,52 @@ void Session::handle_frame(std::string raw) {
     try {
         msg = parse_message(j);
     } catch (const Error& e) {
-        MCP_LOG_WARN(std::string{"rejecting malformed JSON-RPC frame: "} + e.what());
+        MCP_LOG_WARN(std::string{"rejecting malformed JSON-RPC frame: "} +
+                     e.what());
         return;
     } catch (const std::exception& e) {
         // A from_json deeper in parse_message can throw when fields are
         // mistyped or missing. Treat those identically to a parse error
         // and drop the frame.
-        MCP_LOG_WARN(std::string{"rejecting malformed JSON-RPC frame: "} + e.what());
+        MCP_LOG_WARN(std::string{"rejecting malformed JSON-RPC frame: "} +
+                     e.what());
         return;
     }
 
-    std::visit([&](auto&& m) {
-        using T = std::decay_t<decltype(m)>;
-        if constexpr (std::is_same_v<T, JsonRpcRequest>) {
-            // Dispatch requests to a detached worker so user handlers
-            // can themselves issue further requests on this Session
-            // (e.g. server.sample() inside a tool handler) without
-            // deadlocking the read thread.
-            //
-            // close() waits for `m_workers_running` to drain before
-            // returning so the dispatched worker can never outlive
-            // members it touches (m_transport, handlers).
-            {
-                std::lock_guard<std::mutex> lk(m_workers_mu);
-                ++m_workers_running;
+    std::visit(
+        [&](auto&& m) {
+            using T = std::decay_t<decltype(m)>;
+            if constexpr (std::is_same_v<T, JsonRpcRequest>) {
+                // Dispatch requests to a detached worker so user handlers
+                // can themselves issue further requests on this Session
+                // (e.g. server.sample() inside a tool handler) without
+                // deadlocking the read thread.
+                //
+                // close() waits for `m_workers_running` to drain before
+                // returning so the dispatched worker can never outlive
+                // members it touches (m_transport, handlers).
+                {
+                    std::lock_guard<std::mutex> lk(m_workers_mu);
+                    ++m_workers_running;
+                }
+                std::thread([this, req = std::move(m)]() mutable {
+                    handle_request(std::move(req));
+                    // Decrement and notify under the same lock. If the
+                    // unlock happened first, close() could observe
+                    // m_workers_running==0, return, and destroy the cv
+                    // before this thread reaches notify_all — TSan
+                    // catches that race against pthread_cond_destroy.
+                    std::lock_guard<std::mutex> lk(m_workers_mu);
+                    --m_workers_running;
+                    m_workers_cv.notify_all();
+                }).detach();
+            } else if constexpr (std::is_same_v<T, JsonRpcNotification>) {
+                handle_notification(std::move(m));
+            } else {
+                handle_response(std::move(m));
             }
-            std::thread([this, req = std::move(m)]() mutable {
-                handle_request(std::move(req));
-                // Decrement and notify under the same lock. If the
-                // unlock happened first, close() could observe
-                // m_workers_running==0, return, and destroy the cv
-                // before this thread reaches notify_all — TSan
-                // catches that race against pthread_cond_destroy.
-                std::lock_guard<std::mutex> lk(m_workers_mu);
-                --m_workers_running;
-                m_workers_cv.notify_all();
-            }).detach();
-        } else if constexpr (std::is_same_v<T, JsonRpcNotification>) {
-            handle_notification(std::move(m));
-        } else {
-            handle_response(std::move(m));
-        }
-    }, msg);
+        },
+        msg);
 }
 
 void Session::handle_request(JsonRpcRequest req) {
@@ -356,8 +366,10 @@ void Session::handle_request(JsonRpcRequest req) {
     {
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         auto it = m_req_handlers.find(req.method);
-        if (it != m_req_handlers.end()) handler = it->second;
-        else                            handler = m_fallback_req;
+        if (it != m_req_handlers.end())
+            handler = it->second;
+        else
+            handler = m_fallback_req;
     }
 
     JsonRpcResponse resp;
@@ -372,7 +384,8 @@ void Session::handle_request(JsonRpcRequest req) {
     } else {
         try {
             static const Json kNull{QJsonValue::Null};
-            const Json& params_in = req.params.has_value() ? *req.params : kNull;
+            const Json& params_in =
+                req.params.has_value() ? *req.params : kNull;
             resp.outcome = handler(params_in);
         } catch (const Error& e) {
             if (e.code() == error_code::parse_error) {
@@ -414,10 +427,13 @@ void Session::handle_notification(JsonRpcNotification note) {
     {
         std::lock_guard<std::mutex> lk(m_handlers_mu);
         auto it = m_note_handlers.find(note.method);
-        if (it != m_note_handlers.end()) handler = it->second;
-        else                             handler = m_fallback_note;
+        if (it != m_note_handlers.end())
+            handler = it->second;
+        else
+            handler = m_fallback_note;
     }
-    if (!handler) return;
+    if (!handler)
+        return;
     try {
         static const Json kNull{QJsonValue::Null};
         handler(note.params.has_value() ? *note.params : kNull);
@@ -433,7 +449,8 @@ void Session::handle_response(JsonRpcResponse resp) {
         // Per spec, an error response with no id can occur on parse errors
         // we issued; nothing to correlate against.
         if (resp.is_error()) {
-            MCP_LOG_WARN(std::string{"received untargeted error: "} + resp.error().message);
+            MCP_LOG_WARN(std::string{"received untargeted error: "} +
+                         resp.error().message);
         }
         return;
     }
@@ -443,7 +460,8 @@ void Session::handle_response(JsonRpcResponse resp) {
         std::lock_guard<std::mutex> lk(m_pending_mu);
         auto it = m_pending.find(*resp.id);
         if (it == m_pending.end()) {
-            MCP_LOG_WARN("received response for unknown id: " + resp.id->canonical());
+            MCP_LOG_WARN("received response for unknown id: " +
+                         resp.id->canonical());
             return;
         }
         pending = std::move(it->second);
@@ -454,7 +472,8 @@ void Session::handle_response(JsonRpcResponse resp) {
     // Resolve outside m_pending_mu (released above): the conversion +
     // promise resolution can wake a waiter that re-enters the Session.
     if (resp.is_success()) {
-        if (pending.resolve) pending.resolve(std::move(resp).result());
+        if (pending.resolve)
+            pending.resolve(std::move(resp).result());
     } else {
         if (pending.reject)
             pending.reject(std::make_exception_ptr(Error{resp.error()}));
@@ -475,7 +494,8 @@ void Session::timeout_loop(void) {
 
         auto soonest = steady_clock::time_point::max();
         for (const auto& [id, p] : m_pending) {
-            if (p.deadline < soonest) soonest = p.deadline;
+            if (p.deadline < soonest)
+                soonest = p.deadline;
         }
         if (m_timeout_cv.wait_until(lk, soonest) == std::cv_status::timeout) {
             const auto now = steady_clock::now();
@@ -487,7 +507,7 @@ void Session::timeout_loop(void) {
             // to keep an iterator valid across cancel_all_pending
             // swapping the map under us.
             std::vector<std::function<void(std::exception_ptr)>> expired;
-            for (auto it = m_pending.begin(); it != m_pending.end(); ) {
+            for (auto it = m_pending.begin(); it != m_pending.end();) {
                 if (it->second.deadline <= now) {
                     if (it->second.reject)
                         expired.push_back(std::move(it->second.reject));
@@ -515,7 +535,8 @@ void Session::cancel_all_pending(const ErrorObject& reason) {
     }
     for (auto& [id, p] : drained) {
         (void)id;
-        if (p.reject) p.reject(std::make_exception_ptr(Error{reason}));
+        if (p.reject)
+            p.reject(std::make_exception_ptr(Error{reason}));
     }
 }
 

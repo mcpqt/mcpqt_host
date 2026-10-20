@@ -19,7 +19,8 @@ class TestLogPlugin : public mcp::PluginInterface {
     Q_OBJECT
     Q_CLASSINFO("id", "test-logger")
     Q_CLASSINFO("version", "0.1.0")
-    Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "test_log_plugin.json")
+    Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE
+                          "test_log_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 
 public:
@@ -28,8 +29,8 @@ public:
 
     void initialize(const mcp::HostInterface& host) override {
         m_host = host;
-        m_claimed = m_host.claimLogging(
-            [this](mcp::LogLevel, std::string_view msg) {
+        m_claimed =
+            m_host.claimLogging([this](mcp::LogLevel, std::string_view msg) {
                 m_count.fetch_add(1, std::memory_order_relaxed);
                 std::lock_guard<std::mutex> lk(m_mu);
                 m_last.assign(msg.data(), msg.size());
@@ -53,9 +54,9 @@ public slots:
 
 private:
     std::atomic<int> m_count{0};
-    bool             m_claimed = false;
-    std::mutex       m_mu;
-    std::string      m_last;
+    bool m_claimed = false;
+    std::mutex m_mu;
+    std::string m_last;
 };
 
 #include "test_log_plugin.moc"

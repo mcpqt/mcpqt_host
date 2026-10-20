@@ -44,13 +44,15 @@ using mcp::Json;
 using namespace std::chrono_literals;
 
 struct Subprocess {
-    pid_t pid       = -1;
-    int   read_fd   = -1;
-    int   write_fd  = -1;
+    pid_t pid = -1;
+    int read_fd = -1;
+    int write_fd = -1;
 
     ~Subprocess() {
-        if (write_fd >= 0) ::close(write_fd);
-        if (read_fd  >= 0) ::close(read_fd);
+        if (write_fd >= 0)
+            ::close(write_fd);
+        if (read_fd >= 0)
+            ::close(read_fd);
         if (pid > 0) {
             int status = 0;
             ::kill(pid, SIGTERM);
@@ -59,19 +61,21 @@ struct Subprocess {
     }
 };
 
-std::unique_ptr<Subprocess>
-spawn_notes(const std::string& binary, const std::string& db_path) {
+std::unique_ptr<Subprocess> spawn_notes(const std::string& binary,
+                                        const std::string& db_path) {
     int in_pipe[2];
     int out_pipe[2];
-    if (::pipe(in_pipe)  != 0)  return nullptr;
+    if (::pipe(in_pipe) != 0)
+        return nullptr;
     if (::pipe(out_pipe) != 0) {
-        ::close(in_pipe[0]); ::close(in_pipe[1]);
+        ::close(in_pipe[0]);
+        ::close(in_pipe[1]);
         return nullptr;
     }
 
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, in_pipe[0],  STDIN_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, in_pipe[0], STDIN_FILENO);
     posix_spawn_file_actions_adddup2(&actions, out_pipe[1], STDOUT_FILENO);
     posix_spawn_file_actions_addclose(&actions, in_pipe[0]);
     posix_spawn_file_actions_addclose(&actions, in_pipe[1]);
@@ -79,17 +83,17 @@ spawn_notes(const std::string& binary, const std::string& db_path) {
     posix_spawn_file_actions_addclose(&actions, out_pipe[1]);
 
     pid_t pid = -1;
-    char  arg0[]    = "mcp_notes_server";
-    char  flag_db[] = "--db";
-    std::string db  = db_path;  // mutable storage for argv
+    char arg0[] = "mcp_notes_server";
+    char flag_db[] = "--db";
+    std::string db = db_path;  // mutable storage for argv
     char* argv[] = {
         const_cast<char*>(binary.c_str()),
         flag_db,
         db.data(),
         nullptr,
     };
-    const int rc = ::posix_spawn(&pid, binary.c_str(), &actions, nullptr,
-                                  argv, environ);
+    const int rc =
+        ::posix_spawn(&pid, binary.c_str(), &actions, nullptr, argv, environ);
     (void)arg0;
     posix_spawn_file_actions_destroy(&actions);
 
@@ -103,9 +107,9 @@ spawn_notes(const std::string& binary, const std::string& db_path) {
     }
 
     auto sp = std::make_unique<Subprocess>();
-    sp->pid       = pid;
-    sp->read_fd   = out_pipe[0];
-    sp->write_fd  = in_pipe[1];
+    sp->pid = pid;
+    sp->read_fd = out_pipe[0];
+    sp->write_fd = in_pipe[1];
     return sp;
 }
 
@@ -126,9 +130,10 @@ void NotesSubprocess::EndToEnd(void) {
 
     // Use a unique tempfile per test so we don't collide with state
     // from a prior run.
-    const auto db_path = (fs::temp_directory_path()
-                          / ("mcp-notes-test-" + std::to_string(::getpid()) + ".db"))
-                          .string();
+    const auto db_path =
+        (fs::temp_directory_path() /
+         ("mcp-notes-test-" + std::to_string(::getpid()) + ".db"))
+            .string();
     std::error_code ec;
     fs::remove(db_path, ec);
 
@@ -136,13 +141,14 @@ void NotesSubprocess::EndToEnd(void) {
     QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
-    opts.read_fd  = sp->read_fd;
+    opts.read_fd = sp->read_fd;
     opts.write_fd = sp->write_fd;
     opts.owns_fds = false;
     auto transport = std::make_unique<mcp::StdioTransport>(opts);
 
-    mcp::Client client{ mcp::Implementation{
-        .name = "notes-tester", .version = "0.1.0",
+    mcp::Client client{mcp::Implementation{
+        .name = "notes-tester",
+        .version = "0.1.0",
     }};
     client.connect(std::move(transport));
 
@@ -156,18 +162,22 @@ void NotesSubprocess::EndToEnd(void) {
 
     // write a note
     {
-        auto out = client.call_tool("notes/write", QJsonObject{
-            {"key",   "db.prod"},
-            {"value", "postgres://prod.example/main"},
-            {"tags",  "db,connection"},
-        }).get();
+        auto out = client
+                       .call_tool("notes/write",
+                                  QJsonObject{
+                                      {"key", "db.prod"},
+                                      {"value", "postgres://prod.example/main"},
+                                      {"tags", "db,connection"},
+                                  })
+                       .get();
         QVERIFY(!out.is_error.value_or(false));
     }
 
     // read it back
     {
-        auto out = client.call_tool("notes/read",
-                                     QJsonObject{{"key", "db.prod"}}).get();
+        auto out =
+            client.call_tool("notes/read", QJsonObject{{"key", "db.prod"}})
+                .get();
         QVERIFY(!out.is_error.value_or(false));
         QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
                  std::string{"postgres://prod.example/main"});
@@ -184,14 +194,15 @@ void NotesSubprocess::EndToEnd(void) {
 
     // search by content
     {
-        auto out = client.call_tool("notes/search",
-                                     QJsonObject{{"query", "postgres"}}).get();
+        auto out =
+            client.call_tool("notes/search", QJsonObject{{"query", "postgres"}})
+                .get();
         QVERIFY(!out.is_error.value_or(false));
         QVERIFY(out.structured_content.has_value());
         const auto matches = (*out.structured_content)["matches"];
         QCOMPARE(matches.toArray().size(), std::size_t{1});
-        QVERIFY(matches[0]["snippet"].toString().toStdString().find("postgres")
-                != std::string::npos);
+        QVERIFY(matches[0]["snippet"].toString().toStdString().find(
+                    "postgres") != std::string::npos);
     }
 
     // resource read
@@ -204,9 +215,13 @@ void NotesSubprocess::EndToEnd(void) {
 
     // delete with confirm=true (no elicitation needed)
     {
-        auto out = client.call_tool("notes/delete", QJsonObject{
-            {"key", "db.prod"}, {"confirm", true},
-        }).get();
+        auto out = client
+                       .call_tool("notes/delete",
+                                  QJsonObject{
+                                      {"key", "db.prod"},
+                                      {"confirm", true},
+                                  })
+                       .get();
         QVERIFY(!out.is_error.value_or(false));
     }
 
@@ -231,9 +246,10 @@ void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
     // declining the elicitation should leave the row in place.
     const char* path = MCP_TEST_NOTES_SERVER;
 
-    const auto db_path = (fs::temp_directory_path()
-                          / ("mcp-notes-elicit-" + std::to_string(::getpid()) + ".db"))
-                          .string();
+    const auto db_path =
+        (fs::temp_directory_path() /
+         ("mcp-notes-elicit-" + std::to_string(::getpid()) + ".db"))
+            .string();
     std::error_code ec;
     fs::remove(db_path, ec);
 
@@ -241,13 +257,14 @@ void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
     QVERIFY(sp != nullptr);
 
     mcp::StdioTransport::Options opts{};
-    opts.read_fd  = sp->read_fd;
+    opts.read_fd = sp->read_fd;
     opts.write_fd = sp->write_fd;
     opts.owns_fds = false;
     auto transport = std::make_unique<mcp::StdioTransport>(opts);
 
-    mcp::Client client{ mcp::Implementation{
-        .name = "notes-tester", .version = "0.1.0",
+    mcp::Client client{mcp::Implementation{
+        .name = "notes-tester",
+        .version = "0.1.0",
     }};
     client.connect(std::move(transport));
 
@@ -259,15 +276,19 @@ void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
 
     (void)client.initialize().get();
 
-    (void)client.call_tool("notes/write", QJsonObject{
-        {"key", "k1"}, {"value", "v1"},
-    }).get();
+    (void)client
+        .call_tool("notes/write",
+                   QJsonObject{
+                       {"key", "k1"},
+                       {"value", "v1"},
+                   })
+        .get();
 
-    auto del = client.call_tool("notes/delete",
-                                  QJsonObject{{"key", "k1"}}).get();
+    auto del =
+        client.call_tool("notes/delete", QJsonObject{{"key", "k1"}}).get();
     QVERIFY(del.is_error.value_or(false));
-    QVERIFY(std::get<mcp::TextContent>(del.content[0]).text.find("cancelled")
-            != std::string::npos);
+    QVERIFY(std::get<mcp::TextContent>(del.content[0]).text.find("cancelled") !=
+            std::string::npos);
 
     // Note should still be there.
     auto info = client.call_tool("notes/info", QJsonObject{}).get();

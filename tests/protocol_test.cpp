@@ -64,8 +64,7 @@ void RequestId::CanonicalDistinguishesStringFromInt(void) {
     mcp::RequestId i{5};
     mcp::RequestId s{"5"};
     QVERIFY(i.canonical() != s.canonical());
-    QVERIFY(std::hash<mcp::RequestId>{}(i) !=
-            std::hash<mcp::RequestId>{}(s));
+    QVERIFY(std::hash<mcp::RequestId>{}(i) != std::hash<mcp::RequestId>{}(s));
 }
 
 void RequestId::RejectsBoolAndNull(void) {
@@ -95,24 +94,25 @@ private slots:
 
 void JsonRpc::RequestRoundTrip(void) {
     mcp::JsonRpcRequest r{
-        .id     = mcp::RequestId{1},
+        .id = mcp::RequestId{1},
         .method = "tools/list",
         .params = QJsonObject{{"cursor", "abc"}},
     };
     Json j = mcp::to_json(r);
     QCOMPARE(j["jsonrpc"], mcp::test::jv("2.0"));
-    QCOMPARE(j["id"],      mcp::test::jv(1));
-    QCOMPARE(j["method"],  mcp::test::jv("tools/list"));
+    QCOMPARE(j["id"], mcp::test::jv(1));
+    QCOMPARE(j["method"], mcp::test::jv("tools/list"));
     QCOMPARE(j["params"]["cursor"], mcp::test::jv("abc"));
     auto back = mcp::from_json<mcp::JsonRpcRequest>(j);
-    QCOMPARE(back.id,     r.id);
+    QCOMPARE(back.id, r.id);
     QCOMPARE(back.method, r.method);
     QCOMPARE(back.params, r.params);
 }
 
 void JsonRpc::RequestRejectsBadJsonrpc(void) {
     Json j = QJsonObject{{"jsonrpc", "1.0"}, {"id", 1}, {"method", "x"}};
-    QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::JsonRpcRequest>(j), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::JsonRpcRequest>(j),
+                             mcp::Error);
 }
 
 void JsonRpc::NotificationOmitsId(void) {
@@ -120,14 +120,14 @@ void JsonRpc::NotificationOmitsId(void) {
     Json j = mcp::to_json(n);
     QVERIFY(!mcp::test::has_key(j, "id"));
     QCOMPARE(j["jsonrpc"], mcp::test::jv("2.0"));
-    QCOMPARE(j["method"],  mcp::test::jv("notifications/initialized"));
+    QCOMPARE(j["method"], mcp::test::jv("notifications/initialized"));
     auto back = mcp::from_json<mcp::JsonRpcNotification>(j);
     QCOMPARE(back.method, n.method);
 }
 
 void JsonRpc::ResponseSuccess(void) {
     mcp::JsonRpcResponse r{
-        .id      = mcp::RequestId{1},
+        .id = mcp::RequestId{1},
         .outcome = QJsonObject{{"k", "v"}},
     };
     Json j = mcp::to_json(r);
@@ -140,8 +140,9 @@ void JsonRpc::ResponseSuccess(void) {
 
 void JsonRpc::ResponseError(void) {
     mcp::JsonRpcResponse r{
-        .id      = mcp::RequestId{1},
-        .outcome = mcp::ErrorObject{mcp::error_code::method_not_found, "no", {}},
+        .id = mcp::RequestId{1},
+        .outcome =
+            mcp::ErrorObject{mcp::error_code::method_not_found, "no", {}},
     };
     Json j = mcp::to_json(r);
     QVERIFY(mcp::test::has_key(j, "error"));
@@ -153,15 +154,17 @@ void JsonRpc::ResponseError(void) {
 }
 
 void JsonRpc::ResponseRejectsBothResultAndError(void) {
-    Json j = QJsonObject{{"jsonrpc", "2.0"},
-                         {"id", 1},
-                         {"result", "x"},
-                         {"error", QJsonObject{{"code", -1}, {"message", "y"}}}};
-    QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::JsonRpcResponse>(j), mcp::Error);
+    Json j =
+        QJsonObject{{"jsonrpc", "2.0"},
+                    {"id", 1},
+                    {"result", "x"},
+                    {"error", QJsonObject{{"code", -1}, {"message", "y"}}}};
+    QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::JsonRpcResponse>(j),
+                             mcp::Error);
 }
 
 void JsonRpc::ParseMessageDispatchesOnShape(void) {
-    Json req  = QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "x"}};
+    Json req = QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "x"}};
     Json note = QJsonObject{{"jsonrpc", "2.0"}, {"method", "x"}};
     Json resp = QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"result", "y"}};
 
@@ -176,7 +179,8 @@ void JsonRpc::ParseMessageDispatchesOnShape(void) {
 
 void JsonRpc::ParseMessageRejectsBadShape(void) {
     const Json bad = QJsonObject{{"jsonrpc", "2.0"}};
-    QVERIFY_EXCEPTION_THROWN(([&] { (void)mcp::parse_message(bad); }()), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(([&] { (void)mcp::parse_message(bad); }()),
+                             mcp::Error);
 }
 
 // -------------------------------------------------------------------------
@@ -192,22 +196,22 @@ private slots:
 
 void Implementation::RoundTripWithAllFields(void) {
     mcp::Implementation imp{
-        .name        = "calc",
-        .title       = "Calculator",
-        .version     = "1.0.0",
+        .name = "calc",
+        .title = "Calculator",
+        .version = "1.0.0",
         .description = "Tiny arithmetic server",
         .website_url = "https://example.com",
     };
     Json j = mcp::to_json(imp);
-    QCOMPARE(j["name"],        mcp::test::jv("calc"));
-    QCOMPARE(j["title"],       mcp::test::jv("Calculator"));
-    QCOMPARE(j["version"],     mcp::test::jv("1.0.0"));
+    QCOMPARE(j["name"], mcp::test::jv("calc"));
+    QCOMPARE(j["title"], mcp::test::jv("Calculator"));
+    QCOMPARE(j["version"], mcp::test::jv("1.0.0"));
     QCOMPARE(j["description"], mcp::test::jv("Tiny arithmetic server"));
-    QCOMPARE(j["websiteUrl"],  mcp::test::jv("https://example.com"));
+    QCOMPARE(j["websiteUrl"], mcp::test::jv("https://example.com"));
     auto back = mcp::from_json<mcp::Implementation>(j);
-    QCOMPARE(back.name,        imp.name);
-    QCOMPARE(back.title,       imp.title);
-    QCOMPARE(back.version,     imp.version);
+    QCOMPARE(back.name, imp.name);
+    QCOMPARE(back.title, imp.title);
+    QCOMPARE(back.version, imp.version);
     QCOMPARE(back.description, imp.description);
     QCOMPARE(back.website_url, imp.website_url);
 }
@@ -254,7 +258,7 @@ void Capabilities::ServerLoggingPresenceOnly(void) {
 void Capabilities::ResourcesSubscribeAndListChanged(void) {
     mcp::ServerCapabilities caps;
     caps.resources = mcp::ResourcesCapability{
-        .subscribe    = true,
+        .subscribe = true,
         .list_changed = false,
     };
     Json j = mcp::to_json(caps);
@@ -262,7 +266,7 @@ void Capabilities::ResourcesSubscribeAndListChanged(void) {
     QCOMPARE(j["resources"]["listChanged"], mcp::test::jv(false));
     auto back = mcp::from_json<mcp::ServerCapabilities>(j);
     QVERIFY(back.resources.has_value());
-    QCOMPARE(back.resources->subscribe,    true);
+    QCOMPARE(back.resources->subscribe, true);
     QCOMPARE(back.resources->list_changed, false);
 }
 
@@ -298,8 +302,8 @@ private slots:
 void Initialize::RequestParamsRoundTrip(void) {
     mcp::InitializeRequestParams p{
         .protocol_version = std::string{mcp::kLatestProtocolVersion},
-        .capabilities     = {},
-        .client_info      = {.name = "c", .version = "1"},
+        .capabilities = {},
+        .client_info = {.name = "c", .version = "1"},
     };
     p.capabilities.roots = mcp::RootsCapability{.list_changed = true};
     Json j = mcp::to_json(p);
@@ -316,19 +320,19 @@ void Initialize::RequestParamsRoundTrip(void) {
 void Initialize::ResultRoundTrip(void) {
     mcp::InitializeResult r{
         .protocol_version = "2025-11-25",
-        .capabilities     = {},
-        .server_info      = {.name = "s", .version = "1"},
-        .instructions     = "hello",
+        .capabilities = {},
+        .server_info = {.name = "s", .version = "1"},
+        .instructions = "hello",
     };
     r.capabilities.tools = mcp::ToolsCapability{.list_changed = true};
     Json j = mcp::to_json(r);
-    QCOMPARE(j["protocolVersion"],            mcp::test::jv("2025-11-25"));
-    QCOMPARE(j["serverInfo"]["name"],         mcp::test::jv("s"));
-    QCOMPARE(j["instructions"],               mcp::test::jv("hello"));
+    QCOMPARE(j["protocolVersion"], mcp::test::jv("2025-11-25"));
+    QCOMPARE(j["serverInfo"]["name"], mcp::test::jv("s"));
+    QCOMPARE(j["instructions"], mcp::test::jv("hello"));
     QCOMPARE(j["capabilities"]["tools"]["listChanged"], mcp::test::jv(true));
     auto back = mcp::from_json<mcp::InitializeResult>(j);
     QCOMPARE(back.protocol_version, r.protocol_version);
-    QCOMPARE(back.instructions,     r.instructions);
+    QCOMPARE(back.instructions, r.instructions);
     QVERIFY(back.capabilities.tools.has_value());
 }
 
@@ -365,8 +369,8 @@ void Content::TextBlockShape(void) {
 void Content::ImageBlockShape(void) {
     mcp::ImageContent i{.data = "Zm9v", .mime_type = "image/png"};
     Json j = mcp::to_json(i);
-    QCOMPARE(j["type"],     mcp::test::jv("image"));
-    QCOMPARE(j["data"],     mcp::test::jv("Zm9v"));
+    QCOMPARE(j["type"], mcp::test::jv("image"));
+    QCOMPARE(j["data"], mcp::test::jv("Zm9v"));
     QCOMPARE(j["mimeType"], mcp::test::jv("image/png"));
     auto back = mcp::from_json<mcp::ImageContent>(j);
     QCOMPARE(back.mime_type, i.mime_type);
@@ -375,7 +379,7 @@ void Content::ImageBlockShape(void) {
 void Content::AudioBlockShape(void) {
     mcp::AudioContent a{.data = "abcd", .mime_type = "audio/wav"};
     Json j = mcp::to_json(a);
-    QCOMPARE(j["type"],     mcp::test::jv("audio"));
+    QCOMPARE(j["type"], mcp::test::jv("audio"));
     QCOMPARE(j["mimeType"], mcp::test::jv("audio/wav"));
 }
 
@@ -385,23 +389,26 @@ void Content::BlockVariantDispatchesOnType(void) {
     QVERIFY(std::holds_alternative<mcp::TextContent>(block));
     QCOMPARE(std::get<mcp::TextContent>(block).text, std::string{"x"});
 
-    Json image = QJsonObject{{"type", "image"}, {"data", "Zm9v"}, {"mimeType", "image/png"}};
+    Json image = QJsonObject{
+        {"type", "image"}, {"data", "Zm9v"}, {"mimeType", "image/png"}};
     block = mcp::from_json<mcp::ContentBlock>(image);
     QVERIFY(std::holds_alternative<mcp::ImageContent>(block));
 }
 
 void Content::BlockVariantRejectsUnknownType(void) {
     Json unknown = QJsonObject{{"type", "video"}};
-    QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::ContentBlock>(unknown), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::ContentBlock>(unknown),
+                             mcp::Error);
 }
 
 void Content::AnnotationsRoundTrip(void) {
     mcp::Annotations a;
-    a.audience      = std::vector<mcp::Role>{mcp::Role::user, mcp::Role::assistant};
-    a.priority      = 0.5;
+    a.audience = std::vector<mcp::Role>{mcp::Role::user, mcp::Role::assistant};
+    a.priority = 0.5;
     a.last_modified = "2025-01-12T15:00:58Z";
     Json j = mcp::to_json(a);
-    const QJsonArray audience{mcp::test::jv("user"), mcp::test::jv("assistant")};
+    const QJsonArray audience{mcp::test::jv("user"),
+                              mcp::test::jv("assistant")};
     QCOMPARE(j["audience"].toArray(), audience);
     QCOMPARE(j["priority"], mcp::test::jv(0.5));
     auto back = mcp::from_json<mcp::Annotations>(j);
@@ -426,28 +433,29 @@ private slots:
 
 void Tools::ToolRoundTrip(void) {
     mcp::Tool t{
-        .name         = "add",
-        .title        = "Add",
-        .description  = "Add two numbers",
-        .input_schema = QJsonObject{
-            {"type", "object"},
-            {"properties",
-             QJsonObject{{"a", QJsonObject{{"type", "number"}}},
-                         {"b", QJsonObject{{"type", "number"}}}}},
-            {"required", QJsonArray{mcp::test::jv("a"), mcp::test::jv("b")}}},
+        .name = "add",
+        .title = "Add",
+        .description = "Add two numbers",
+        .input_schema =
+            QJsonObject{{"type", "object"},
+                        {"properties",
+                         QJsonObject{{"a", QJsonObject{{"type", "number"}}},
+                                     {"b", QJsonObject{{"type", "number"}}}}},
+                        {"required",
+                         QJsonArray{mcp::test::jv("a"), mcp::test::jv("b")}}},
     };
     Json j = mcp::to_json(t);
     QCOMPARE(j["name"], mcp::test::jv("add"));
     QCOMPARE(j["inputSchema"]["type"], mcp::test::jv("object"));
     auto back = mcp::from_json<mcp::Tool>(j);
-    QCOMPARE(back.name,        t.name);
+    QCOMPARE(back.name, t.name);
     QCOMPARE(back.input_schema, t.input_schema);
 }
 
 void Tools::ListToolsResultRoundTrip(void) {
     mcp::ListToolsResult r;
     r.tools.push_back(mcp::Tool{
-        .name         = "x",
+        .name = "x",
         .input_schema = QJsonObject{{"type", "object"}},
     });
     r.next_cursor = "next";
@@ -462,14 +470,14 @@ void Tools::ListToolsResultRoundTrip(void) {
 
 void Tools::CallToolRequestParamsShape(void) {
     mcp::CallToolRequestParams p{
-        .name      = "add",
+        .name = "add",
         .arguments = QJsonObject{{"a", 1}, {"b", 2}},
     };
     Json j = mcp::to_json(p);
     QCOMPARE(j["name"], mcp::test::jv("add"));
     QCOMPARE(j["arguments"]["a"], mcp::test::jv(1));
     auto back = mcp::from_json<mcp::CallToolRequestParams>(j);
-    QCOMPARE(back.name,      p.name);
+    QCOMPARE(back.name, p.name);
     QCOMPARE(back.arguments, p.arguments);
 }
 
@@ -484,22 +492,23 @@ void Tools::CallToolResultRoundTrip(void) {
     auto back = mcp::from_json<mcp::CallToolResult>(j);
     QCOMPARE(back.content.size(), std::size_t{1});
     QVERIFY(std::holds_alternative<mcp::TextContent>(back.content[0]));
-    QCOMPARE(std::get<mcp::TextContent>(back.content[0]).text, std::string{"3"});
+    QCOMPARE(std::get<mcp::TextContent>(back.content[0]).text,
+             std::string{"3"});
 }
 
 void Tools::ToolAnnotationsRoundTrip(void) {
     mcp::ToolAnnotations a{
-        .title            = "Add",
-        .read_only_hint   = true,
+        .title = "Add",
+        .read_only_hint = true,
         .destructive_hint = false,
-        .idempotent_hint  = true,
-        .open_world_hint  = false,
+        .idempotent_hint = true,
+        .open_world_hint = false,
     };
     Json j = mcp::to_json(a);
-    QCOMPARE(j["readOnlyHint"],    mcp::test::jv(true));
+    QCOMPARE(j["readOnlyHint"], mcp::test::jv(true));
     QCOMPARE(j["destructiveHint"], mcp::test::jv(false));
     auto back = mcp::from_json<mcp::ToolAnnotations>(j);
-    QCOMPARE(back.read_only_hint,   a.read_only_hint);
+    QCOMPARE(back.read_only_hint, a.read_only_hint);
     QCOMPARE(back.destructive_hint, a.destructive_hint);
 }
 
@@ -523,14 +532,14 @@ private slots:
 
 void SpecAdditions::ToolUseContentRoundTrip(void) {
     mcp::ToolUseContent c{
-        .id    = "tu_abc",
-        .name  = "search",
+        .id = "tu_abc",
+        .name = "search",
         .input = QJsonObject{{"q", "lima beans"}},
     };
     mcp::ContentBlock cb = c;
     Json j = mcp::to_json(cb);
     QCOMPARE(j["type"], mcp::test::jv("tool_use"));
-    QCOMPARE(j["id"],   mcp::test::jv("tu_abc"));
+    QCOMPARE(j["id"], mcp::test::jv("tu_abc"));
     QCOMPARE(j["name"], mcp::test::jv("search"));
     QCOMPARE(j["input"]["q"], mcp::test::jv("lima beans"));
     auto back = mcp::from_json<mcp::ContentBlock>(j);
@@ -541,47 +550,51 @@ void SpecAdditions::ToolUseContentRoundTrip(void) {
 void SpecAdditions::ToolResultContentRoundTrip(void) {
     mcp::ToolResultContent c{
         .tool_use_id = "tu_abc",
-        .content     = { mcp::TextContent{.text = "found 42"} },
-        .is_error    = false,
+        .content = {mcp::TextContent{.text = "found 42"}},
+        .is_error = false,
     };
     mcp::ContentBlock cb = c;
     Json j = mcp::to_json(cb);
-    QCOMPARE(j["type"],         mcp::test::jv("tool_result"));
-    QCOMPARE(j["toolUseId"],    mcp::test::jv("tu_abc"));
+    QCOMPARE(j["type"], mcp::test::jv("tool_result"));
+    QCOMPARE(j["toolUseId"], mcp::test::jv("tu_abc"));
     QCOMPARE(j["content"][0]["type"], mcp::test::jv("text"));
-    QCOMPARE(j["isError"],      mcp::test::jv(false));
+    QCOMPARE(j["isError"], mcp::test::jv(false));
     auto back = mcp::from_json<mcp::ContentBlock>(j);
     QVERIFY(std::holds_alternative<mcp::ToolResultContent>(back));
-    QCOMPARE(std::get<mcp::ToolResultContent>(back).tool_use_id, std::string{"tu_abc"});
+    QCOMPARE(std::get<mcp::ToolResultContent>(back).tool_use_id,
+             std::string{"tu_abc"});
 }
 
 void SpecAdditions::ToolResultRejectsNestedToolUseInContent(void) {
     // PlainContentBlock parser MUST reject "tool_use" / "tool_result"
     // — that's the spec rule preventing recursive content blocks.
     Json j = QJsonObject{
-        {"type",      "tool_result"},
+        {"type", "tool_result"},
         {"toolUseId", "x"},
-        {"content",   QJsonArray{
-            QJsonObject{{"type", "tool_use"}, {"id", "y"}, {"name", "z"},
-                        {"input", QJsonObject{}}},
-        }},
+        {"content",
+         QJsonArray{
+             QJsonObject{{"type", "tool_use"},
+                         {"id", "y"},
+                         {"name", "z"},
+                         {"input", QJsonObject{}}},
+         }},
     };
     QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::ContentBlock>(j), mcp::Error);
 }
 
 void SpecAdditions::SamplingToolsAndToolChoiceRoundTrip(void) {
     mcp::CreateMessageRequestParams p{
-        .messages = { mcp::SamplingMessage{
-            .role    = mcp::Role::user,
-            .content = { mcp::TextContent{.text = "?"} },
+        .messages = {mcp::SamplingMessage{
+            .role = mcp::Role::user,
+            .content = {mcp::TextContent{.text = "?"}},
         }},
         .max_tokens = 100,
     };
-    p.tools = std::vector<mcp::Tool>{ mcp::Tool{
-        .name         = "search",
+    p.tools = std::vector<mcp::Tool>{mcp::Tool{
+        .name = "search",
         .input_schema = QJsonObject{{"type", "object"}},
     }};
-    p.tool_choice = mcp::ToolChoice{ .mode = mcp::ToolChoiceMode::any };
+    p.tool_choice = mcp::ToolChoice{.mode = mcp::ToolChoiceMode::any};
 
     Json j = mcp::to_json(p);
     QVERIFY(mcp::test::has_key(j, "tools"));
@@ -611,18 +624,22 @@ void SpecAdditions::ToolChoiceObjectFormForNamedTool(void) {
 
 void SpecAdditions::IconsAndMetaOnImplementation(void) {
     mcp::Implementation impl{
-        .name    = "x", .version = "1",
-        .icons   = std::vector<mcp::Icon>{{
-            .src = "https://example.com/icon.png", .mime_type = "image/png",
+        .name = "x",
+        .version = "1",
+        .icons = std::vector<mcp::Icon>{{
+            .src = "https://example.com/icon.png",
+            .mime_type = "image/png",
         }},
-        .meta    = QJsonObject{{"app.example/internal", 42}},
+        .meta = QJsonObject{{"app.example/internal", 42}},
     };
     Json j = mcp::to_json(impl);
-    QCOMPARE(j["icons"][0]["src"], mcp::test::jv("https://example.com/icon.png"));
+    QCOMPARE(j["icons"][0]["src"],
+             mcp::test::jv("https://example.com/icon.png"));
     QCOMPARE(j["_meta"]["app.example/internal"], mcp::test::jv(42));
     auto back = mcp::from_json<mcp::Implementation>(j);
     QVERIFY(back.icons.has_value());
-    QCOMPARE(back.icons->front().src, std::string{"https://example.com/icon.png"});
+    QCOMPARE(back.icons->front().src,
+             std::string{"https://example.com/icon.png"});
     QVERIFY(back.meta.has_value());
     QCOMPARE((*back.meta)["app.example/internal"], mcp::test::jv(42));
 }
@@ -630,9 +647,9 @@ void SpecAdditions::IconsAndMetaOnImplementation(void) {
 void SpecAdditions::MetaOnInitializeResult(void) {
     mcp::InitializeResult r{
         .protocol_version = "2025-11-25",
-        .capabilities     = {},
-        .server_info      = mcp::Implementation{.name = "s", .version = "0"},
-        .meta             = QJsonObject{{"x", 1}},
+        .capabilities = {},
+        .server_info = mcp::Implementation{.name = "s", .version = "0"},
+        .meta = QJsonObject{{"x", 1}},
     };
     Json j = mcp::to_json(r);
     QCOMPARE(j["_meta"]["x"], mcp::test::jv(1));
@@ -643,11 +660,12 @@ void SpecAdditions::MetaOnInitializeResult(void) {
 
 void SpecAdditions::ToolExecutionRoundTrip(void) {
     mcp::Tool t{
-        .name         = "danger",
+        .name = "danger",
         .input_schema = QJsonObject{{"type", "object"}},
-        .execution    = mcp::ToolExecution{
-            .task_support = mcp::TaskSupport::required,
-        },
+        .execution =
+            mcp::ToolExecution{
+                .task_support = mcp::TaskSupport::required,
+            },
     };
     Json j = mcp::to_json(t);
     QCOMPARE(j["execution"]["taskSupport"], mcp::test::jv("required"));
@@ -658,14 +676,15 @@ void SpecAdditions::ToolExecutionRoundTrip(void) {
 
 void SpecAdditions::UrlElicitationRequiredErrorDataRoundTrip(void) {
     mcp::UrlElicitationRequiredErrorData d{
-        .elicitations = { mcp::ElicitUrlRequestParams{
-            .message        = "Authorise via the linked URL",
-            .url            = "https://idp.example/auth",
+        .elicitations = {mcp::ElicitUrlRequestParams{
+            .message = "Authorise via the linked URL",
+            .url = "https://idp.example/auth",
             .elicitation_id = "eid-1",
         }},
     };
     Json j = mcp::to_json(d);
-    QCOMPARE(j["elicitations"][0]["url"], mcp::test::jv("https://idp.example/auth"));
+    QCOMPARE(j["elicitations"][0]["url"],
+             mcp::test::jv("https://idp.example/auth"));
     auto back = mcp::from_json<mcp::UrlElicitationRequiredErrorData>(j);
     QCOMPARE(back.elicitations.front().elicitation_id, std::string{"eid-1"});
 }

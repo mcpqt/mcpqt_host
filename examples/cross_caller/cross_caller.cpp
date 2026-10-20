@@ -24,7 +24,8 @@ class CrossCallerPlugin : public mcp::PluginInterface {
     Q_OBJECT
     Q_CLASSINFO("id", "caller")
     Q_CLASSINFO("version", "1.0.0")
-    Q_CLASSINFO("description", "Demonstrates calling another plugin's function via the host.")
+    Q_CLASSINFO("description",
+                "Demonstrates calling another plugin's function via the host.")
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "cross_caller.json")
     Q_INTERFACES(mcp::PluginInterface)
 
@@ -55,7 +56,7 @@ public slots:
         if (m_target_greet.isEmpty()) {
             return QStringLiteral("hello plugin's greet() is not loaded");
         }
-        return m_host.callFunc(m_target_greet, { name }).toString();
+        return m_host.callFunc(m_target_greet, {name}).toString();
     }
 
 private:

@@ -36,7 +36,9 @@
 
 namespace mcp {
 
-namespace detail { class TaskStore; }
+namespace detail {
+class TaskStore;
+}
 
 class Server {
 public:
@@ -48,8 +50,7 @@ public:
     /// The result's `isError` field is the right way to report
     /// in-protocol failures (LLM-visible). MCP errors are reserved for
     /// "I couldn't even find this tool" / out-of-band conditions.
-    using ToolHandler =
-        std::function<CallToolResult(const Json& arguments)>;
+    using ToolHandler = std::function<CallToolResult(const Json& arguments)>;
 
     /// Bag of optional per-tool metadata applied at registration. The
     /// 2025-11-25 spec lets every tool advertise icons, structured
@@ -57,8 +58,8 @@ public:
     /// task-augmented inbound calls.
     struct ToolMetadata {
         std::optional<std::vector<Icon>> icons;
-        std::optional<ToolExecution>     execution;
-        std::optional<Json>    meta;
+        std::optional<ToolExecution> execution;
+        std::optional<Json> meta;
     };
 
     /// Resource read handler. Receives the requested URI and returns
@@ -70,8 +71,8 @@ public:
     /// Prompt-get handler. Receives the (string-keyed, string-valued)
     /// argument map (which may be empty) and returns the rendered
     /// prompt as a sequence of PromptMessages.
-    using PromptGetHandler =
-        std::function<GetPromptResult(const std::unordered_map<std::string, std::string>& arguments)>;
+    using PromptGetHandler = std::function<GetPromptResult(
+        const std::unordered_map<std::string, std::string>& arguments)>;
 
     explicit Server(Implementation server_info);
     /// Out-of-line because the optional `m_tasks` member holds a
@@ -93,26 +94,21 @@ public:
 
     /// Register a tool with the given name. Replaces any prior handler.
     /// `input_schema` MUST be a JSON Schema object with "type": "object".
-    Server& tool(std::string                    name,
-                 Json                 input_schema,
-                 ToolHandler                    handler,
-                 std::optional<std::string>     title       = std::nullopt,
-                 std::optional<std::string>     description = std::nullopt,
+    Server& tool(std::string name, Json input_schema, ToolHandler handler,
+                 std::optional<std::string> title = std::nullopt,
+                 std::optional<std::string> description = std::nullopt,
                  std::optional<ToolAnnotations> annotations = std::nullopt,
-                 std::optional<Json>  output_schema = std::nullopt);
+                 std::optional<Json> output_schema = std::nullopt);
 
     /// Tool registration with the 2025-11-25 metadata bag. Use the
     /// long-form constructor when you need to declare icons, _meta,
     /// or an execution policy that gates task augmentation.
-    Server& tool(std::string  name,
-                 Json input_schema,
-                 ToolHandler  handler,
+    Server& tool(std::string name, Json input_schema, ToolHandler handler,
                  ToolMetadata meta);
 
     /// Register a resource the server exposes. The handler is invoked
     /// when a client calls `resources/read` for this URI.
-    Server& resource(Resource           descriptor,
-                     ResourceReadHandler handler);
+    Server& resource(Resource descriptor, ResourceReadHandler handler);
 
     /// Add a resource template (for parameterised URIs). The handler
     /// for a templated read isn't bound to a single URI — register the
@@ -128,8 +124,7 @@ public:
 
     /// Register a prompt under the given name. Replaces any prior
     /// registration with the same name.
-    Server& prompt(Prompt           descriptor,
-                   PromptGetHandler handler);
+    Server& prompt(Prompt descriptor, PromptGetHandler handler);
 
     /// Enable the protocol-level "logging" capability. After
     /// initialization, the server may emit log messages to the client
@@ -142,16 +137,14 @@ public:
     /// if logging is not enabled or `level` is below the negotiated
     /// minimum. `data` is free-form JSON (typically a string or
     /// object). Returns `true` if the notification was sent.
-    [[nodiscard]] bool log(LoggingLevel level,
-                           Json data,
+    [[nodiscard]] bool log(LoggingLevel level, Json data,
                            std::optional<std::string> logger = std::nullopt);
 
     /// Emit a `notifications/progress` for the given progress token.
     /// `total` and `message` are optional per spec.
-    void report_progress(const ProgressToken&        token,
-                         double                      progress,
-                         std::optional<double>       total   = std::nullopt,
-                         std::optional<std::string>  message = std::nullopt);
+    void report_progress(const ProgressToken& token, double progress,
+                         std::optional<double> total = std::nullopt,
+                         std::optional<std::string> message = std::nullopt);
 
     /// Send `sampling/createMessage` to the client and return a future
     /// for the result. The caller (typically a tool handler) MUST run on
@@ -172,14 +165,12 @@ public:
     /// `notifications/elicitation/complete` notification to learn the
     /// flow finished). Same threading rule as `sample()`: must run on
     /// the Session worker.
-    [[nodiscard]] std::future<ElicitResult>
-    elicit(ElicitRequestParams params);
+    [[nodiscard]] std::future<ElicitResult> elicit(ElicitRequestParams params);
 
     /// Best-effort `notifications/elicitation/complete` from the server
     /// side, used after a URL-mode elicitation finishes out of band.
     /// Returns std::errc::not_connected if no session is bound.
-    std::error_code
-    notify_elicitation_complete(std::string elicitation_id);
+    std::error_code notify_elicitation_complete(std::string elicitation_id);
 
     /// Hook for inbound `notifications/elicitation/complete` from the
     /// client. The handler receives the `elicitationId` of the URL
@@ -196,8 +187,7 @@ public:
     /// the natural human-in-the-loop response window exceeds the
     /// Session's default 30s request timeout (URL flows in particular).
     [[nodiscard]] std::future<ElicitResult>
-    elicit(ElicitRequestParams       params,
-           std::chrono::milliseconds timeout);
+    elicit(ElicitRequestParams params, std::chrono::milliseconds timeout);
 
     /// Register an autocompletion handler for prompt args or resource
     /// template URIs. The handler returns a list of candidate values.
@@ -223,8 +213,9 @@ public:
     /// Calling enable_tasks() takes effect at the next `run()`. Calling
     /// it again replaces the configured limits. Calling it after
     /// `run()` is in progress is racy and not supported.
-    Server& enable_tasks(std::optional<std::int64_t> default_ttl_ms = std::nullopt,
-                         std::size_t                 max_concurrent = 0);
+    Server&
+    enable_tasks(std::optional<std::int64_t> default_ttl_ms = std::nullopt,
+                 std::size_t max_concurrent = 0);
 
     /// The capabilities the connected client advertised in its
     /// `initialize` request (roots, sampling, elicitation, tasks, …).
@@ -237,7 +228,8 @@ public:
     /// short-circuit an elicitation-driven tool with an actionable
     /// message when `.elicitation` is absent — instead of discovering
     /// the gap by a round-trip failure.
-    [[nodiscard]] std::optional<ClientCapabilities> client_capabilities(void) const;
+    [[nodiscard]] std::optional<ClientCapabilities>
+    client_capabilities(void) const;
 
     /// Run the server: bind a transport, install handlers, start the
     /// session, then block on a condition variable until `stop()` is
@@ -255,7 +247,7 @@ public:
 
 private:
     void on_initialize(const InitializeRequestParams& params,
-                       JsonRpcResponse&               resp);
+                       JsonRpcResponse& resp);
     Json handle_initialize(const Json& params);
     Json handle_list_tools(const Json& params);
     Json handle_call_tool(const Json& params);
@@ -266,7 +258,7 @@ private:
     Json handle_get_prompt(const Json& params);
     Json handle_ping(const Json& params);
     Json handle_set_level(const Json& params);
-    void           handle_cancelled(const Json& params);
+    void handle_cancelled(const Json& params);
     Json handle_complete(const Json& params);
 
     Json handle_get_task(const Json& params);
@@ -275,51 +267,51 @@ private:
     Json handle_cancel_task(const Json& params);
 
     struct ToolEntry {
-        Tool        descriptor;
+        Tool descriptor;
         ToolHandler handler;
     };
     struct ResourceEntry {
-        Resource             descriptor;
-        ResourceReadHandler  handler;
+        Resource descriptor;
+        ResourceReadHandler handler;
     };
 
-    Implementation                              m_server_info;
-    std::optional<std::string>                  m_instructions;
-    std::size_t                                 m_page_size{0};
-    std::unordered_map<std::string, ToolEntry>  m_tools;
-    std::mutex                                  m_tools_mu;
+    Implementation m_server_info;
+    std::optional<std::string> m_instructions;
+    std::size_t m_page_size{0};
+    std::unordered_map<std::string, ToolEntry> m_tools;
+    std::mutex m_tools_mu;
 
     std::unordered_map<std::string, ResourceEntry> m_resources;
-    std::vector<ResourceTemplate>                  m_resource_templates;
-    ResourceReadHandler                            m_fallback_resource_handler;
-    std::mutex                                     m_resources_mu;
+    std::vector<ResourceTemplate> m_resource_templates;
+    ResourceReadHandler m_fallback_resource_handler;
+    std::mutex m_resources_mu;
 
     struct PromptEntry {
-        Prompt           descriptor;
+        Prompt descriptor;
         PromptGetHandler handler;
     };
-    std::unordered_map<std::string, PromptEntry>   m_prompts;
-    std::mutex                                     m_prompts_mu;
+    std::unordered_map<std::string, PromptEntry> m_prompts;
+    std::mutex m_prompts_mu;
 
-    std::atomic<bool>                              m_logging_enabled{false};
-    std::atomic<LoggingLevel>                      m_log_level{LoggingLevel::info};
+    std::atomic<bool> m_logging_enabled{false};
+    std::atomic<LoggingLevel> m_log_level{LoggingLevel::info};
 
-    CompletionHandler                              m_completion_handler;
-    std::mutex                                     m_completion_mu;
+    CompletionHandler m_completion_handler;
+    std::mutex m_completion_mu;
 
     /// Inbound `notifications/elicitation/complete` from the client.
     /// Set via set_elicitation_complete_handler(); guards live under
     /// m_completion_mu to keep the handler-registration mutexing
     /// surface narrow.
-    ElicitationCompleteHandler                     m_elicitation_complete_handler;
+    ElicitationCompleteHandler m_elicitation_complete_handler;
 
     /// Tasks: nullable. Allocated by enable_tasks(). When null, the
     /// `tasks` capability is not advertised and `tools/call` requests
     /// with a `task` augmentation receive a method_not_supported
     /// error.
-    std::unique_ptr<detail::TaskStore>             m_tasks;
-    std::optional<std::int64_t>                    m_tasks_default_ttl_ms;
-    std::size_t                                    m_tasks_max_concurrent{0};
+    std::unique_ptr<detail::TaskStore> m_tasks;
+    std::optional<std::int64_t> m_tasks_default_ttl_ms;
+    std::size_t m_tasks_max_concurrent{0};
 
     /// Acquire a strong reference to the live Session; returns empty
     /// when run() has not started or has already returned. Lets
@@ -327,19 +319,19 @@ private:
     /// racing with the run() teardown.
     [[nodiscard]] std::shared_ptr<Session> acquire_session(void) const;
 
-    std::shared_ptr<Session>                    m_session;
-    mutable std::mutex                          m_session_mu;
-    std::atomic<bool>                           m_initialized{false};
+    std::shared_ptr<Session> m_session;
+    mutable std::mutex m_session_mu;
+    std::atomic<bool> m_initialized{false};
 
     /// Client capabilities captured at initialize, readable any-thread.
     /// Guarded by its own mutex (narrow surface, like the handler
     /// registration mutexes above) rather than piggy-backing on
     /// m_session_mu.
-    std::optional<ClientCapabilities>           m_client_capabilities;
-    mutable std::mutex                          m_client_capabilities_mu;
-    std::atomic<bool>                           m_stop_requested{false};
-    std::mutex                                  m_stop_mu;
-    std::condition_variable                     m_stop_cv;
+    std::optional<ClientCapabilities> m_client_capabilities;
+    mutable std::mutex m_client_capabilities_mu;
+    std::atomic<bool> m_stop_requested{false};
+    std::mutex m_stop_mu;
+    std::condition_variable m_stop_cv;
 };
 
 }  // namespace mcp

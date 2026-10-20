@@ -26,12 +26,14 @@ extern char** environ;
 namespace {
 
 struct Subprocess {
-    pid_t pid     = -1;
-    int   read_fd = -1;
-    int   write_fd = -1;
+    pid_t pid = -1;
+    int read_fd = -1;
+    int write_fd = -1;
     ~Subprocess() {
-        if (write_fd >= 0) ::close(write_fd);
-        if (read_fd  >= 0) ::close(read_fd);
+        if (write_fd >= 0)
+            ::close(write_fd);
+        if (read_fd >= 0)
+            ::close(read_fd);
         if (pid > 0) {
             ::kill(pid, SIGTERM);
             int status = 0;
@@ -43,14 +45,16 @@ struct Subprocess {
 std::unique_ptr<Subprocess> spawn(const char* path) {
     int in_pipe[2];
     int out_pipe[2];
-    if (::pipe(in_pipe) != 0)  return nullptr;
+    if (::pipe(in_pipe) != 0)
+        return nullptr;
     if (::pipe(out_pipe) != 0) {
-        ::close(in_pipe[0]); ::close(in_pipe[1]);
+        ::close(in_pipe[0]);
+        ::close(in_pipe[1]);
         return nullptr;
     }
     posix_spawn_file_actions_t act;
     posix_spawn_file_actions_init(&act);
-    posix_spawn_file_actions_adddup2(&act, in_pipe[0],  STDIN_FILENO);
+    posix_spawn_file_actions_adddup2(&act, in_pipe[0], STDIN_FILENO);
     posix_spawn_file_actions_adddup2(&act, out_pipe[1], STDOUT_FILENO);
     posix_spawn_file_actions_addclose(&act, in_pipe[0]);
     posix_spawn_file_actions_addclose(&act, in_pipe[1]);
@@ -58,7 +62,7 @@ std::unique_ptr<Subprocess> spawn(const char* path) {
     posix_spawn_file_actions_addclose(&act, out_pipe[1]);
 
     pid_t pid = -1;
-    char* const argv[] = { const_cast<char*>(path), nullptr };
+    char* const argv[] = {const_cast<char*>(path), nullptr};
     int rc = ::posix_spawn(&pid, path, &act, nullptr, argv, environ);
     posix_spawn_file_actions_destroy(&act);
     ::close(in_pipe[0]);
@@ -69,8 +73,8 @@ std::unique_ptr<Subprocess> spawn(const char* path) {
         return nullptr;
     }
     auto sp = std::make_unique<Subprocess>();
-    sp->pid      = pid;
-    sp->read_fd  = out_pipe[0];
+    sp->pid = pid;
+    sp->read_fd = out_pipe[0];
     sp->write_fd = in_pipe[1];
     return sp;
 }
@@ -90,18 +94,19 @@ int main(int argc, char** argv) {
     }
 
     mcp::StdioTransport::Options topts{};
-    topts.read_fd  = sp->read_fd;
+    topts.read_fd = sp->read_fd;
     topts.write_fd = sp->write_fd;
     auto transport = std::make_unique<mcp::StdioTransport>(topts);
 
-    mcp::Client client{ mcp::Implementation{
-        .name = "simple_client", .version = "0.1.0",
+    mcp::Client client{mcp::Implementation{
+        .name = "simple_client",
+        .version = "0.1.0",
     }};
     client.connect(std::move(transport));
 
     auto info = client.initialize().get();
-    std::cout << "connected to " << info.server_info.name
-              << " " << info.server_info.version << "\n";
+    std::cout << "connected to " << info.server_info.name << " "
+              << info.server_info.version << "\n";
     if (info.instructions.has_value()) {
         std::cout << "instructions: " << *info.instructions << "\n";
     }
@@ -110,15 +115,16 @@ int main(int argc, char** argv) {
     std::cout << "\navailable tools:\n";
     for (const auto& t : tools.tools) {
         std::cout << "  - " << t.name;
-        if (t.description.has_value()) std::cout << " — " << *t.description;
+        if (t.description.has_value())
+            std::cout << " — " << *t.description;
         std::cout << "\n";
     }
 
     if (!tools.tools.empty()) {
         const auto& first = tools.tools[0].name;
         std::cout << "\ncalling " << first << "(a=2, b=3)...\n";
-        auto out = client.call_tool(first,
-                                    QJsonObject{{"a", 2}, {"b", 3}}).get();
+        auto out =
+            client.call_tool(first, QJsonObject{{"a", 2}, {"b", 3}}).get();
         if (auto* text = std::get_if<mcp::TextContent>(&out.content[0])) {
             std::cout << "  -> " << text->text << "\n";
         }

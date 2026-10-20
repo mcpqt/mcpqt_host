@@ -29,19 +29,25 @@ inline std::error_code last_errno_ec(void) noexcept {
 // -1 on failure (errno preserved).
 int make_nonblocking(int fd) noexcept {
     int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0) return -1;
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) return -1;
+    if (flags < 0)
+        return -1;
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
+        return -1;
     int fd_flags = fcntl(fd, F_GETFD, 0);
-    if (fd_flags < 0) return -1;
-    if (fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC) < 0) return -1;
+    if (fd_flags < 0)
+        return -1;
+    if (fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC) < 0)
+        return -1;
     return fd;
 }
 
 // Close an fd ignoring EINTR.
 void quiet_close(int fd) noexcept {
-    if (fd < 0) return;
+    if (fd < 0)
+        return;
     while (::close(fd) < 0) {
-        if (errno != EINTR) break;
+        if (errno != EINTR)
+            break;
     }
 }
 
@@ -56,18 +62,25 @@ StdioTransport::~StdioTransport() {
     if (m_opts.owns_fds) {
         quiet_close(m_opts.read_fd);
         // Avoid double-closing a write_fd that aliases read_fd.
-        if (m_opts.write_fd != m_opts.read_fd) quiet_close(m_opts.write_fd);
+        if (m_opts.write_fd != m_opts.read_fd)
+            quiet_close(m_opts.write_fd);
     }
 }
 
-void StdioTransport::on_message(MessageCallback cb) { m_on_message = std::move(cb); }
-void StdioTransport::on_error(ErrorCallback cb)     { m_on_error   = std::move(cb); }
-void StdioTransport::on_close(CloseCallback cb)     { m_on_close   = std::move(cb); }
+void StdioTransport::on_message(MessageCallback cb) {
+    m_on_message = std::move(cb);
+}
+void StdioTransport::on_error(ErrorCallback cb) {
+    m_on_error = std::move(cb);
+}
+void StdioTransport::on_close(CloseCallback cb) {
+    m_on_close = std::move(cb);
+}
 
 void StdioTransport::start(void) {
     bool expected = false;
     if (!m_running.compare_exchange_strong(expected, true,
-                                          std::memory_order_acq_rel)) {
+                                           std::memory_order_acq_rel)) {
         return;  // already running
     }
     m_closing.store(false, std::memory_order_release);
@@ -87,7 +100,7 @@ void StdioTransport::start(void) {
         deliver_error(ec);
         return;
     }
-    m_wakeup_read_fd  = pipefd[0];
+    m_wakeup_read_fd = pipefd[0];
     m_wakeup_write_fd = pipefd[1];
 
     m_read_thread = std::thread([this]() noexcept { this->read_loop(); });
@@ -105,18 +118,22 @@ void StdioTransport::close(void) {
         const char b = 0;
         for (;;) {
             ssize_t n = ::write(m_wakeup_write_fd, &b, 1);
-            if (n == 1)             break;
-            if (n < 0 && errno == EINTR) continue;
-            break;  // EAGAIN: the wake pipe is full, which still wakes the reader.
+            if (n == 1)
+                break;
+            if (n < 0 && errno == EINTR)
+                continue;
+            break;  // EAGAIN: the wake pipe is full, which still wakes the
+                    // reader.
         }
     }
 
-    if (m_read_thread.joinable()) m_read_thread.join();
+    if (m_read_thread.joinable())
+        m_read_thread.join();
 
     if (first) {
         quiet_close(m_wakeup_read_fd);
         quiet_close(m_wakeup_write_fd);
-        m_wakeup_read_fd  = -1;
+        m_wakeup_read_fd = -1;
         m_wakeup_write_fd = -1;
     }
 
@@ -141,12 +158,13 @@ std::error_code StdioTransport::send(std::string_view frame) {
     }
 
     std::lock_guard<std::mutex> lk(m_write_mutex);
-    const char* data    = frame.data();
-    std::size_t left    = frame.size();
+    const char* data = frame.data();
+    std::size_t left = frame.size();
     while (left > 0) {
         ssize_t n = ::write(m_opts.write_fd, data, left);
         if (n < 0) {
-            if (errno == EINTR) continue;
+            if (errno == EINTR)
+                continue;
             return last_errno_ec();
         }
         data += n;
@@ -156,29 +174,32 @@ std::error_code StdioTransport::send(std::string_view frame) {
     static const char nl = '\n';
     while (true) {
         ssize_t n = ::write(m_opts.write_fd, &nl, 1);
-        if (n == 1) break;
-        if (n < 0 && errno == EINTR) continue;
+        if (n == 1)
+            break;
+        if (n < 0 && errno == EINTR)
+            continue;
         return last_errno_ec();
     }
     return {};
 }
 
 void StdioTransport::read_loop(void) noexcept {
-    std::string  buffer;
+    std::string buffer;
     buffer.reserve(kReadChunkBytes);
 
     char chunk[kReadChunkBytes];
 
     while (m_running.load(std::memory_order_acquire)) {
         struct pollfd fds[2];
-        fds[0].fd     = m_opts.read_fd;
+        fds[0].fd = m_opts.read_fd;
         fds[0].events = POLLIN;
-        fds[1].fd     = m_wakeup_read_fd;
+        fds[1].fd = m_wakeup_read_fd;
         fds[1].events = POLLIN;
 
         int pr = ::poll(fds, 2, -1 /* infinite */);
         if (pr < 0) {
-            if (errno == EINTR) continue;
+            if (errno == EINTR)
+                continue;
             deliver_error(last_errno_ec());
             break;
         }
@@ -186,8 +207,11 @@ void StdioTransport::read_loop(void) noexcept {
         if (fds[1].revents & POLLIN) {
             // Wake-up; either we're closing or the pipe has stale bytes.
             char drain[64];
-            while (::read(m_wakeup_read_fd, drain, sizeof(drain)) > 0) { /* drain */ }
-            if (m_closing.load(std::memory_order_acquire)) break;
+            while (::read(m_wakeup_read_fd, drain, sizeof(drain)) >
+                   0) { /* drain */
+            }
+            if (m_closing.load(std::memory_order_acquire))
+                break;
         }
 
         if (fds[0].revents & (POLLERR | POLLNVAL)) {
@@ -202,7 +226,8 @@ void StdioTransport::read_loop(void) noexcept {
                 break;
             }
             if (n < 0) {
-                if (errno == EINTR || errno == EAGAIN) continue;
+                if (errno == EINTR || errno == EAGAIN)
+                    continue;
                 deliver_error(last_errno_ec());
                 break;
             }
@@ -222,9 +247,11 @@ void StdioTransport::read_loop(void) noexcept {
                         try {
                             m_on_message(std::move(buffer));
                         } catch (const std::exception& e) {
-                            MCP_LOG_ERROR(std::string{"on_message threw: "} + e.what());
+                            MCP_LOG_ERROR(std::string{"on_message threw: "} +
+                                          e.what());
                         } catch (...) {
-                            MCP_LOG_ERROR("on_message threw a non-std exception");
+                            MCP_LOG_ERROR(
+                                "on_message threw a non-std exception");
                         }
                     }
                     buffer.clear();
@@ -232,7 +259,8 @@ void StdioTransport::read_loop(void) noexcept {
                     continue;
                 }
                 if (buffer.size() >= m_opts.max_frame_bytes) {
-                    deliver_error(std::make_error_code(std::errc::message_size));
+                    deliver_error(
+                        std::make_error_code(std::errc::message_size));
                     return fire_close();
                 }
                 buffer.push_back(c);
@@ -246,7 +274,8 @@ void StdioTransport::read_loop(void) noexcept {
 }
 
 void StdioTransport::deliver_error(std::error_code ec) noexcept {
-    if (!m_on_error) return;
+    if (!m_on_error)
+        return;
     try {
         m_on_error(ec);
     } catch (const std::exception& e) {
@@ -258,14 +287,16 @@ void StdioTransport::deliver_error(std::error_code ec) noexcept {
 
 void StdioTransport::fire_close(void) noexcept {
     bool already = m_close_fired.exchange(true, std::memory_order_acq_rel);
-    if (already) return;
+    if (already)
+        return;
     // Deliberately do NOT flip `m_running` here. EOF on the input
     // doesn't close the output direction; outstanding worker handlers
     // dispatched by the Session still need to write their responses.
     // close() is the canonical place that disables sends. The
     // on_close hook is purely informational — it lets the Session
     // start its drain so close() can be called from the right place.
-    if (!m_on_close) return;
+    if (!m_on_close)
+        return;
     try {
         m_on_close();
     } catch (const std::exception& e) {

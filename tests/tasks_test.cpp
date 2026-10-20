@@ -35,21 +35,22 @@ using namespace std::chrono_literals;
 
 struct ServerThread {
     std::shared_ptr<mcp::Server> server;
-    std::thread                  thread;
+    std::thread thread;
 
     template <typename Configure>
     ServerThread(std::unique_ptr<mcp::Transport> t, Configure cfg)
         : server(std::make_shared<mcp::Server>(mcp::Implementation{
-              .name = "tasks-srv", .version = "1.0",
+              .name = "tasks-srv",
+              .version = "1.0",
           })) {
         cfg(*server);
-        thread = std::thread([s = server, t = std::move(t)]() mutable {
-            s->run(std::move(t));
-        });
+        thread = std::thread(
+            [s = server, t = std::move(t)]() mutable { s->run(std::move(t)); });
     }
     ~ServerThread() {
         server->stop();
-        if (thread.joinable()) thread.join();
+        if (thread.joinable())
+            thread.join();
     }
 };
 
@@ -90,18 +91,19 @@ private slots:
 
 void Tasks::TaskRoundTrip(void) {
     mcp::Task t{
-        .taskId          = "abc",
-        .status          = mcp::TaskStatus::working,
-        .status_message  = "running",
-        .created_at      = "2026-04-29T00:00:00Z",
+        .taskId = "abc",
+        .status = mcp::TaskStatus::working,
+        .status_message = "running",
+        .created_at = "2026-04-29T00:00:00Z",
         .last_updated_at = "2026-04-29T00:00:01Z",
-        .ttl             = 60'000,
-        .poll_interval   = 500,
+        .ttl = 60'000,
+        .poll_interval = 500,
     };
     Json j = mcp::to_json(t);
     QCOMPARE(j.toObject().value("taskId"), mcp::test::jv("abc"));
     QCOMPARE(j.toObject().value("status"), mcp::test::jv("working"));
-    QCOMPARE(j.toObject().value("ttl"), mcp::test::jv(static_cast<qint64>(60'000)));
+    QCOMPARE(j.toObject().value("ttl"),
+             mcp::test::jv(static_cast<qint64>(60'000)));
     QCOMPARE(j.toObject().value("pollInterval"), mcp::test::jv(500));
     auto back = mcp::from_json<mcp::Task>(j);
     QCOMPARE(back.taskId, std::string("abc"));
@@ -111,20 +113,26 @@ void Tasks::TaskRoundTrip(void) {
 
 void Tasks::TaskStatusEnum(void) {
     QCOMPARE(mcp::to_json(mcp::TaskStatus::working), mcp::test::jv("working"));
-    QCOMPARE(mcp::to_json(mcp::TaskStatus::input_required), mcp::test::jv("input_required"));
-    QCOMPARE(mcp::to_json(mcp::TaskStatus::completed), mcp::test::jv("completed"));
+    QCOMPARE(mcp::to_json(mcp::TaskStatus::input_required),
+             mcp::test::jv("input_required"));
+    QCOMPARE(mcp::to_json(mcp::TaskStatus::completed),
+             mcp::test::jv("completed"));
     QCOMPARE(mcp::to_json(mcp::TaskStatus::failed), mcp::test::jv("failed"));
-    QCOMPARE(mcp::to_json(mcp::TaskStatus::cancelled), mcp::test::jv("cancelled"));
+    QCOMPARE(mcp::to_json(mcp::TaskStatus::cancelled),
+             mcp::test::jv("cancelled"));
 
     QCOMPARE(mcp::from_json<mcp::TaskStatus>(mcp::test::jv("input_required")),
-              mcp::TaskStatus::input_required);
-    QVERIFY_EXCEPTION_THROWN((void)mcp::from_json<mcp::TaskStatus>(mcp::test::jv("nope")), mcp::Error);
+             mcp::TaskStatus::input_required);
+    QVERIFY_EXCEPTION_THROWN(
+        (void)mcp::from_json<mcp::TaskStatus>(mcp::test::jv("nope")),
+        mcp::Error);
 }
 
 void Tasks::AugmentationRoundTrip(void) {
     mcp::TaskAugmentation a{.ttl = 12'345};
     Json j = mcp::to_json(a);
-    QCOMPARE(j.toObject().value("ttl"), mcp::test::jv(static_cast<qint64>(12'345)));
+    QCOMPARE(j.toObject().value("ttl"),
+             mcp::test::jv(static_cast<qint64>(12'345)));
     auto back = mcp::from_json<mcp::TaskAugmentation>(j);
     QCOMPARE(*back.ttl, 12'345);
 
@@ -135,12 +143,13 @@ void Tasks::AugmentationRoundTrip(void) {
 
 void Tasks::CallToolRequestParamsCarriesTask(void) {
     mcp::CallToolRequestParams p{
-        .name      = "ask",
+        .name = "ask",
         .arguments = QJsonObject{{"q", "?"}},
-        .task      = mcp::TaskAugmentation{.ttl = 10'000},
+        .task = mcp::TaskAugmentation{.ttl = 10'000},
     };
     Json j = mcp::to_json(p);
-    QCOMPARE(j.toObject().value("task").toObject().value("ttl"), mcp::test::jv(static_cast<qint64>(10'000)));
+    QCOMPARE(j.toObject().value("task").toObject().value("ttl"),
+             mcp::test::jv(static_cast<qint64>(10'000)));
     auto back = mcp::from_json<mcp::CallToolRequestParams>(j);
     QVERIFY(back.task.has_value());
     QCOMPARE(*back.task->ttl, 10'000);
@@ -148,7 +157,7 @@ void Tasks::CallToolRequestParamsCarriesTask(void) {
 
 void Tasks::CapabilityRoundTrip(void) {
     mcp::TasksCapability tc;
-    tc.list   = QJsonObject{};
+    tc.list = QJsonObject{};
     tc.cancel = QJsonObject{};
     mcp::TasksRequestsCapability rc;
     rc.tools = QJsonObject{{"call", QJsonObject{}}};
@@ -157,7 +166,14 @@ void Tasks::CapabilityRoundTrip(void) {
     Json j = mcp::to_json(tc);
     QVERIFY(j.toObject().value("list").isObject());
     QVERIFY(j.toObject().value("cancel").isObject());
-    QCOMPARE(j.toObject().value("requests").toObject().value("tools").toObject().value("call").toObject(), QJsonObject{});
+    QCOMPARE(j.toObject()
+                 .value("requests")
+                 .toObject()
+                 .value("tools")
+                 .toObject()
+                 .value("call")
+                 .toObject(),
+             QJsonObject{});
 
     auto back = mcp::from_json<mcp::TasksCapability>(j);
     QVERIFY(back.list.has_value());
@@ -167,10 +183,13 @@ void Tasks::CapabilityRoundTrip(void) {
 
 void Tasks::ListTasksResultRoundTrip(void) {
     mcp::ListTasksResult r{
-        .tasks = {
-            mcp::Task{.taskId = "1", .status = mcp::TaskStatus::working,
-                      .created_at = "x", .last_updated_at = "y"},
-        },
+        .tasks =
+            {
+                mcp::Task{.taskId = "1",
+                          .status = mcp::TaskStatus::working,
+                          .created_at = "x",
+                          .last_updated_at = "y"},
+            },
         .next_cursor = "1",
     };
     Json j = mcp::to_json(r);
@@ -191,11 +210,11 @@ void TasksIntegration::ServerAdvertisesCapability(void) {
         s.enable_tasks(/*default_ttl_ms=*/std::nullopt);
         s.tool("noop", QJsonObject{{"type", "object"}},
                [](const Json&) -> mcp::CallToolResult {
-                   return {.content = { mcp::TextContent{.text = "ok"} }};
+                   return {.content = {mcp::TextContent{.text = "ok"}}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     auto info = client.initialize().get();
     QVERIFY(info.capabilities.tasks.has_value());
@@ -216,18 +235,21 @@ void TasksIntegration::AugmentedCallReturnsCreateTaskResult(void) {
                    std::this_thread::sleep_for(50ms);
                    const int a = args.toObject().value("a").toInt(0);
                    const int b = args.toObject().value("b").toInt(0);
-                   return {.content = { mcp::TextContent{
-                       .text = std::to_string(a + b),
-                   }}};
+                   return {.content = {mcp::TextContent{
+                               .text = std::to_string(a + b),
+                           }}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    auto envelope = client.call_tool_as_task(
-        "slow_add", Json(QJsonObject{{"a", 2}, {"b", 3}}), 60'000).get();
+    auto envelope =
+        client
+            .call_tool_as_task("slow_add",
+                               Json(QJsonObject{{"a", 2}, {"b", 3}}), 60'000)
+            .get();
     QVERIFY(!envelope.task.taskId.empty());
     // The server marks the task working before the worker thread
     // flips to completed; either is acceptable depending on
@@ -246,8 +268,12 @@ void TasksIntegration::AugmentedCallReturnsCreateTaskResult(void) {
     QVERIFY(raw.toObject().value("_meta").isObject());
     QVERIFY(raw.toObject().value("_meta").toObject().contains(
         QString::fromUtf8(mcp::tasks_related_task_meta_key)));
-    QCOMPARE(raw.toObject().value("_meta").toObject().value(
-                 QString::fromUtf8(mcp::tasks_related_task_meta_key)).toObject().value("taskId"),
+    QCOMPARE(raw.toObject()
+                 .value("_meta")
+                 .toObject()
+                 .value(QString::fromUtf8(mcp::tasks_related_task_meta_key))
+                 .toObject()
+                 .value("taskId"),
              mcp::test::jv(envelope.task.taskId));
 
     client.disconnect();
@@ -261,17 +287,19 @@ void TasksIntegration::GetReturnsCurrentEnvelope(void) {
                [](const Json& args) -> mcp::CallToolResult {
                    const int a = args.toObject().value("a").toInt(0);
                    const int b = args.toObject().value("b").toInt(0);
-                   return {.content = { mcp::TextContent{
-                       .text = std::to_string(a + b),
-                   }}};
+                   return {.content = {mcp::TextContent{
+                               .text = std::to_string(a + b),
+                           }}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    auto env = client.call_tool_as_task("add", Json(QJsonObject{{"a", 1}, {"b", 2}})).get();
+    auto env =
+        client.call_tool_as_task("add", Json(QJsonObject{{"a", 1}, {"b", 2}}))
+            .get();
     // Drain to terminal.
     (void)client.task_result(env.task.taskId).get();
 
@@ -288,11 +316,11 @@ void TasksIntegration::ListEnumeratesTasks(void) {
         s.enable_tasks();
         s.tool("noop", QJsonObject{{"type", "object"}},
                [](const Json&) -> mcp::CallToolResult {
-                   return {.content = { mcp::TextContent{.text = "ok"} }};
+                   return {.content = {mcp::TextContent{.text = "ok"}}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -324,11 +352,11 @@ void TasksIntegration::CancelTransitionsToCancelled(void) {
                    while (!let_finish.load(std::memory_order_acquire)) {
                        std::this_thread::sleep_for(5ms);
                    }
-                   return {.content = { mcp::TextContent{.text = "done"} }};
+                   return {.content = {mcp::TextContent{.text = "done"}}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -356,17 +384,17 @@ void TasksIntegration::StatusNotificationsArrive(void) {
                [](const Json& args) -> mcp::CallToolResult {
                    const int a = args.toObject().value("a").toInt(0);
                    const int b = args.toObject().value("b").toInt(0);
-                   return {.content = { mcp::TextContent{
-                       .text = std::to_string(a + b),
-                   }}};
+                   return {.content = {mcp::TextContent{
+                               .text = std::to_string(a + b),
+                           }}};
                });
     });
 
-    std::mutex                mu;
-    std::condition_variable   cv;
+    std::mutex mu;
+    std::condition_variable cv;
     std::vector<mcp::TaskStatus> seen;
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     client.set_task_status_handler([&](const mcp::Task& t) {
         std::lock_guard<std::mutex> lk(mu);
@@ -375,7 +403,9 @@ void TasksIntegration::StatusNotificationsArrive(void) {
     });
     (void)client.initialize().get();
 
-    auto env = client.call_tool_as_task("add", Json(QJsonObject{{"a", 4}, {"b", 5}})).get();
+    auto env =
+        client.call_tool_as_task("add", Json(QJsonObject{{"a", 4}, {"b", 5}}))
+            .get();
     (void)client.task_result(env.task.taskId).get();
 
     // Wait for the working + completed transitions to arrive.
@@ -383,11 +413,13 @@ void TasksIntegration::StatusNotificationsArrive(void) {
     QVERIFY(cv.wait_for(lk, 2s, [&] {
         // We expect at least: working (on create) and completed
         // (on terminal). Other intermediate states are fine.
-        bool saw_working   = false;
+        bool saw_working = false;
         bool saw_completed = false;
         for (auto s : seen) {
-            if (s == mcp::TaskStatus::working)   saw_working   = true;
-            if (s == mcp::TaskStatus::completed) saw_completed = true;
+            if (s == mcp::TaskStatus::working)
+                saw_working = true;
+            if (s == mcp::TaskStatus::completed)
+                saw_completed = true;
         }
         return saw_working && saw_completed;
     }));
@@ -405,18 +437,20 @@ void TasksIntegration::NonAugmentedCallStillWorks(void) {
                [](const Json& args) -> mcp::CallToolResult {
                    const int a = args.toObject().value("a").toInt(0);
                    const int b = args.toObject().value("b").toInt(0);
-                   return {.content = { mcp::TextContent{
-                       .text = std::to_string(a + b),
-                   }}};
+                   return {.content = {mcp::TextContent{
+                               .text = std::to_string(a + b),
+                           }}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
-    auto out = client.call_tool("add", Json(QJsonObject{{"a", 7}, {"b", 8}})).get();
-    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text, std::string("15"));
+    auto out =
+        client.call_tool("add", Json(QJsonObject{{"a", 7}, {"b", 8}})).get();
+    QCOMPARE(std::get<mcp::TextContent>(out.content[0]).text,
+             std::string("15"));
 
     client.disconnect();
 }
@@ -437,15 +471,15 @@ void TasksIntegration::CancelOnceFiresStatusListenerOnce(void) {
                    while (!let_finish.load(std::memory_order_acquire)) {
                        std::this_thread::sleep_for(5ms);
                    }
-                   return {.content = { mcp::TextContent{.text = "done"} }};
+                   return {.content = {mcp::TextContent{.text = "done"}}};
                });
     });
 
-    std::mutex                  mu;
-    std::condition_variable     cv;
+    std::mutex mu;
+    std::condition_variable cv;
     std::vector<mcp::TaskStatus> seen;
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     client.set_task_status_handler([&](const mcp::Task& t) {
         std::lock_guard<std::mutex> lk(mu);
@@ -487,11 +521,11 @@ void TasksIntegration::ConcurrencyCapEnforced(void) {
                    while (!let_finish.load(std::memory_order_acquire)) {
                        std::this_thread::sleep_for(5ms);
                    }
-                   return {.content = { mcp::TextContent{.text = "done"} }};
+                   return {.content = {mcp::TextContent{.text = "done"}}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -500,8 +534,9 @@ void TasksIntegration::ConcurrencyCapEnforced(void) {
     QCOMPARE(env.task.status, mcp::TaskStatus::working);
 
     // Second task is rejected.
-    QVERIFY_EXCEPTION_THROWN((void)client.call_tool_as_task("park", Json(QJsonObject{})).get(),
-                             mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(
+        (void)client.call_tool_as_task("park", Json(QJsonObject{})).get(),
+        mcp::Error);
 
     let_finish.store(true, std::memory_order_release);
     // Drain the first task so the ServerThread destructor doesn't
@@ -522,11 +557,11 @@ void TasksIntegration::ResultMetaMergesInsteadOfClobbering(void) {
         // _meta keys we sneak in via structured_content.
         s.tool("noop", QJsonObject{{"type", "object"}},
                [](const Json&) -> mcp::CallToolResult {
-                   return {.content = { mcp::TextContent{.text = "ok"} }};
+                   return {.content = {mcp::TextContent{.text = "ok"}}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -542,11 +577,9 @@ void TasksIntegration::ResultMetaMergesInsteadOfClobbering(void) {
 
 void TasksIntegration::TaskNotFoundIsInvalidRequest(void) {
     auto p = mcp::test::make_in_memory_pair();
-    ServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.enable_tasks();
-    });
+    ServerThread srv(std::move(p.b), [](mcp::Server& s) { s.enable_tasks(); });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -566,38 +599,44 @@ void TasksIntegration::ExecutionTaskSupportEnforced(void) {
     auto p = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.enable_tasks();
-        s.tool("must_task", QJsonObject{{"type", "object"}},
-               [](const Json&) -> mcp::CallToolResult {
-                   return {.content = { mcp::TextContent{.text = "ok"} }};
-               },
-               mcp::Server::ToolMetadata{
-                   .execution = mcp::ToolExecution{
-                       .task_support = mcp::TaskSupport::required,
-                   },
-               });
-        s.tool("no_task", QJsonObject{{"type", "object"}},
-               [](const Json&) -> mcp::CallToolResult {
-                   return {.content = { mcp::TextContent{.text = "ok"} }};
-               },
-               mcp::Server::ToolMetadata{
-                   .execution = mcp::ToolExecution{
-                       .task_support = mcp::TaskSupport::forbidden,
-                   },
-               });
+        s.tool(
+            "must_task", QJsonObject{{"type", "object"}},
+            [](const Json&) -> mcp::CallToolResult {
+                return {.content = {mcp::TextContent{.text = "ok"}}};
+            },
+            mcp::Server::ToolMetadata{
+                .execution =
+                    mcp::ToolExecution{
+                        .task_support = mcp::TaskSupport::required,
+                    },
+            });
+        s.tool(
+            "no_task", QJsonObject{{"type", "object"}},
+            [](const Json&) -> mcp::CallToolResult {
+                return {.content = {mcp::TextContent{.text = "ok"}}};
+            },
+            mcp::Server::ToolMetadata{
+                .execution =
+                    mcp::ToolExecution{
+                        .task_support = mcp::TaskSupport::forbidden,
+                    },
+            });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
     // Required tool: a plain call must error; task-augmented succeeds.
-    QVERIFY_EXCEPTION_THROWN((void)client.call_tool("must_task").get(), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN((void)client.call_tool("must_task").get(),
+                             mcp::Error);
     auto env = client.call_tool_as_task("must_task", Json(QJsonObject{})).get();
     (void)client.task_result(env.task.taskId).get();
 
     // Forbidden tool: task-augmented must error; plain succeeds.
-    QVERIFY_EXCEPTION_THROWN((void)client.call_tool_as_task("no_task", Json(QJsonObject{})).get(),
-                             mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(
+        (void)client.call_tool_as_task("no_task", Json(QJsonObject{})).get(),
+        mcp::Error);
     auto out = client.call_tool("no_task").get();
     QVERIFY(!(out.is_error.value_or(false)));
 
@@ -610,17 +649,18 @@ void TasksIntegration::AugmentedCallWithoutEnableErrors(void) {
         // No enable_tasks() — capability not advertised.
         s.tool("add", QJsonObject{{"type", "object"}},
                [](const Json&) -> mcp::CallToolResult {
-                   return {.content = { mcp::TextContent{.text = "x"} }};
+                   return {.content = {mcp::TextContent{.text = "x"}}};
                });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(p.a));
     auto info = client.initialize().get();
     QVERIFY(!info.capabilities.tasks.has_value());
 
-    QVERIFY_EXCEPTION_THROWN((void)client.call_tool_as_task("add", Json(QJsonObject{})).get(),
-                             mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(
+        (void)client.call_tool_as_task("add", Json(QJsonObject{})).get(),
+        mcp::Error);
 
     client.disconnect();
 }

@@ -25,8 +25,8 @@ namespace mcp {
 class Transport {
 public:
     using MessageCallback = std::function<void(std::string)>;
-    using ErrorCallback   = std::function<void(std::error_code)>;
-    using CloseCallback   = std::function<void()>;
+    using ErrorCallback = std::function<void(std::error_code)>;
+    using CloseCallback = std::function<void()>;
 
     virtual ~Transport() = default;
 

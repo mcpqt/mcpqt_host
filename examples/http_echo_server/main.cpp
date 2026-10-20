@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     mcp::set_log_level(mcp::LogLevel::debug);
 
     std::string host = argc > 1 ? argv[1] : "127.0.0.1";
-    int         port = argc > 2 ? std::atoi(argv[2]) : 8848;
+    int port = argc > 2 ? std::atoi(argv[2]) : 8848;
     std::string path = argc > 3 ? argv[3] : "/mcp";
 
     mcp::HttpServerHost::Options opts;
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
         opts.bearer_validator =
             [expected = std::string(token)](std::string_view presented) {
                 using Outcome = mcp::HttpServerHost::Options::BearerOutcome;
-                using Status  = mcp::HttpServerHost::Options::BearerStatus;
+                using Status = mcp::HttpServerHost::Options::BearerStatus;
                 Outcome out;
                 out.status = presented == expected ? Status::allow
                                                    : Status::invalid_token;
@@ -76,20 +76,18 @@ int main(int argc, char** argv) {
                 QJsonObject{
                     {"type", "object"},
                     {"properties",
-                     QJsonObject{
-                         {"text",
-                          QJsonObject{
-                              {"type", "string"},
-                              {"description", "text to echo back"}}}}},
+                     QJsonObject{{"text", QJsonObject{{"type", "string"},
+                                                      {"description",
+                                                       "text to echo back"}}}}},
                     {"required", QJsonArray{"text"}},
                 },
                 [](const mcp::Json& args) -> mcp::CallToolResult {
                     std::string text;
                     const QJsonValue t = args.toObject().value("text");
-                    if (t.isString()) text = t.toString().toStdString();
+                    if (t.isString())
+                        text = t.toString().toStdString();
                     return {
-                        .content = {mcp::TextContent{
-                            .text = "echo: " + text}},
+                        .content = {mcp::TextContent{.text = "echo: " + text}},
                     };
                 });
         },

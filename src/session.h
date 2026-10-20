@@ -112,10 +112,9 @@ public:
 
     /// Send a JSON-RPC request and return a future for its result.
     /// `timeout` of zero means use `Options::default_request_timeout`.
-    [[nodiscard]] std::future<Json>
-    send_request(std::string                method,
-                 Json             params  = {},
-                 std::chrono::milliseconds  timeout = std::chrono::milliseconds{0});
+    [[nodiscard]] std::future<Json> send_request(
+        std::string method, Json params = {},
+        std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
 
     /// Send a JSON-RPC request and return a future for a *typed* result.
     /// `convert` turns the raw result JSON into `T`; it runs on the
@@ -126,22 +125,19 @@ public:
     /// normally (the future is backed by a real promise resolved in the
     /// background).
     template <class T>
-    [[nodiscard]] std::future<T>
-    send_request_for(std::string               method,
-                     Json            params,
-                     std::function<T(Json)> convert,
-                     std::chrono::milliseconds timeout = std::chrono::milliseconds{0}) {
-        auto pr  = std::make_shared<std::promise<T>>();
+    [[nodiscard]] std::future<T> send_request_for(
+        std::string method, Json params, std::function<T(Json)> convert,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds{0}) {
+        auto pr = std::make_shared<std::promise<T>>();
         auto fut = pr->get_future();
         Pending pending;
-        pending.resolve =
-            [pr, convert = std::move(convert)](Json j) {
-                try {
-                    pr->set_value(convert(std::move(j)));
-                } catch (...) {
-                    pr->set_exception(std::current_exception());
-                }
-            };
+        pending.resolve = [pr, convert = std::move(convert)](Json j) {
+            try {
+                pr->set_value(convert(std::move(j)));
+            } catch (...) {
+                pr->set_exception(std::current_exception());
+            }
+        };
         pending.reject = [pr](std::exception_ptr e) { pr->set_exception(e); };
         register_pending(std::move(method), std::move(params),
                          std::move(pending), timeout);
@@ -151,14 +147,12 @@ public:
     /// Like `send_request_for`, but for methods whose result carries no
     /// payload the caller cares about (`ping`, `subscribe`, ...). The
     /// future resolves to void on success and throws on error.
-    [[nodiscard]] std::future<void>
-    send_request_void(std::string               method,
-                      Json            params  = {},
-                      std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
+    [[nodiscard]] std::future<void> send_request_void(
+        std::string method, Json params = {},
+        std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
 
     /// Send a JSON-RPC notification (fire-and-forget).
-    std::error_code send_notification(std::string    method,
-                                      Json params = {});
+    std::error_code send_notification(std::string method, Json params = {});
 
     [[nodiscard]] bool is_open(void) const noexcept {
         return m_started.load(std::memory_order_acquire) &&
@@ -182,51 +176,49 @@ private:
     /// `resolve` / `reject` is invoked, always *outside* `m_pending_mu`
     /// (resolving a future can wake a waiter that re-enters the Session).
     struct Pending {
-        std::function<void(Json)>     resolve;
+        std::function<void(Json)> resolve;
         std::function<void(std::exception_ptr)> reject;
-        std::chrono::steady_clock::time_point   deadline;
+        std::chrono::steady_clock::time_point deadline;
     };
 
     /// Allocate an id, park `pending`, and send the request frame. On a
     /// closed session, duplicate id, or transport failure it invokes
     /// `pending.reject` (after releasing the lock) instead.
-    void register_pending(std::string    method,
-                          Json params,
-                          Pending        pending,
+    void register_pending(std::string method, Json params, Pending pending,
                           std::chrono::milliseconds timeout);
 
     std::unique_ptr<Transport> m_transport;
-    Options                    m_opts;
+    Options m_opts;
 
-    std::atomic<bool>          m_started{false};
-    std::atomic<bool>          m_closed{false};
-    std::atomic<std::int64_t>  m_next_id{1};
+    std::atomic<bool> m_started{false};
+    std::atomic<bool> m_closed{false};
+    std::atomic<std::int64_t> m_next_id{1};
 
     // Pending outbound requests awaiting a response. Keyed by canonical
     // RequestId string so int and string ids never collide.
-    std::mutex                                              m_pending_mu;
-    std::unordered_map<RequestId, Pending>                  m_pending;
-    std::condition_variable                                 m_timeout_cv;
-    std::thread                                             m_timeout_thread;
+    std::mutex m_pending_mu;
+    std::unordered_map<RequestId, Pending> m_pending;
+    std::condition_variable m_timeout_cv;
+    std::thread m_timeout_thread;
 
     // Handler tables. Read-mostly; protected by m_handlers_mu so they can
     // be modified after start() without UB.
-    std::mutex                                              m_handlers_mu;
-    std::unordered_map<std::string, RequestHandler>         m_req_handlers;
-    std::unordered_map<std::string, NotificationHandler>    m_note_handlers;
-    RequestHandler                                          m_fallback_req;
-    NotificationHandler                                     m_fallback_note;
+    std::mutex m_handlers_mu;
+    std::unordered_map<std::string, RequestHandler> m_req_handlers;
+    std::unordered_map<std::string, NotificationHandler> m_note_handlers;
+    RequestHandler m_fallback_req;
+    NotificationHandler m_fallback_note;
 
-    std::mutex                                              m_closed_cb_mu;
-    ClosedCallback                                          m_on_closed;
-    std::atomic<bool>                                       m_closed_cb_fired{false};
+    std::mutex m_closed_cb_mu;
+    ClosedCallback m_on_closed;
+    std::atomic<bool> m_closed_cb_fired{false};
 
     // Tracks live request-dispatch workers so close() can wait for
     // them to finish before any member they touch (m_transport,
     // handler functions) is destroyed.
-    std::mutex                                              m_workers_mu;
-    std::condition_variable                                 m_workers_cv;
-    int                                                     m_workers_running = 0;
+    std::mutex m_workers_mu;
+    std::condition_variable m_workers_cv;
+    int m_workers_running = 0;
 };
 
 }  // namespace mcp

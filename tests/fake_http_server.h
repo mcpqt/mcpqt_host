@@ -36,10 +36,10 @@ namespace mcp::test {
 class FakeHttpServer {
 public:
     struct Request {
-        QByteArray                    method;
-        QByteArray                    path;
+        QByteArray method;
+        QByteArray path;
         QHash<QByteArray, QByteArray> headers;  // keys lower-cased
-        QByteArray                    body;
+        QByteArray body;
 
         [[nodiscard]] QByteArray header(const char* name) const {
             return headers.value(QByteArray(name).toLower());
@@ -69,11 +69,12 @@ public:
         delete m_thread;
     }
 
-    FakeHttpServer(const FakeHttpServer&)            = delete;
+    FakeHttpServer(const FakeHttpServer&) = delete;
     FakeHttpServer& operator=(const FakeHttpServer&) = delete;
 
     [[nodiscard]] quint16 port(void) const { return m_worker->port(); }
-    [[nodiscard]] QString url(const QString& path = QStringLiteral("/mcp")) const {
+    [[nodiscard]] QString
+    url(const QString& path = QStringLiteral("/mcp")) const {
         return QStringLiteral("http://127.0.0.1:%1%2").arg(port()).arg(path);
     }
 
@@ -84,11 +85,12 @@ private:
 
         void start(void) {
             m_server = new QTcpServer(this);
-            QObject::connect(m_server, &QTcpServer::newConnection, this, [this] {
-                while (QTcpSocket* c = m_server->nextPendingConnection()) {
-                    handle(c);
-                }
-            });
+            QObject::connect(
+                m_server, &QTcpServer::newConnection, this, [this] {
+                    while (QTcpSocket* c = m_server->nextPendingConnection()) {
+                        handle(c);
+                    }
+                });
             m_server->listen(QHostAddress::LocalHost, 0);
             m_port.store(m_server->serverPort());
         }
@@ -98,7 +100,8 @@ private:
     private:
         static bool request_complete(const QByteArray& buf) {
             const qsizetype end = buf.indexOf("\r\n\r\n");
-            if (end < 0) return false;
+            if (end < 0)
+                return false;
             int content_length = 0;
             const QByteArray head = buf.left(end);
             for (const QByteArray& line : head.split('\n')) {
@@ -121,7 +124,7 @@ private:
                     lines.first().trimmed().split(' ');
                 if (parts.size() >= 2) {
                     r.method = parts[0];
-                    r.path   = parts[1];
+                    r.path = parts[1];
                 }
             }
             for (qsizetype i = 1; i < lines.size(); ++i) {
@@ -132,7 +135,8 @@ private:
                                      t.mid(colon + 1).trimmed());
                 }
             }
-            if (end >= 0) r.body = buf.mid(end + 4);
+            if (end >= 0)
+                r.body = buf.mid(end + 4);
             return r;
         }
 
@@ -140,7 +144,8 @@ private:
             auto buf = std::make_shared<QByteArray>();
             QObject::connect(c, &QTcpSocket::readyRead, c, [this, c, buf] {
                 buf->append(c->readAll());
-                if (!request_complete(*buf)) return;
+                if (!request_complete(*buf))
+                    return;
                 const QByteArray resp = m_handler(parse(*buf));
                 c->write(resp);
                 c->flush();
@@ -150,12 +155,12 @@ private:
                              &QObject::deleteLater);
         }
 
-        QTcpServer*          m_server = nullptr;
-        Handler              m_handler;
+        QTcpServer* m_server = nullptr;
+        Handler m_handler;
         std::atomic<quint16> m_port{0};
     };
 
-    Worker*  m_worker = nullptr;
+    Worker* m_worker = nullptr;
     QThread* m_thread = nullptr;
 };
 
@@ -168,8 +173,8 @@ inline QByteArray http_response(
     int status, const char* reason, const QByteArray& content_type,
     const QByteArray& body,
     std::initializer_list<QPair<QByteArray, QByteArray>> headers = {}) {
-    QByteArray out = "HTTP/1.1 " + QByteArray::number(status) + ' ' + reason +
-                     "\r\n";
+    QByteArray out =
+        "HTTP/1.1 " + QByteArray::number(status) + ' ' + reason + "\r\n";
     out += "Content-Type: " + content_type + "\r\n";
     out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
     for (const auto& [k, v] : headers) {
@@ -186,15 +191,15 @@ inline QByteArray json_response(
     return http_response(status, reason, "application/json", body, headers);
 }
 
-inline QByteArray sse_response(const QByteArray& body,
-                               std::initializer_list<QPair<QByteArray, QByteArray>>
-                                   headers = {}) {
+inline QByteArray sse_response(
+    const QByteArray& body,
+    std::initializer_list<QPair<QByteArray, QByteArray>> headers = {}) {
     return http_response(200, "OK", "text/event-stream", body, headers);
 }
 
 inline QByteArray empty_response(int status, const char* reason) {
-    return http_response(status, reason, "application/octet-stream", QByteArray{},
-                         {});
+    return http_response(status, reason, "application/octet-stream",
+                         QByteArray{}, {});
 }
 
 }  // namespace mcp::test

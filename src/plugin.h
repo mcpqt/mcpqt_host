@@ -98,7 +98,8 @@ namespace mcp {
 struct HostInterface {
     /// Enumerate every function currently registered with the host, across all
     /// loaded plugins. Each entry is a fully-qualified signature of the form
-    /// "<return_type> <class_name>::<function_name>(<param_types>)", e.g. "QString HelloPlugin::greet(QString)".
+    /// "<return_type> <class_name>::<function_name>(<param_types>)", e.g.
+    /// "QString HelloPlugin::greet(QString)".
     std::function<QStringList()> getFuncs;
 
     /// Invoke a function by its fully-qualified signature. `args` holds one
@@ -106,14 +107,16 @@ struct HostInterface {
     /// the QGenericArguments and invokes the slot. Returns the slot's QVariant
     /// result, or an invalid QVariant for a void function. Throws mcp::Error if
     /// the function is unknown, the plugin has been unloaded, or the argument
-    /// count/types cannot be matched. Runs synchronously on the caller's thread.
-    std::function<QVariant(const QString& signature, const QVariantList& args)> callFunc;
+    /// count/types cannot be matched. Runs synchronously on the caller's
+    /// thread.
+    std::function<QVariant(const QString& signature, const QVariantList& args)>
+        callFunc;
 
     /// Publish a function under a fully-qualified signature. The host validates
     /// the signature against the calling plugin's meta-object, so this must be
-    /// called with the canonical "<return_type> <class_name>::<function_name>(<param_types>)"
-    /// form. Returns true if
-    /// the function was newly published, false if it is unknown or already
+    /// called with the canonical "<return_type>
+    /// <class_name>::<function_name>(<param_types>)" form. Returns true if the
+    /// function was newly published, false if it is unknown or already
     /// registered. `registerPublicSlots()` drives this automatically.
     std::function<bool(const QString& signature)> regFunc;
 
@@ -143,9 +146,9 @@ struct HostInterface {
 class PluginInterface : public QObject {
 public:
     PluginInterface(QObject* parent = nullptr);
-    PluginInterface(const PluginInterface&)            = delete;
+    PluginInterface(const PluginInterface&) = delete;
     PluginInterface& operator=(const PluginInterface&) = delete;
-    ~PluginInterface() override                        = default;
+    ~PluginInterface() override = default;
 
     /// Called once after the plugin is loaded and cast, before any of its
     /// functions becomes visible to other plugins. Call registerPublicSlots()
@@ -172,7 +175,7 @@ protected:
 /// Read a Q_CLASSINFO value (e.g. "id", "version", "description") from a
 /// plugin's meta-object. Returns an empty QString when the key is absent.
 [[nodiscard]] QString plugin_class_info(const QMetaObject* meta_object,
-                                        const char*         key);
+                                        const char* key);
 
 }  // namespace mcp
 

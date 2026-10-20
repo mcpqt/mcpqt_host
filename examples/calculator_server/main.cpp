@@ -33,8 +33,8 @@ namespace {
 // stores and write(2)). A small supervisor thread polls the flag and,
 // once set, calls Server::stop() from a regular thread context where
 // mutexes and condition variables are legal.
-std::atomic<mcp::Server*>      g_server{nullptr};
-std::atomic_flag               g_shutdown_requested = ATOMIC_FLAG_INIT;
+std::atomic<mcp::Server*> g_server{nullptr};
+std::atomic_flag g_shutdown_requested = ATOMIC_FLAG_INIT;
 
 extern "C" void on_signal(int) {
     g_shutdown_requested.test_and_set(std::memory_order_release);
@@ -53,7 +53,7 @@ mcp::Json arith_schema(void) {
 
 mcp::CallToolResult text_result(std::string s, bool is_err = false) {
     return mcp::CallToolResult{
-        .content = { mcp::TextContent{.text = std::move(s)} },
+        .content = {mcp::TextContent{.text = std::move(s)}},
         .is_error = is_err,
     };
 }
@@ -63,58 +63,59 @@ mcp::CallToolResult text_result(std::string s, bool is_err = false) {
 int main(void) {
     mcp::set_log_level(mcp::LogLevel::info);
 
-    mcp::Server server{ mcp::Implementation{
-        .name        = "mcp-cpp-calculator",
-        .version     = "0.1.0",
+    mcp::Server server{mcp::Implementation{
+        .name = "mcp-cpp-calculator",
+        .version = "0.1.0",
         .description = "Tiny demo: arithmetic over MCP.",
     }};
     server.set_instructions(
         "This server offers four arithmetic tools (add, subtract, "
         "multiply, divide). Each takes two numbers `a` and `b`.");
 
-    server.tool("add", arith_schema(),
+    server.tool(
+        "add", arith_schema(),
         [](const mcp::Json& args) {
             const QJsonObject o = args.toObject();
             const double a = mcp::require<double>(o, "a");
             const double b = mcp::require<double>(o, "b");
             return text_result(std::to_string(a + b));
         },
-        "Add",
-        "Returns a + b.");
+        "Add", "Returns a + b.");
 
-    server.tool("subtract", arith_schema(),
+    server.tool(
+        "subtract", arith_schema(),
         [](const mcp::Json& args) {
             const QJsonObject o = args.toObject();
             const double a = mcp::require<double>(o, "a");
             const double b = mcp::require<double>(o, "b");
             return text_result(std::to_string(a - b));
         },
-        "Subtract",
-        "Returns a - b.");
+        "Subtract", "Returns a - b.");
 
-    server.tool("multiply", arith_schema(),
+    server.tool(
+        "multiply", arith_schema(),
         [](const mcp::Json& args) {
             const QJsonObject o = args.toObject();
             const double a = mcp::require<double>(o, "a");
             const double b = mcp::require<double>(o, "b");
             return text_result(std::to_string(a * b));
         },
-        "Multiply",
-        "Returns a * b.");
+        "Multiply", "Returns a * b.");
 
-    server.tool("divide", arith_schema(),
+    server.tool(
+        "divide", arith_schema(),
         [](const mcp::Json& args) {
             const QJsonObject o = args.toObject();
             const double a = mcp::require<double>(o, "a");
             const double b = mcp::require<double>(o, "b");
-            if (b == 0.0) return text_result("division by zero", /*is_err=*/true);
+            if (b == 0.0)
+                return text_result("division by zero", /*is_err=*/true);
             return text_result(std::to_string(a / b));
         },
-        "Divide",
-        "Returns a / b. Reports an error result on b == 0.");
+        "Divide", "Returns a / b. Reports an error result on b == 0.");
 
     g_server.store(&server, std::memory_order_release);
-    std::signal(SIGINT,  on_signal);
+    std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);
 
     // Supervisor watches the signal flag and calls Server::stop() from
@@ -125,7 +126,8 @@ int main(void) {
     std::thread supervisor([&]() {
         while (!supervisor_done.load(std::memory_order_acquire)) {
             if (g_shutdown_requested.test(std::memory_order_acquire)) {
-                if (auto* s = g_server.load(std::memory_order_acquire)) s->stop();
+                if (auto* s = g_server.load(std::memory_order_acquire))
+                    s->stop();
                 return;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds{100});
@@ -138,6 +140,7 @@ int main(void) {
 
     // Wake the supervisor and join it before exiting.
     supervisor_done.store(true, std::memory_order_release);
-    if (supervisor.joinable()) supervisor.join();
+    if (supervisor.joinable())
+        supervisor.join();
     return EXIT_SUCCESS;
 }

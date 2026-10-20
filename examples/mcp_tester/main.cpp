@@ -38,12 +38,14 @@ extern char** environ;
 namespace {
 
 struct Subprocess {
-    pid_t pid      = -1;
-    int   read_fd  = -1;
-    int   write_fd = -1;
+    pid_t pid = -1;
+    int read_fd = -1;
+    int write_fd = -1;
     ~Subprocess() {
-        if (write_fd >= 0) ::close(write_fd);
-        if (read_fd  >= 0) ::close(read_fd);
+        if (write_fd >= 0)
+            ::close(write_fd);
+        if (read_fd >= 0)
+            ::close(read_fd);
         if (pid > 0) {
             ::kill(pid, SIGTERM);
             int status = 0;
@@ -80,8 +82,8 @@ std::unique_ptr<Subprocess> spawn_server(char** argv) {
     child_argv.push_back(nullptr);
 
     pid_t pid = -1;
-    const int rc = ::posix_spawn(&pid, argv[0], &act, nullptr,
-                                 child_argv.data(), environ);
+    const int rc =
+        ::posix_spawn(&pid, argv[0], &act, nullptr, child_argv.data(), environ);
     posix_spawn_file_actions_destroy(&act);
     ::close(in_pipe[0]);
     ::close(out_pipe[1]);
@@ -92,21 +94,20 @@ std::unique_ptr<Subprocess> spawn_server(char** argv) {
     }
 
     auto sp = std::make_unique<Subprocess>();
-    sp->pid      = pid;
-    sp->read_fd  = out_pipe[0];
+    sp->pid = pid;
+    sp->read_fd = out_pipe[0];
     sp->write_fd = in_pipe[1];
     return sp;
 }
 
 void print_help(void) {
-    std::cout
-        << "commands:\n"
-        << "  list                 list the server's tools\n"
-        << "  call                 call a tool with JSON arguments\n"
-        << "  info                 show server info and instructions\n"
-        << "  ping                 send a ping\n"
-        << "  help                 show this help\n"
-        << "  quit                 disconnect and exit\n";
+    std::cout << "commands:\n"
+              << "  list                 list the server's tools\n"
+              << "  call                 call a tool with JSON arguments\n"
+              << "  info                 show server info and instructions\n"
+              << "  ping                 send a ping\n"
+              << "  help                 show this help\n"
+              << "  quit                 disconnect and exit\n";
 }
 
 void print_content(const mcp::ContentBlock& block) {
@@ -115,13 +116,13 @@ void print_content(const mcp::ContentBlock& block) {
         return;
     }
     if (const auto* image = std::get_if<mcp::ImageContent>(&block)) {
-        std::cout << "[image " << image->mime_type << ", "
-                  << image->data.size() << " base64 bytes]";
+        std::cout << "[image " << image->mime_type << ", " << image->data.size()
+                  << " base64 bytes]";
         return;
     }
     if (const auto* audio = std::get_if<mcp::AudioContent>(&block)) {
-        std::cout << "[audio " << audio->mime_type << ", "
-                  << audio->data.size() << " base64 bytes]";
+        std::cout << "[audio " << audio->mime_type << ", " << audio->data.size()
+                  << " base64 bytes]";
         return;
     }
     std::cout << mcp::dump(mcp::to_json(block));
@@ -143,8 +144,8 @@ void print_result(const mcp::CallToolResult& result) {
     }
     std::cout << "\n";
     if (result.structured_content.has_value()) {
-        std::cout << "structured: "
-                  << mcp::dump(*result.structured_content) << "\n";
+        std::cout << "structured: " << mcp::dump(*result.structured_content)
+                  << "\n";
     }
 }
 
@@ -205,8 +206,7 @@ void call_tool(mcp::Client& client) {
     }
 
     try {
-        const mcp::CallToolResult result =
-            client.call_tool(name, args).get();
+        const mcp::CallToolResult result = client.call_tool(name, args).get();
         print_result(result);
     } catch (const std::exception& e) {
         std::cout << "call failed: " << e.what() << "\n";
@@ -217,8 +217,8 @@ void call_tool(mcp::Client& client) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr,
-                     "usage: %s <server-binary> [server-args...]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <server-binary> [server-args...]\n",
+                     argv[0]);
         return 1;
     }
 
@@ -231,11 +231,11 @@ int main(int argc, char** argv) {
     }
 
     mcp::StdioTransport::Options opts;
-    opts.read_fd  = server->read_fd;
+    opts.read_fd = server->read_fd;
     opts.write_fd = server->write_fd;
 
-    mcp::Client client{ mcp::Implementation{
-        .name = "mcp_tester", .version = "0.1.0" } };
+    mcp::Client client{
+        mcp::Implementation{.name = "mcp_tester", .version = "0.1.0"}};
     client.connect(std::make_unique<mcp::StdioTransport>(opts));
 
     try {

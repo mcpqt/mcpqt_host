@@ -31,17 +31,27 @@
 
 namespace mcp::test {
 
-inline QJsonValue jv(bool v) { return QJsonValue(v); }
-inline QJsonValue jv(int v) { return QJsonValue(v); }
-inline QJsonValue jv(qint64 v) { return QJsonValue(v); }
-inline QJsonValue jv(double v) { return QJsonValue(v); }
+inline QJsonValue jv(bool v) {
+    return QJsonValue(v);
+}
+inline QJsonValue jv(int v) {
+    return QJsonValue(v);
+}
+inline QJsonValue jv(qint64 v) {
+    return QJsonValue(v);
+}
+inline QJsonValue jv(double v) {
+    return QJsonValue(v);
+}
 inline QJsonValue jv(const char* v) {
     return QJsonValue(QString::fromUtf8(v));
 }
 inline QJsonValue jv(const std::string& v) {
     return QJsonValue(QString::fromStdString(v));
 }
-inline QJsonValue jv(const QString& v) { return QJsonValue(v); }
+inline QJsonValue jv(const QString& v) {
+    return QJsonValue(v);
+}
 
 /// True when `v` is an object that contains `key`.
 inline bool has_key(const QJsonValue& v, const char* key) {

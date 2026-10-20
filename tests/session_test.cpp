@@ -90,9 +90,8 @@ void Session::NotificationDeliveredToHandler(void) {
     std::promise<Json> got;
     auto fut = got.get_future();
 
-    sp.b->set_notification_handler("ping", [&](const Json& params) {
-        got.set_value(params);
-    });
+    sp.b->set_notification_handler(
+        "ping", [&](const Json& params) { got.set_value(params); });
 
     QVERIFY(!sp.a->send_notification("ping", QJsonObject{{"k", "v"}}));
 
@@ -106,14 +105,16 @@ void Session::NotificationDeliveredToHandler(void) {
 void Session::MissingHandlerYieldsMethodNotFound(void) {
     auto sp = make_session_pair();
     auto fut = sp.a->send_request("nope", Json{}, 2s);
-    QVERIFY_EXCEPTION_THROWN(([&] {
-        try {
-            (void)fut.get();
-        } catch (const mcp::Error& e) {
-            QCOMPARE(e.code(), mcp::error_code::method_not_found);
-            throw;
-        }
-    }()), mcp::Error);
+    QVERIFY_EXCEPTION_THROWN(
+        ([&] {
+            try {
+                (void)fut.get();
+            } catch (const mcp::Error& e) {
+                QCOMPARE(e.code(), mcp::error_code::method_not_found);
+                throw;
+            }
+        }()),
+        mcp::Error);
 
     sp.a->close();
     sp.b->close();
@@ -237,7 +238,7 @@ void Session::IdsForDifferentRequestsAreDistinct(void) {
     // Two requests are dispatched on detached workers, so the handler
     // can run on either thread first — the bookkeeping must be
     // thread-safe.
-    std::mutex               ids_mu;
+    std::mutex ids_mu;
     std::vector<std::string> ids;
     sp.b->set_request_handler("tag", [&](const Json& p) -> Json {
         std::lock_guard<std::mutex> lk(ids_mu);
@@ -271,7 +272,7 @@ void Session::DoubleCloseDoesNotLeaveJoinableThread(void) {
     // ~thread. Both close() callers must run to completion.
     auto sp = make_session_pair();
     sp.a->close();
-    sp.a->close();           // explicit double close
+    sp.a->close();  // explicit double close
     // arriving here without terminate is the test
     sp.b->close();
 }
@@ -307,10 +308,10 @@ void Session::MalformedFrameIsDropped(void) {
     // Subsequent valid frames still get through.
     std::promise<Json> got;
     auto f = got.get_future();
-    a->set_notification_handler("hi", [&](const Json& params) {
-        got.set_value(params);
-    });
-    QVERIFY(!b_transport.send(R"({"jsonrpc":"2.0","method":"hi","params":{"k":1}})"));
+    a->set_notification_handler(
+        "hi", [&](const Json& params) { got.set_value(params); });
+    QVERIFY(!b_transport.send(
+        R"({"jsonrpc":"2.0","method":"hi","params":{"k":1}})"));
     QCOMPARE(f.get()["k"], mcp::test::jv(1));
 
     a->close();

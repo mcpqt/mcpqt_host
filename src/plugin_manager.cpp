@@ -28,28 +28,30 @@
 namespace mcp {
 
 struct PluginManager::Instance {
-    QPluginLoader*    loader = nullptr;
-    PluginInterface*  iface  = nullptr;
-    QObject*          object = nullptr;   // iface as QObject (same address)
-    QString           path;
-    std::string       id;
-    QStringList       signatures;         // fully-qualified signatures this plugin published
-    QStringList       dependencies;       // declared plugin ids / function signatures
-    QHash<QString, Tool> tools;           // validated metadata "Tools" entries
+    QPluginLoader* loader = nullptr;
+    PluginInterface* iface = nullptr;
+    QObject* object = nullptr;  // iface as QObject (same address)
+    QString path;
+    std::string id;
+    QStringList signatures;  // fully-qualified signatures this plugin published
+    QStringList dependencies;    // declared plugin ids / function signatures
+    QHash<QString, Tool> tools;  // validated metadata "Tools" entries
     /// True once this plugin owns the process-wide log sink. Pinned plugins are
     /// never unloaded: the sink executes code inside the plugin's library.
-    bool              pinned = false;
+    bool pinned = false;
 };
 
 /// One published function: the reflective method on the owning plugin.
 struct PluginManager::FunctionEntry {
     std::weak_ptr<Instance> owner;
-    QMetaMethod             method;
+    QMetaMethod method;
 };
 
 PluginManager::PluginManager(void) = default;
 
-PluginManager::~PluginManager() { unload_all(); }
+PluginManager::~PluginManager() {
+    unload_all();
+}
 
 QStringList PluginManager::host_get_funcs(void) const {
     return functions();
@@ -60,13 +62,15 @@ QVariant PluginManager::host_call_func(const QString& signature,
     return call_function(signature, args);
 }
 
-QStringList PluginManager::plugin_dependencies(const QPluginLoader* loader) const {
-    QStringList      dependencies;
+QStringList
+PluginManager::plugin_dependencies(const QPluginLoader* loader) const {
+    QStringList dependencies;
     const QJsonValue meta = loader->metaData().value(QLatin1String("MetaData"));
     if (!meta.isObject()) {
         return dependencies;
     }
-    const QJsonValue deps = meta.toObject().value(QLatin1String("dependencies"));
+    const QJsonValue deps =
+        meta.toObject().value(QLatin1String("dependencies"));
     if (!deps.isArray()) {
         return dependencies;
     }
@@ -79,9 +83,10 @@ QStringList PluginManager::plugin_dependencies(const QPluginLoader* loader) cons
     return dependencies;
 }
 
-bool PluginManager::dependencies_satisfied(const QStringList& dependencies) const {
+bool PluginManager::dependencies_satisfied(
+    const QStringList& dependencies) const {
     const QStringList loaded_ids = plugin_ids();
-    const QStringList funcs      = functions();
+    const QStringList funcs = functions();
     for (const QString& dep : dependencies) {
         if (loaded_ids.contains(dep)) {
             continue;  // a plugin with this id is already loaded
@@ -108,10 +113,10 @@ QVariant PluginManager::invoke_method(QObject* object,
                                       const QVariantList& args) {
     const int arity = method.parameterCount();
     if (args.size() != arity) {
-        throw Error{ error_code::invalid_params,
-                     "expected " + std::to_string(arity) + " argument(s) for '" +
-                         method.methodSignature().toStdString() + "', got " +
-                         std::to_string(args.size()) };
+        throw Error{error_code::invalid_params,
+                    "expected " + std::to_string(arity) + " argument(s) for '" +
+                        method.methodSignature().toStdString() + "', got " +
+                        std::to_string(args.size())};
     }
 
     // Convert each supplied value to the declared parameter type, then expose
@@ -120,42 +125,43 @@ QVariant PluginManager::invoke_method(QObject* object,
     QGenericArgument gen[Q_METAMETHOD_INVOKE_MAX_ARGS];
     for (int i = 0; i < arity; ++i) {
         const QMetaType param_type = method.parameterMetaType(i);
-        if (converted[i].metaType() != param_type && !converted[i].convert(param_type)) {
-            throw Error{ error_code::invalid_params,
-                         "argument " + std::to_string(i) + " for '" +
-                             method.methodSignature().toStdString() +
-                             "' cannot be converted to " +
-                             param_type.name() };
+        if (converted[i].metaType() != param_type &&
+            !converted[i].convert(param_type)) {
+            throw Error{error_code::invalid_params,
+                        "argument " + std::to_string(i) + " for '" +
+                            method.methodSignature().toStdString() +
+                            "' cannot be converted to " + param_type.name()};
         }
-        gen[i] = QGenericArgument(converted[i].typeName(), converted[i].constData());
+        gen[i] =
+            QGenericArgument(converted[i].typeName(), converted[i].constData());
     }
 
     const QMetaType return_type = method.returnMetaType();
     if (return_type == QMetaType::fromType<void>()) {
-        const bool ok = method.invoke(
-            object, Qt::DirectConnection,
-            gen[0], gen[1], gen[2], gen[3], gen[4],
-            gen[5], gen[6], gen[7], gen[8], gen[9]);
+        const bool ok = method.invoke(object, Qt::DirectConnection, gen[0],
+                                      gen[1], gen[2], gen[3], gen[4], gen[5],
+                                      gen[6], gen[7], gen[8], gen[9]);
         if (!ok) {
-            throw Error{ error_code::internal_error,
-                         "failed to invoke '" +
-                             method.methodSignature().toStdString() + "'" };
+            throw Error{error_code::internal_error,
+                        "failed to invoke '" +
+                            method.methodSignature().toStdString() + "'"};
         }
         return {};
     }
 
     // A QVariant return is already the value we want to hand back — wrapping
-    // it in another QVariant would double-wrap it. Let invoke write it directly.
+    // it in another QVariant would double-wrap it. Let invoke write it
+    // directly.
     if (return_type == QMetaType::fromType<QVariant>()) {
         QVariant result;
-        const bool ok = method.invoke(
-            object, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result),
-            gen[0], gen[1], gen[2], gen[3], gen[4],
-            gen[5], gen[6], gen[7], gen[8], gen[9]);
+        const bool ok = method.invoke(object, Qt::DirectConnection,
+                                      Q_RETURN_ARG(QVariant, result), gen[0],
+                                      gen[1], gen[2], gen[3], gen[4], gen[5],
+                                      gen[6], gen[7], gen[8], gen[9]);
         if (!ok) {
-            throw Error{ error_code::internal_error,
-                         "failed to invoke '" +
-                             method.methodSignature().toStdString() + "'" };
+            throw Error{error_code::internal_error,
+                        "failed to invoke '" +
+                            method.methodSignature().toStdString() + "'"};
         }
         return result;
     }
@@ -165,22 +171,21 @@ QVariant PluginManager::invoke_method(QObject* object,
     // a QVariant for the caller.
     void* storage = return_type.create();
     if (storage == nullptr) {
-        throw Error{ error_code::internal_error,
-                     "cannot allocate return value of type " +
-                         std::string(return_type.name()) + " for '" +
-                         method.methodSignature().toStdString() + "'" };
+        throw Error{error_code::internal_error,
+                    "cannot allocate return value of type " +
+                        std::string(return_type.name()) + " for '" +
+                        method.methodSignature().toStdString() + "'"};
     }
     QGenericReturnArgument return_arg(return_type.name(), storage);
-    const bool ok = method.invoke(
-        object, Qt::DirectConnection, return_arg,
-        gen[0], gen[1], gen[2], gen[3], gen[4],
-        gen[5], gen[6], gen[7], gen[8], gen[9]);
+    const bool ok = method.invoke(object, Qt::DirectConnection, return_arg,
+                                  gen[0], gen[1], gen[2], gen[3], gen[4],
+                                  gen[5], gen[6], gen[7], gen[8], gen[9]);
     QVariant result(return_type, storage);
     return_type.destroy(storage);
     if (!ok) {
-        throw Error{ error_code::internal_error,
-                     "failed to invoke '" +
-                         method.methodSignature().toStdString() + "'" };
+        throw Error{error_code::internal_error,
+                    "failed to invoke '" +
+                        method.methodSignature().toStdString() + "'"};
     }
     return result;
 }
@@ -189,21 +194,21 @@ QVariant PluginManager::call_function(const QString& signature,
                                       const QVariantList& args) const {
     const auto it = m_registry.constFind(signature);
     if (it == m_registry.constEnd()) {
-        throw Error{ error_code::method_not_found,
-                     "unknown function: " + signature.toStdString() };
+        throw Error{error_code::method_not_found,
+                    "unknown function: " + signature.toStdString()};
     }
     const auto owner = it->owner.lock();
     if (!owner) {
-        throw Error{ error_code::internal_error,
-                     "function's plugin is no longer loaded: " +
-                         signature.toStdString() };
+        throw Error{error_code::internal_error,
+                    "function's plugin is no longer loaded: " +
+                        signature.toStdString()};
     }
     try {
         return invoke_method(owner->object, it->method, args);
     } catch (const Error&) {
         throw;
     } catch (const std::exception& e) {
-        throw Error{ error_code::internal_error, e.what() };
+        throw Error{error_code::internal_error, e.what()};
     }
 }
 
@@ -216,9 +221,9 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
     // signature moc knows; the full string is re-derived below to validate the
     // return type and class name.
     const qsizetype open = signature.indexOf(QLatin1Char('('));
-    const qsizetype sep  = open < 0
-                               ? qsizetype{-1}
-                               : signature.lastIndexOf(QLatin1String("::"), open);
+    const qsizetype sep =
+        open < 0 ? qsizetype{-1}
+                 : signature.lastIndexOf(QLatin1String("::"), open);
     if (open < 0 || sep < 0) {
         MCP_LOG_WARN("PluginManager: plugin '" + inst->id +
                      "' registered malformed signature '" +
@@ -228,9 +233,8 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
     const QByteArray slot_sig = signature.mid(sep + 2).toUtf8();
     const int idx = mo->indexOfMethod(slot_sig.constData());
     if (idx < 0) {
-        MCP_LOG_WARN("PluginManager: plugin '" + inst->id +
-                     "' signature '" + signature.toStdString() +
-                     "' matches no public slot");
+        MCP_LOG_WARN("PluginManager: plugin '" + inst->id + "' signature '" +
+                     signature.toStdString() + "' matches no public slot");
         return false;
     }
     const QMetaMethod method = mo->method(idx);
@@ -290,15 +294,17 @@ bool PluginManager::host_reg_func(const std::shared_ptr<Instance>& inst,
         return false;
     }
 
-    m_registry.insert(signature, FunctionEntry{ inst, method });
+    m_registry.insert(signature, FunctionEntry{inst, method});
     inst->signatures.append(signature);
     return true;
 }
 
 void PluginManager::host_unload_self(const std::shared_ptr<Instance>& inst,
                                      const QString& reason) {
-    MCP_LOG_INFO("PluginManager: unloading plugin '" + inst->id + "' on its "
-                 "request: " + reason.toStdString());
+    MCP_LOG_INFO("PluginManager: unloading plugin '" + inst->id +
+                 "' on its "
+                 "request: " +
+                 reason.toStdString());
     unload_instance(inst);
 }
 
@@ -328,7 +334,7 @@ void PluginManager::unload_instance(const std::shared_ptr<Instance>& inst) {
         delete inst->loader;
         inst->loader = nullptr;
     }
-    inst->iface  = nullptr;
+    inst->iface = nullptr;
     inst->object = nullptr;
 }
 
@@ -340,7 +346,8 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
     // are validated against the plugin's published functions after initialize.
     QHash<QString, Tool> declared_tools;
     {
-        const QJsonValue meta = loader->metaData().value(QLatin1String("MetaData"));
+        const QJsonValue meta =
+            loader->metaData().value(QLatin1String("MetaData"));
         if (meta.isObject()) {
             const QJsonValue tools_value =
                 meta.toObject().value(QLatin1String("Tools"));
@@ -349,11 +356,12 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
                 for (auto it = tools_object.constBegin();
                      it != tools_object.constEnd(); ++it) {
                     try {
-                        declared_tools.insert(
-                            it.key(), from_json<Tool>(it.value()));
+                        declared_tools.insert(it.key(),
+                                              from_json<Tool>(it.value()));
                     } catch (const std::exception& e) {
                         MCP_LOG_WARN("PluginManager: '" + file.toStdString() +
-                                     "' Tools entry '" + it.key().toStdString() +
+                                     "' Tools entry '" +
+                                     it.key().toStdString() +
                                      "' is invalid: " + e.what());
                     }
                 }
@@ -410,21 +418,25 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
         }
     }
 
-    auto inst          = std::make_shared<Instance>();
-    inst->loader       = loader;
-    inst->iface        = iface;
-    inst->object       = obj;
-    inst->path         = file;
-    inst->id           = id;
+    auto inst = std::make_shared<Instance>();
+    inst->loader = loader;
+    inst->iface = iface;
+    inst->object = obj;
+    inst->path = file;
+    inst->id = id;
     inst->dependencies = deps;
 
     HostInterface host;
-    host.getFuncs    = [this] { return host_get_funcs(); };
-    host.callFunc    = [this](const QString& sig, const QVariantList& args) {
+    host.getFuncs = [this] { return host_get_funcs(); };
+    host.callFunc = [this](const QString& sig, const QVariantList& args) {
         return host_call_func(sig, args);
     };
-    host.regFunc     = [this, inst](const QString& sig) { return host_reg_func(inst, sig); };
-    host.unloadSelf  = [this, inst](const QString& reason) { host_unload_self(inst, reason); };
+    host.regFunc = [this, inst](const QString& sig) {
+        return host_reg_func(inst, sig);
+    };
+    host.unloadSelf = [this, inst](const QString& reason) {
+        host_unload_self(inst, reason);
+    };
     host.claimLogging = [inst](LogSink sink) {
         if (!claim_log_sink(std::move(sink))) {
             return false;
@@ -449,8 +461,8 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
 
     // Keep only Tools entries that name a function this plugin actually
     // published; a stale/typo'd signature is dropped with a warning.
-    for (auto it = declared_tools.constBegin();
-         it != declared_tools.constEnd(); ++it) {
+    for (auto it = declared_tools.constBegin(); it != declared_tools.constEnd();
+         ++it) {
         if (!inst->signatures.contains(it.key())) {
             MCP_LOG_WARN("PluginManager: '" + file.toStdString() +
                          "' declares a Tool for '" + it.key().toStdString() +
@@ -462,8 +474,8 @@ PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
 
     m_plugins.push_back(std::move(inst));
 
-    MCP_LOG_INFO("PluginManager: loaded plugin '" + m_plugins.back()->id + "' (" +
-                 file.toStdString() + "), " +
+    MCP_LOG_INFO("PluginManager: loaded plugin '" + m_plugins.back()->id +
+                 "' (" + file.toStdString() + "), " +
                  std::to_string(m_plugins.back()->signatures.size()) +
                  " function(s) registered");
     return LoadOutcome::Loaded;
@@ -503,15 +515,15 @@ std::size_t PluginManager::load_directory(const QString& directory) {
         QStringList still;
         for (const QString& file : pending) {
             switch (load_file_impl(file, /*quiet=*/true)) {
-                case LoadOutcome::Loaded:
-                    ++loaded;
-                    progress = true;
-                    break;
-                case LoadOutcome::UnsatisfiedDependencies:
-                    still << file;
-                    break;
-                case LoadOutcome::Failed:
-                    break;  // already warned by load_file_impl
+            case LoadOutcome::Loaded:
+                ++loaded;
+                progress = true;
+                break;
+            case LoadOutcome::UnsatisfiedDependencies:
+                still << file;
+                break;
+            case LoadOutcome::Failed:
+                break;  // already warned by load_file_impl
             }
         }
         pending = still;
@@ -532,11 +544,13 @@ bool PluginManager::unload_plugin(const std::string& id) {
         }
     }
     if (!target) {
-        MCP_LOG_WARN("PluginManager: cannot unload unknown plugin '" + id + "'");
+        MCP_LOG_WARN("PluginManager: cannot unload unknown plugin '" + id +
+                     "'");
         return false;
     }
     if (target->pinned) {
-        MCP_LOG_WARN("PluginManager: refusing to unload pinned plugin '" + id + "'");
+        MCP_LOG_WARN("PluginManager: refusing to unload pinned plugin '" + id +
+                     "'");
         return false;
     }
 
@@ -565,11 +579,12 @@ bool PluginManager::unload_plugin(const std::string& id) {
     }
 
     unload_instance(target);
-    m_plugins.erase(std::remove_if(m_plugins.begin(), m_plugins.end(),
-                                  [&target](const std::shared_ptr<Instance>& p) {
-                                      return p.get() == target.get();
-                                  }),
-                   m_plugins.end());
+    m_plugins.erase(
+        std::remove_if(m_plugins.begin(), m_plugins.end(),
+                       [&target](const std::shared_ptr<Instance>& p) {
+                           return p.get() == target.get();
+                       }),
+        m_plugins.end());
     MCP_LOG_INFO("PluginManager: unloaded plugin '" + id + "'");
     return true;
 }
@@ -585,7 +600,9 @@ void PluginManager::unload_all(void) {
     }
 }
 
-std::size_t PluginManager::plugin_count(void) const { return m_plugins.size(); }
+std::size_t PluginManager::plugin_count(void) const {
+    return m_plugins.size();
+}
 
 QStringList PluginManager::plugin_ids(void) const {
     QStringList ids;
@@ -597,7 +614,8 @@ QStringList PluginManager::plugin_ids(void) const {
 
 QObject* PluginManager::plugin_object(const std::string& id) const {
     for (const auto& inst : m_plugins) {
-        if (inst->id == id) return inst->object;
+        if (inst->id == id)
+            return inst->object;
     }
     return nullptr;
 }
@@ -615,8 +633,9 @@ bool PluginManager::has_function(const QString& signature) const {
 std::vector<PluginTool> PluginManager::tools() const {
     std::vector<PluginTool> out;
     for (const auto& inst : m_plugins) {
-        for (auto it = inst->tools.constBegin(); it != inst->tools.constEnd(); ++it) {
-            out.push_back(PluginTool{ it.key(), it.value() });
+        for (auto it = inst->tools.constBegin(); it != inst->tools.constEnd();
+             ++it) {
+            out.push_back(PluginTool{it.key(), it.value()});
         }
     }
     std::sort(out.begin(), out.end(),

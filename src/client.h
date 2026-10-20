@@ -59,8 +59,8 @@ public:
     list_tools(std::optional<std::string> cursor = std::nullopt);
 
     /// `tools/call` with the given name and JSON-shaped arguments.
-    [[nodiscard]] std::future<CallToolResult>
-    call_tool(std::string name, Json arguments = {});
+    [[nodiscard]] std::future<CallToolResult> call_tool(std::string name,
+                                                        Json arguments = {});
 
     /// `tools/call` with a `task` augmentation. The server returns a
     /// `CreateTaskResult` envelope right away; the actual
@@ -69,9 +69,8 @@ public:
     /// `ttl_ms` is the per-call retention override; nullopt uses the
     /// server's default.
     [[nodiscard]] std::future<CreateTaskResult>
-    call_tool_as_task(std::string                 name,
-                      Json              arguments = {},
-                      std::optional<std::int64_t> ttl_ms    = std::nullopt);
+    call_tool_as_task(std::string name, Json arguments = {},
+                      std::optional<std::int64_t> ttl_ms = std::nullopt);
 
     /// `tasks/get` — fetch the current envelope for a task.
     [[nodiscard]] std::future<Task> task_get(std::string task_id);
@@ -80,8 +79,7 @@ public:
     /// terminal, then return the underlying request's result as raw
     /// JSON. Decode it as the appropriate result type (e.g.
     /// `CallToolResult`) by calling `mcp::from_json<T>(...)`.
-    [[nodiscard]] std::future<Json>
-    task_result(std::string task_id);
+    [[nodiscard]] std::future<Json> task_result(std::string task_id);
 
     /// `tasks/list` — paginated enumeration of all tasks the server
     /// currently knows about.
@@ -114,12 +112,10 @@ public:
     /// frames whenever this URI's contents change. Subscribe handlers
     /// for incoming updates: see `set_resource_updated_handler`. The
     /// future resolves on success and throws mcp::Error on failure.
-    [[nodiscard]] std::future<void>
-    subscribe(std::string uri);
+    [[nodiscard]] std::future<void> subscribe(std::string uri);
 
     /// `resources/unsubscribe`.
-    [[nodiscard]] std::future<void>
-    unsubscribe(std::string uri);
+    [[nodiscard]] std::future<void> unsubscribe(std::string uri);
 
     /// Register a handler for inbound resource-update notifications.
     /// The handler is called whenever the server sends
@@ -138,9 +134,10 @@ public:
 
     /// `prompts/get` with the given prompt name and (optional) string-keyed
     /// arguments to fill in template parameters.
-    [[nodiscard]] std::future<GetPromptResult>
-    get_prompt(std::string                                                  name,
-               std::optional<std::unordered_map<std::string, std::string>>  arguments = std::nullopt);
+    [[nodiscard]] std::future<GetPromptResult> get_prompt(
+        std::string name,
+        std::optional<std::unordered_map<std::string, std::string>> arguments =
+            std::nullopt);
 
     /// Hook for inbound notifications/prompts/list_changed.
     void set_prompts_list_changed_handler(ListChangedHandler handler);
@@ -151,8 +148,9 @@ public:
     /// id (typically obtained via a future Phase 3 cancellation token).
     /// Returns the underlying transport error_code on failure (e.g.
     /// transport closed); empty error_code on success.
-    std::error_code cancel_request(RequestId request_id,
-                                   std::optional<std::string> reason = std::nullopt);
+    std::error_code
+    cancel_request(RequestId request_id,
+                   std::optional<std::string> reason = std::nullopt);
 
     /// Send `ping` and wait for a response. Returns void on success;
     /// the future throws on timeout / error.
@@ -162,8 +160,7 @@ public:
     /// log-message threshold. The server may reject if it does not
     /// support the logging capability. The future resolves on success
     /// and throws mcp::Error on failure.
-    [[nodiscard]] std::future<void>
-    set_log_level(LoggingLevel level);
+    [[nodiscard]] std::future<void> set_log_level(LoggingLevel level);
 
     /// Hook for inbound `notifications/message` (server-emitted log).
     using LogMessageHandler =
@@ -211,9 +208,9 @@ public:
     /// `completion/complete` — ask the server for autocompletion
     /// suggestions.
     [[nodiscard]] std::future<CompleteResult>
-    complete(CompletionReference reference,
-             CompleteArgument    argument,
-             std::optional<std::unordered_map<std::string, std::string>> context_arguments = std::nullopt);
+    complete(CompletionReference reference, CompleteArgument argument,
+             std::optional<std::unordered_map<std::string, std::string>>
+                 context_arguments = std::nullopt);
 
     /// Layer extra / narrowed capabilities on top of the ones derived
     /// from registered handlers. Engaged fields in `caps` REPLACE the
@@ -242,20 +239,20 @@ private:
     /// session alive for the duration of their operation.
     [[nodiscard]] std::shared_ptr<Session> acquire_session(void) const;
 
-    Implementation                              m_client_info;
-    std::shared_ptr<Session>                    m_session;
-    mutable std::mutex                          m_session_mu;
-    std::optional<InitializeResult>             m_server;
-    mutable std::mutex                          m_server_mu;
-    std::atomic<bool>                           m_connected{false};
+    Implementation m_client_info;
+    std::shared_ptr<Session> m_session;
+    mutable std::mutex m_session_mu;
+    std::optional<InitializeResult> m_server;
+    mutable std::mutex m_server_mu;
+    std::atomic<bool> m_connected{false};
 
-    SamplingHandler                             m_sampling_handler;
-    RootsListHandler                            m_roots_handler;
-    ElicitationHandler                          m_elicitation_handler;
-    ElicitationCompleteHandler                  m_elicitation_complete_handler;
-    TaskStatusHandler                           m_task_status_handler;
-    std::optional<ClientCapabilities>           m_capabilities_override;
-    std::mutex                                  m_handlers_mu;
+    SamplingHandler m_sampling_handler;
+    RootsListHandler m_roots_handler;
+    ElicitationHandler m_elicitation_handler;
+    ElicitationCompleteHandler m_elicitation_complete_handler;
+    TaskStatusHandler m_task_status_handler;
+    std::optional<ClientCapabilities> m_capabilities_override;
+    std::mutex m_handlers_mu;
 };
 
 }  // namespace mcp

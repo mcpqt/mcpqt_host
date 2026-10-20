@@ -33,10 +33,10 @@ using namespace std::chrono_literals;
 // Helper that holds two pipes (send → transport, transport → us) and a
 // configured StdioTransport ready to start.
 struct PipeHarness {
-    int  to_transport_r = -1;
-    int  to_transport_w = -1;
-    int  from_transport_r = -1;
-    int  from_transport_w = -1;
+    int to_transport_r = -1;
+    int to_transport_w = -1;
+    int from_transport_r = -1;
+    int from_transport_w = -1;
     std::unique_ptr<mcp::StdioTransport> transport;
 
     PipeHarness(void) {
@@ -49,18 +49,21 @@ struct PipeHarness {
         from_transport_r = f2[0];
         from_transport_w = f2[1];
         mcp::StdioTransport::Options opts{};
-        opts.read_fd  = to_transport_r;
+        opts.read_fd = to_transport_r;
         opts.write_fd = from_transport_w;
         opts.owns_fds = true;
         transport = std::make_unique<mcp::StdioTransport>(opts);
     }
 
     ~PipeHarness() {
-        if (transport) transport->close();
+        if (transport)
+            transport->close();
         // The transport owns the read-end and write-end fds it was given,
         // so we just clean up the others.
-        if (to_transport_w   >= 0) ::close(to_transport_w);
-        if (from_transport_r >= 0) ::close(from_transport_r);
+        if (to_transport_w >= 0)
+            ::close(to_transport_w);
+        if (from_transport_r >= 0)
+            ::close(from_transport_r);
     }
 
     void write_to_transport(std::string_view s) {
@@ -69,7 +72,8 @@ struct PipeHarness {
         while (left > 0) {
             ssize_t n = ::write(to_transport_w, p, left);
             QVERIFY(n > 0);
-            p += n; left -= static_cast<std::size_t>(n);
+            p += n;
+            left -= static_cast<std::size_t>(n);
         }
     }
 
@@ -79,7 +83,8 @@ struct PipeHarness {
         std::string out;
         out.resize(n);
         ssize_t got = ::read(from_transport_r, out.data(), n);
-        if (got <= 0) return {};
+        if (got <= 0)
+            return {};
         out.resize(static_cast<std::size_t>(got));
         return out;
     }
@@ -94,11 +99,11 @@ struct PipeHarness {
 
 // Captures messages, errors, close events for a transport.
 struct Sink {
-    std::mutex                mu;
-    std::condition_variable   cv;
-    std::vector<std::string>  messages;
+    std::mutex mu;
+    std::condition_variable cv;
+    std::vector<std::string> messages;
     std::vector<std::error_code> errors;
-    bool                      closed = false;
+    bool closed = false;
 
     void on_message(std::string m) {
         std::lock_guard<std::mutex> lk(mu);
@@ -152,14 +157,17 @@ void StdioTransport::DeliversWholeFrame(void) {
     // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
     PipeHarness h;
-    h.transport->on_message([&](std::string s) { sink.on_message(std::move(s)); });
-    h.transport->on_close ([&]                  { sink.on_close(); });
+    h.transport->on_message(
+        [&](std::string s) { sink.on_message(std::move(s)); });
+    h.transport->on_close([&] { sink.on_close(); });
     h.transport->start();
 
-    h.write_to_transport(std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"} + "\n");
+    h.write_to_transport(
+        std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"} + "\n");
 
     QVERIFY(sink.wait_for_messages(1));
-    QCOMPARE(sink.messages.front(), std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"});
+    QCOMPARE(sink.messages.front(),
+             std::string{R"({"jsonrpc":"2.0","id":1,"method":"x"})"});
 }
 
 void StdioTransport::SplitsMultipleFramesByNewline(void) {
@@ -168,7 +176,8 @@ void StdioTransport::SplitsMultipleFramesByNewline(void) {
     // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
     PipeHarness h;
-    h.transport->on_message([&](std::string s) { sink.on_message(std::move(s)); });
+    h.transport->on_message(
+        [&](std::string s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
     h.write_to_transport("a\nb\nc\n");
@@ -185,7 +194,8 @@ void StdioTransport::BuffersAcrossReads(void) {
     // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
     PipeHarness h;
-    h.transport->on_message([&](std::string s) { sink.on_message(std::move(s)); });
+    h.transport->on_message(
+        [&](std::string s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
     h.write_to_transport("part");
@@ -202,7 +212,8 @@ void StdioTransport::IgnoresEmptyLines(void) {
     // alive sink. The reverse ordering crashed under ASan.
     Sink sink;
     PipeHarness h;
-    h.transport->on_message([&](std::string s) { sink.on_message(std::move(s)); });
+    h.transport->on_message(
+        [&](std::string s) { sink.on_message(std::move(s)); });
     h.transport->start();
 
     h.write_to_transport("\n\nhi\n\n");
@@ -220,7 +231,8 @@ void StdioTransport::SendWritesNewlineDelimitedFrames(void) {
     QVERIFY(!ec);
 
     auto out = h.read_from_transport();
-    QCOMPARE(out, std::string{R"({"jsonrpc":"2.0","id":7,"method":"y"})"} + "\n");
+    QCOMPARE(out,
+             std::string{R"({"jsonrpc":"2.0","id":7,"method":"y"})"} + "\n");
 }
 
 void StdioTransport::RejectsFramesWithEmbeddedNewline(void) {
@@ -236,7 +248,7 @@ void StdioTransport::ConcurrentSendsAreSerialized(void) {
     h.transport->start();
 
     constexpr int kThreads = 8;
-    constexpr int kPer     = 50;
+    constexpr int kPer = 50;
     std::vector<std::thread> ts;
     ts.reserve(kThreads);
     for (int t = 0; t < kThreads; ++t) {
@@ -247,7 +259,8 @@ void StdioTransport::ConcurrentSendsAreSerialized(void) {
             }
         });
     }
-    for (auto& th : ts) th.join();
+    for (auto& th : ts)
+        th.join();
 
     // Drain everything the transport wrote, line by line, and verify
     // every frame is one of the expected strings (no torn writes).
@@ -257,11 +270,13 @@ void StdioTransport::ConcurrentSendsAreSerialized(void) {
         // budget. We rely on the writes having completed before joins.
         char buf[4096];
         // Make read_from_transport non-blocking-ish by checking poll.
-        struct pollfd pfd{ h.from_transport_r, POLLIN, 0 };
+        struct pollfd pfd{h.from_transport_r, POLLIN, 0};
         int pr = ::poll(&pfd, 1, 200);
-        if (pr <= 0) break;
+        if (pr <= 0)
+            break;
         ssize_t n = ::read(h.from_transport_r, buf, sizeof(buf));
-        if (n <= 0) break;
+        if (n <= 0)
+            break;
         accumulated.append(buf, static_cast<std::size_t>(n));
     }
 
@@ -269,7 +284,8 @@ void StdioTransport::ConcurrentSendsAreSerialized(void) {
     std::size_t pos = 0;
     while (pos < accumulated.size()) {
         std::size_t nl = accumulated.find('\n', pos);
-        if (nl == std::string::npos) break;
+        if (nl == std::string::npos)
+            break;
         const std::string frame = accumulated.substr(pos, nl - pos);
         QVERIFY(frame.starts_with("thread-"));
         QCOMPARE(frame.find('\n'), std::string::npos);
@@ -326,9 +342,9 @@ void StdioTransport::IsOpenReflectsLifecycle(void) {
 void StdioTransport::IdempotentStartAndClose(void) {
     PipeHarness h;
     h.transport->start();
-    h.transport->start();   // second start() is a no-op
+    h.transport->start();  // second start() is a no-op
     h.transport->close();
-    h.transport->close();   // second close() is a no-op
+    h.transport->close();  // second close() is a no-op
 }
 
 void StdioTransport::OversizedFrameTriggersErrorAndClose(void) {
@@ -338,15 +354,15 @@ void StdioTransport::OversizedFrameTriggersErrorAndClose(void) {
     QCOMPARE(::pipe(f2), 0);
 
     mcp::StdioTransport::Options opts{};
-    opts.read_fd         = t2[0];
-    opts.write_fd        = f2[1];
-    opts.owns_fds        = true;
+    opts.read_fd = t2[0];
+    opts.write_fd = f2[1];
+    opts.owns_fds = true;
     opts.max_frame_bytes = 16;
     auto transport = std::make_unique<mcp::StdioTransport>(opts);
 
     Sink sink;
     transport->on_error([&](std::error_code ec) { sink.on_error(ec); });
-    transport->on_close([&]                      { sink.on_close(); });
+    transport->on_close([&] { sink.on_close(); });
     transport->start();
 
     std::string oversized(64, 'x');  // no newline; exceeds max_frame_bytes=16
@@ -355,10 +371,12 @@ void StdioTransport::OversizedFrameTriggersErrorAndClose(void) {
 
     {
         std::unique_lock<std::mutex> lk(sink.mu);
-        sink.cv.wait_for(lk, 2s, [&] { return !sink.errors.empty() || sink.closed; });
+        sink.cv.wait_for(lk, 2s,
+                         [&] { return !sink.errors.empty() || sink.closed; });
     }
     QVERIFY(!sink.errors.empty());
-    QCOMPARE(sink.errors.front(), std::make_error_code(std::errc::message_size));
+    QCOMPARE(sink.errors.front(),
+             std::make_error_code(std::errc::message_size));
 
     transport->close();
     ::close(t2[1]);

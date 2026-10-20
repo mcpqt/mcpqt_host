@@ -5,7 +5,8 @@
 // runtime. Its public slots are published by the host via meta-object
 // reflection; signatures become addressable functions, e.g.
 //   QString TestPlugin::echo(QString), double TestPlugin::add(double,double),
-//   void TestPlugin::boom(), QString TestPlugin::dup(), void TestPlugin::reset().
+//   void TestPlugin::boom(), QString TestPlugin::dup(), void
+//   TestPlugin::reset().
 
 #include "plugin.h"
 
@@ -24,7 +25,8 @@ class TestPlugin : public mcp::PluginInterface {
     Q_INTERFACES(mcp::PluginInterface)
 
 public:
-    explicit TestPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent) {}
+    explicit TestPlugin(QObject* parent = nullptr)
+        : mcp::PluginInterface(parent) {}
 
     void initialize(const mcp::HostInterface& host) override {
         m_host = host;
@@ -49,7 +51,7 @@ public slots:
     QString dup(void) { return QStringLiteral("dup"); }
 
     // Non-QVariant return types (carried via QGenericReturnArgument).
-    int     meaning(void) { return 42; }
+    int meaning(void) { return 42; }
     QString upper(QString text) { return text.toUpper(); }
 };
 

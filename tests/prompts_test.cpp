@@ -35,21 +35,22 @@ using namespace std::chrono_literals;
 
 struct PromptsServerThread {
     std::shared_ptr<mcp::Server> server;
-    std::thread                  thread;
+    std::thread thread;
 
     template <typename Configure>
     PromptsServerThread(std::unique_ptr<mcp::Transport> t, Configure cfg)
         : server(std::make_shared<mcp::Server>(mcp::Implementation{
-              .name = "prompts-test", .version = "1.0",
+              .name = "prompts-test",
+              .version = "1.0",
           })) {
         cfg(*server);
-        thread = std::thread([s = server, t = std::move(t)]() mutable {
-            s->run(std::move(t));
-        });
+        thread = std::thread(
+            [s = server, t = std::move(t)]() mutable { s->run(std::move(t)); });
     }
     ~PromptsServerThread() {
         server->stop();
-        if (thread.joinable()) thread.join();
+        if (thread.joinable())
+            thread.join();
     }
 };
 
@@ -73,27 +74,28 @@ private slots:
 
 void Prompts::PromptArgumentRoundTrip(void) {
     mcp::PromptArgument a{
-        .name        = "topic",
-        .title       = "Topic",
+        .name = "topic",
+        .title = "Topic",
         .description = "What to write about",
-        .required    = true,
+        .required = true,
     };
     Json j = mcp::to_json(a);
-    QCOMPARE(j["name"],     mcp::test::jv("topic"));
+    QCOMPARE(j["name"], mcp::test::jv("topic"));
     QCOMPARE(j["required"], mcp::test::jv(true));
     auto back = mcp::from_json<mcp::PromptArgument>(j);
-    QCOMPARE(back.name,     a.name);
+    QCOMPARE(back.name, a.name);
     QCOMPARE(back.required, a.required);
 }
 
 void Prompts::PromptRoundTripWithArguments(void) {
     mcp::Prompt p{
-        .name        = "summarize",
+        .name = "summarize",
         .description = "Summarize text",
-        .arguments   = std::vector<mcp::PromptArgument>{
-            {.name = "text", .required = true},
-            {.name = "max_words"},
-        },
+        .arguments =
+            std::vector<mcp::PromptArgument>{
+                {.name = "text", .required = true},
+                {.name = "max_words"},
+            },
     };
     Json j = mcp::to_json(p);
     QVERIFY(j.toObject().contains(QString::fromUtf8("arguments")));
@@ -106,7 +108,7 @@ void Prompts::PromptRoundTripWithArguments(void) {
 
 void Prompts::PromptMessageRoundTrip(void) {
     mcp::PromptMessage m{
-        .role    = mcp::Role::user,
+        .role = mcp::Role::user,
         .content = mcp::TextContent{.text = "hello"},
     };
     Json j = mcp::to_json(m);
@@ -120,12 +122,14 @@ void Prompts::PromptMessageRoundTrip(void) {
 void Prompts::GetPromptResultRoundTrip(void) {
     mcp::GetPromptResult r{
         .description = "A summary prompt",
-        .messages    = {
-            mcp::PromptMessage{.role = mcp::Role::user,
-                               .content = mcp::TextContent{.text = "Summarize:"}},
-            mcp::PromptMessage{.role = mcp::Role::assistant,
-                               .content = mcp::TextContent{.text = "OK."}},
-        },
+        .messages =
+            {
+                mcp::PromptMessage{.role = mcp::Role::user,
+                                   .content =
+                                       mcp::TextContent{.text = "Summarize:"}},
+                mcp::PromptMessage{.role = mcp::Role::assistant,
+                                   .content = mcp::TextContent{.text = "OK."}},
+            },
     };
     Json j = mcp::to_json(r);
     QCOMPARE(j["description"], mcp::test::jv("A summary prompt"));
@@ -137,10 +141,12 @@ void Prompts::GetPromptResultRoundTrip(void) {
 
 void Prompts::GetPromptParamsArgumentsAreStringMap(void) {
     mcp::GetPromptRequestParams p{
-        .name      = "x",
-        .arguments = std::unordered_map<std::string, std::string>{
-            {"a", "1"}, {"b", "two"},
-        },
+        .name = "x",
+        .arguments =
+            std::unordered_map<std::string, std::string>{
+                {"a", "1"},
+                {"b", "two"},
+            },
     };
     Json j = mcp::to_json(p);
     QCOMPARE(j["name"], mcp::test::jv("x"));
@@ -166,32 +172,34 @@ private slots:
 void PromptsIntegration::ListPromptsAndGetPrompt(void) {
     auto p = mcp::test::make_in_memory_pair();
     PromptsServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.prompt(mcp::Prompt{
-                .name        = "greet",
-                .title       = "Greet",
+        s.prompt(
+            mcp::Prompt{
+                .name = "greet",
+                .title = "Greet",
                 .description = "Greet someone by name",
-                .arguments   = std::vector<mcp::PromptArgument>{
-                    {.name = "name", .required = true},
-                },
+                .arguments =
+                    std::vector<mcp::PromptArgument>{
+                        {.name = "name", .required = true},
+                    },
             },
             [](const std::unordered_map<std::string, std::string>& args) {
-                const std::string name = args.contains("name")
-                    ? args.at("name") : "world";
+                const std::string name =
+                    args.contains("name") ? args.at("name") : "world";
                 return mcp::GetPromptResult{
                     .description = "greeting",
-                    .messages = {
-                        mcp::PromptMessage{
-                            .role    = mcp::Role::user,
-                            .content = mcp::TextContent{
-                                .text = "Hello, " + name + "!"
+                    .messages =
+                        {
+                            mcp::PromptMessage{
+                                .role = mcp::Role::user,
+                                .content = mcp::TextContent{.text = "Hello, " +
+                                                                    name + "!"},
                             },
                         },
-                    },
                 };
             });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     auto info = client.initialize().get();
     QVERIFY(info.capabilities.prompts.has_value());
@@ -201,14 +209,15 @@ void PromptsIntegration::ListPromptsAndGetPrompt(void) {
     QCOMPARE(list.prompts[0].name, std::string{"greet"});
     QVERIFY(list.prompts[0].arguments.has_value());
 
-    auto out = client.get_prompt(
-        "greet",
-        std::unordered_map<std::string, std::string>{{"name", "Alice"}}
-    ).get();
+    auto out = client
+                   .get_prompt("greet",
+                               std::unordered_map<std::string, std::string>{
+                                   {"name", "Alice"}})
+                   .get();
     QCOMPARE(out.messages.size(), std::size_t{1});
     QVERIFY(std::holds_alternative<mcp::TextContent>(out.messages[0].content));
-    QVERIFY(std::get<mcp::TextContent>(out.messages[0].content).text.find("Alice")
-            != std::string::npos);
+    QVERIFY(std::get<mcp::TextContent>(out.messages[0].content)
+                .text.find("Alice") != std::string::npos);
 
     client.disconnect();
 }
@@ -217,12 +226,12 @@ void PromptsIntegration::MissingPromptMapsToError(void) {
     auto p = mcp::test::make_in_memory_pair();
     PromptsServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.prompt(mcp::Prompt{.name = "x"},
-            [](const std::unordered_map<std::string, std::string>&) {
-                return mcp::GetPromptResult{};
-            });
+                 [](const std::unordered_map<std::string, std::string>&) {
+                     return mcp::GetPromptResult{};
+                 });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 
@@ -241,20 +250,21 @@ void PromptsIntegration::EmptyArgumentsAreOkay(void) {
     auto p = mcp::test::make_in_memory_pair();
     PromptsServerThread srv(std::move(p.b), [&](mcp::Server& s) {
         s.prompt(mcp::Prompt{.name = "noargs"},
-            [&](const std::unordered_map<std::string, std::string>& args) {
-                handler_saw_empty_args = args.empty();
-                return mcp::GetPromptResult{
-                    .messages = {
-                        mcp::PromptMessage{
-                            .role    = mcp::Role::user,
-                            .content = mcp::TextContent{.text = "ok"},
-                        },
-                    },
-                };
-            });
+                 [&](const std::unordered_map<std::string, std::string>& args) {
+                     handler_saw_empty_args = args.empty();
+                     return mcp::GetPromptResult{
+                         .messages =
+                             {
+                                 mcp::PromptMessage{
+                                     .role = mcp::Role::user,
+                                     .content = mcp::TextContent{.text = "ok"},
+                                 },
+                             },
+                     };
+                 });
     });
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     (void)client.initialize().get();
 

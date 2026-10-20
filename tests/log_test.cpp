@@ -17,7 +17,7 @@ namespace {
 
 struct CapturedLine {
     mcp::LogLevel level;
-    std::string   message;
+    std::string message;
 };
 
 }  // namespace
@@ -40,9 +40,9 @@ private:
         return std::move(m_captured);
     }
 
-    std::mutex                m_mu;
+    std::mutex m_mu;
     std::vector<CapturedLine> m_captured;
-    mcp::LogLevel             m_prev_level{mcp::LogLevel::info};
+    mcp::LogLevel m_prev_level{mcp::LogLevel::info};
 };
 
 class LogLevelStrings : public QObject {
@@ -101,7 +101,7 @@ void LogTest::OffSilencesEverything(void) {
 
 void LogTest::ConcurrentEmittersAreSerialized(void) {
     constexpr int kThreads = 8;
-    constexpr int kPer     = 200;
+    constexpr int kPer = 200;
 
     std::vector<std::thread> ts;
     ts.reserve(kThreads);
@@ -112,7 +112,8 @@ void LogTest::ConcurrentEmittersAreSerialized(void) {
             }
         });
     }
-    for (auto& th : ts) th.join();
+    for (auto& th : ts)
+        th.join();
 
     QCOMPARE(drain().size(), static_cast<std::size_t>(kThreads * kPer));
 }
@@ -126,10 +127,10 @@ void LogTest::ResettingSinkRestoresDefault(void) {
 void LogLevelStrings::MapsAllValues(void) {
     QCOMPARE(mcp::to_string(mcp::LogLevel::trace), "TRACE");
     QCOMPARE(mcp::to_string(mcp::LogLevel::debug), "DEBUG");
-    QCOMPARE(mcp::to_string(mcp::LogLevel::info),  "INFO");
-    QCOMPARE(mcp::to_string(mcp::LogLevel::warn),  "WARN");
+    QCOMPARE(mcp::to_string(mcp::LogLevel::info), "INFO");
+    QCOMPARE(mcp::to_string(mcp::LogLevel::warn), "WARN");
     QCOMPARE(mcp::to_string(mcp::LogLevel::error), "ERROR");
-    QCOMPARE(mcp::to_string(mcp::LogLevel::off),   "OFF");
+    QCOMPARE(mcp::to_string(mcp::LogLevel::off), "OFF");
 }
 
 int main(int argc, char** argv) {

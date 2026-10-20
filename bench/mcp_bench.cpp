@@ -26,7 +26,6 @@
 #include "server.h"
 #include "transport.h"
 
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -44,7 +43,9 @@ using clk = std::chrono::steady_clock;
 namespace {
 
 double ns(clk::duration d) {
-    return std::chrono::duration_cast<std::chrono::duration<double, std::nano>>(d).count();
+    return std::chrono::duration_cast<std::chrono::duration<double, std::nano>>(
+               d)
+        .count();
 }
 
 struct Stats {
@@ -54,24 +55,27 @@ struct Stats {
 Stats summarize(std::vector<double>& v) {  // v in nanoseconds, mutated (sorted)
     std::sort(v.begin(), v.end());
     auto pct = [&](double p) {
-        if (v.empty()) return 0.0;
+        if (v.empty())
+            return 0.0;
         auto idx = static_cast<std::size_t>(p * (v.size() - 1));
         return v[idx];
     };
     double sum = 0;
-    for (double x : v) sum += x;
+    for (double x : v)
+        sum += x;
     return Stats{
         .mean = sum / static_cast<double>(v.size()),
-        .p50  = pct(0.50),
-        .p90  = pct(0.90),
-        .p99  = pct(0.99),
+        .p50 = pct(0.50),
+        .p90 = pct(0.90),
+        .p99 = pct(0.99),
         .p999 = pct(0.999),
-        .max  = v.back(),
-        .min  = v.front(),
+        .max = v.back(),
+        .min = v.front(),
     };
 }
 
-void print_latency(const char* name, std::vector<double>& samples, double wall_s) {
+void print_latency(const char* name, std::vector<double>& samples,
+                   double wall_s) {
     Stats s = summarize(samples);
     double per_us = 1000.0;  // ns per us
     std::printf("\n%s  (n=%zu)\n", name, samples.size());
@@ -90,24 +94,24 @@ void print_latency(const char* name, std::vector<double>& samples, double wall_s
 
 struct ServerThread {
     std::shared_ptr<mcp::Server> server;
-    std::thread                  thread;
+    std::thread thread;
 
     ServerThread(std::unique_ptr<mcp::Transport> transport) {
-        server = std::make_shared<mcp::Server>(mcp::Implementation{
-            .name = "bench", .version = "1.0.0"});
-        server->tool("add",
-            QJsonObject{
-                {"type", "object"},
-                {"properties", QJsonObject{
-                    {"a", QJsonObject{{"type", "number"}}},
-                    {"b", QJsonObject{{"type", "number"}}}}},
-                {"required", QJsonArray{"a", "b"}}},
+        server = std::make_shared<mcp::Server>(
+            mcp::Implementation{.name = "bench", .version = "1.0.0"});
+        server->tool(
+            "add",
+            QJsonObject{{"type", "object"},
+                        {"properties",
+                         QJsonObject{{"a", QJsonObject{{"type", "number"}}},
+                                     {"b", QJsonObject{{"type", "number"}}}}},
+                        {"required", QJsonArray{"a", "b"}}},
             [](const Json& args) -> mcp::CallToolResult {
                 const QJsonObject o = args.toObject();
                 const double a = mcp::require<double>(o, "a");
                 const double b = mcp::require<double>(o, "b");
-                return mcp::CallToolResult{
-                    .content = {mcp::TextContent{.text = std::to_string(a + b)}}};
+                return mcp::CallToolResult{.content = {mcp::TextContent{
+                                               .text = std::to_string(a + b)}}};
             });
         thread = std::thread([s = server, t = std::move(transport)]() mutable {
             s->run(std::move(t));
@@ -115,39 +119,44 @@ struct ServerThread {
     }
     ~ServerThread() {
         server->stop();
-        if (thread.joinable()) thread.join();
+        if (thread.joinable())
+            thread.join();
     }
 };
 
 }  // namespace
 
 int main(int argc, char** argv) {
-    const std::size_t N      = argc > 1 ? std::stoul(argv[1]) : 100000;
+    const std::size_t N = argc > 1 ? std::stoul(argv[1]) : 100000;
     const std::size_t WARMUP = 2000;
 
     auto pair = mcp::test::make_in_memory_pair();
     ServerThread srv(std::move(pair.a));
 
-    mcp::Client client{mcp::Implementation{.name = "bench-client", .version = "1.0.0"}};
+    mcp::Client client{
+        mcp::Implementation{.name = "bench-client", .version = "1.0.0"}};
     client.connect(std::move(pair.b));
     client.initialize().get();
 
     std::printf("mcp-cpp microbenchmark  (in-process, single client thread)\n");
-    std::printf("hardware concurrency: %u\n", std::thread::hardware_concurrency());
+    std::printf("hardware concurrency: %u\n",
+                std::thread::hardware_concurrency());
 
     // ---- 1. tools/call round-trip ----------------------------------------
     {
         for (std::size_t i = 0; i < WARMUP; ++i)
-            (void)client.call_tool("add", QJsonObject{{"a", 1}, {"b", 2}}).get();
+            (void)client.call_tool("add", QJsonObject{{"a", 1}, {"b", 2}})
+                .get();
 
         std::vector<double> samples;
         samples.reserve(N);
         auto wall0 = clk::now();
         for (std::size_t i = 0; i < N; ++i) {
-            auto t0  = clk::now();
-            auto fut = client.call_tool("add", QJsonObject{{"a", 1.5}, {"b", 2.5}});
+            auto t0 = clk::now();
+            auto fut =
+                client.call_tool("add", QJsonObject{{"a", 1.5}, {"b", 2.5}});
             auto res = fut.get();
-            auto t1  = clk::now();
+            auto t1 = clk::now();
             samples.push_back(ns(t1 - t0));
         }
         double wall_s = ns(clk::now() - wall0) / 1e9;
@@ -156,15 +165,16 @@ int main(int argc, char** argv) {
 
     // ---- 2. ping round-trip (protocol floor) -----------------------------
     {
-        for (std::size_t i = 0; i < WARMUP; ++i) client.ping().get();
+        for (std::size_t i = 0; i < WARMUP; ++i)
+            client.ping().get();
 
         std::vector<double> samples;
         samples.reserve(N);
         auto wall0 = clk::now();
         for (std::size_t i = 0; i < N; ++i) {
-            auto t0  = clk::now();
+            auto t0 = clk::now();
             client.ping().get();
-            auto t1  = clk::now();
+            auto t1 = clk::now();
             samples.push_back(ns(t1 - t0));
         }
         double wall_s = ns(clk::now() - wall0) / 1e9;
@@ -179,11 +189,11 @@ int main(int argc, char** argv) {
 
         // Representative tools/call request frame.
         mcp::JsonRpcRequest req;
-        req.id     = mcp::RequestId{42};
+        req.id = mcp::RequestId{42};
         req.method = "tools/call";
-        req.params = QJsonObject{{"name", "add"},
-                                  {"arguments",
-                                   QJsonObject{{"a", 1.5}, {"b", 2.5}}}};
+        req.params =
+            QJsonObject{{"name", "add"},
+                        {"arguments", QJsonObject{{"a", 1.5}, {"b", 2.5}}}};
         mcp::JsonRpcMessage req_msg = req;
         std::string req_wire = mcp::dump(mcp::serialize_message(req_msg));
 
@@ -210,7 +220,8 @@ int main(int argc, char** argv) {
                     ser_ns / 1000.0, 1e9 / ser_ns);
         std::printf("  parse      : %8.3f us/op   %10.0f ops/sec\n",
                     par_ns / 1000.0, 1e9 / par_ns);
-        std::printf("  (checksum %llu)\n", static_cast<unsigned long long>(sink));
+        std::printf("  (checksum %llu)\n",
+                    static_cast<unsigned long long>(sink));
     }
 
     return 0;

@@ -25,11 +25,11 @@ enum error_code : int {
     no_error = 0,
 
     // JSON-RPC 2.0 standard codes.
-    parse_error     = -32700,
+    parse_error = -32700,
     invalid_request = -32600,
-    method_not_found,   // -32601
-    invalid_params,     // -32602
-    internal_error,     // -32603
+    method_not_found,  // -32601
+    invalid_params,    // -32602
+    internal_error,    // -32603
 
     // MCP-specific (in the implementation-defined JSON-RPC range).
     url_elicitation_required = -32042,
@@ -41,9 +41,9 @@ enum error_code : int {
 /// also raised as `Error` (an exception) when a method call receives an error
 /// response and the caller asks for the result via a future.
 struct ErrorObject {
-    int         code{error_code::no_error};
+    int code{error_code::no_error};
     std::string message;
-    QJsonValue  data;  // optional; null when absent on the wire
+    QJsonValue data;  // optional; null when absent on the wire
 
     [[nodiscard]] bool has_data(void) const noexcept { return !data.isNull(); }
 };
@@ -58,14 +58,21 @@ public:
     explicit Error(ErrorObject err)
         : std::runtime_error(err.message), m_error(std::move(err)) {}
 
-    Error(int code, std::string msg, QJsonValue data = QJsonValue(QJsonValue::Null))
+    Error(int code, std::string msg,
+          QJsonValue data = QJsonValue(QJsonValue::Null))
         : std::runtime_error(msg),
           m_error{code, std::move(msg), std::move(data)} {}
 
-    [[nodiscard]] const ErrorObject& object(void) const noexcept { return m_error; }
-    [[nodiscard]] int                code(void)   const noexcept { return m_error.code; }
-    [[nodiscard]] const std::string& message(void) const noexcept { return m_error.message; }
-    [[nodiscard]] const QJsonValue&  data(void)   const noexcept { return m_error.data; }
+    [[nodiscard]] const ErrorObject& object(void) const noexcept {
+        return m_error;
+    }
+    [[nodiscard]] int code(void) const noexcept { return m_error.code; }
+    [[nodiscard]] const std::string& message(void) const noexcept {
+        return m_error.message;
+    }
+    [[nodiscard]] const QJsonValue& data(void) const noexcept {
+        return m_error.data;
+    }
 
 private:
     ErrorObject m_error;

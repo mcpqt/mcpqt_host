@@ -30,7 +30,8 @@
 #pragma once
 
 #if !defined(MCP_ENABLE_HTTP)
-#error "mcp::HttpClientTransport requires MCP_ENABLE_HTTP=1 (CMake option MCP_ENABLE_HTTP=ON)"
+#error                                                                         \
+    "mcp::HttpClientTransport requires MCP_ENABLE_HTTP=1 (CMake option MCP_ENABLE_HTTP=ON)"
 #endif
 
 #include "transport.h"
@@ -99,8 +100,7 @@ public:
         /// After this fires, the offending POST has already failed
         /// and the transport delivers an error to the caller; the
         /// callback is purely a side-channel notification.
-        std::function<void(int                status,
-                           std::string_view   www_authenticate)>
+        std::function<void(int status, std::string_view www_authenticate)>
             on_unauthorized;
     };
 
@@ -110,8 +110,8 @@ public:
     // Transport interface ---------------------------------------------------
 
     void on_message(MessageCallback cb) override;
-    void on_error(ErrorCallback cb)     override;
-    void on_close(CloseCallback cb)     override;
+    void on_error(ErrorCallback cb) override;
+    void on_close(CloseCallback cb) override;
 
     void start(void) override;
     void close(void) override;
@@ -157,57 +157,57 @@ private:
     // many POSTs can be in flight simultaneously without serialising
     // (a long-blocked POST awaiting a server-initiated sampling
     // round-trip would otherwise wedge later sends).
-    std::mutex                    m_out_mu;
-    std::condition_variable       m_out_cv;
-    std::deque<std::string>       m_out;
-    std::thread                   m_worker;
+    std::mutex m_out_mu;
+    std::condition_variable m_out_cv;
+    std::deque<std::string> m_out;
+    std::thread m_worker;
 
     // Track in-flight per-send threads so close() can drain.
-    std::mutex                    m_inflight_mu;
-    std::condition_variable       m_inflight_cv;
-    int                           m_inflight = 0;
+    std::mutex m_inflight_mu;
+    std::condition_variable m_inflight_cv;
+    int m_inflight = 0;
 
     // GET-stream worker (optional).
-    std::thread                   m_get_thread;
+    std::thread m_get_thread;
 
     // Negotiated session id, captured from any inbound
     // `Mcp-Session-Id` response header. The GET worker waits on this
     // cv until a session id has been negotiated (or close fires).
-    mutable std::mutex            m_session_id_mu;
-    std::condition_variable       m_session_id_cv;
-    std::optional<std::string>    m_session_id;
+    mutable std::mutex m_session_id_mu;
+    std::condition_variable m_session_id_cv;
+    std::optional<std::string> m_session_id;
 
     // SSE resumability state (spec: server emits `id:` lines, client
     // sends `Last-Event-ID` on reconnect and honours `retry:` for
     // backoff). Updated by drain_sse on every event; read by the GET
     // worker on reconnect.
-    mutable std::mutex            m_get_mu_state;
-    std::string                   m_last_event_id;
-    std::optional<int>            m_next_retry_ms;
+    mutable std::mutex m_get_mu_state;
+    std::string m_last_event_id;
+    std::optional<int> m_next_retry_ms;
 
     // Mutable access token. The constructor seeds this from
     // Options::access_token; set_access_token() rotates it. Reads are
     // taken on every outbound request, so this is hot-ish — but
     // contention is bounded by the number of in-flight POSTs.
-    mutable std::mutex            m_auth_mu;
-    std::string                   m_access_token;
+    mutable std::mutex m_auth_mu;
+    std::string m_access_token;
 
     // on_unauthorized firing-flag. Multiple in-flight POSTs that all
     // hit a 401/403 would otherwise each fire the callback,
     // racing the application's token-refresh logic. Fire ONCE per
     // "auth-fail batch" — re-arm on the next successful 2xx. Reads
     // are atomic-CAS so dedup decisions don't need the m_auth_mu.
-    std::atomic<bool>             m_auth_callback_armed{true};
+    std::atomic<bool> m_auth_callback_armed{true};
 
-    MessageCallback               m_on_message;
-    ErrorCallback                 m_on_error;
-    CloseCallback                 m_on_close;
+    MessageCallback m_on_message;
+    ErrorCallback m_on_error;
+    CloseCallback m_on_close;
 
     // pImpl-style holder for the Qt network state (parsed QUrl, etc.),
     // kept opaque from the public header so consumers don't need
     // QtNetwork's include path on their own translation units.
     struct ClientImpl;
-    std::unique_ptr<ClientImpl>   m_impl;
+    std::unique_ptr<ClientImpl> m_impl;
 };
 
 }  // namespace mcp

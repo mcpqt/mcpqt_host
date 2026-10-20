@@ -21,13 +21,16 @@
 #include <string>
 
 #if !defined(MCP_TEST_PLUGIN)
-#error "MCP_TEST_PLUGIN path was not generated; the test plugin target is missing"
+#error                                                                         \
+    "MCP_TEST_PLUGIN path was not generated; the test plugin target is missing"
 #endif
 #if !defined(MCP_TEST_PLUGIN_PAIR)
-#error "MCP_TEST_PLUGIN_PAIR path was not generated; the pair plugin target is missing"
+#error                                                                         \
+    "MCP_TEST_PLUGIN_PAIR path was not generated; the pair plugin target is missing"
 #endif
 #if !defined(MCP_TEST_LOG_PLUGIN)
-#error "MCP_TEST_LOG_PLUGIN path was not generated; the log plugin target is missing"
+#error                                                                         \
+    "MCP_TEST_LOG_PLUGIN path was not generated; the log plugin target is missing"
 #endif
 
 class PluginManagerTest : public QObject {
@@ -52,16 +55,14 @@ void PluginManagerTest::LoadRegistersTypedFunctions(void) {
 
     QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
     QCOMPARE(plugins.plugin_count(), std::size_t{1});
-    QCOMPARE(plugins.plugin_ids(), QStringList{ "test-plugin" });
+    QCOMPARE(plugins.plugin_ids(), QStringList{"test-plugin"});
 
     const QStringList funcs = plugins.functions();
-    for (const char* expected : { "QString TestPlugin::echo(QString)",
-                                  "double TestPlugin::add(double,double)",
-                                  "void TestPlugin::boom()",
-                                  "void TestPlugin::reset()",
-                                  "QString TestPlugin::dup()",
-                                  "int TestPlugin::meaning()",
-                                  "QString TestPlugin::upper(QString)" }) {
+    for (const char* expected :
+         {"QString TestPlugin::echo(QString)",
+          "double TestPlugin::add(double,double)", "void TestPlugin::boom()",
+          "void TestPlugin::reset()", "QString TestPlugin::dup()",
+          "int TestPlugin::meaning()", "QString TestPlugin::upper(QString)"}) {
         QVERIFY2(funcs.contains(QString::fromLatin1(expected)), expected);
         QVERIFY(plugins.has_function(QString::fromLatin1(expected)));
     }
@@ -82,12 +83,15 @@ void PluginManagerTest::ToolsMetadataExposed(void) {
     // dropped at load time.
     const std::vector<mcp::PluginTool> tools = plugins.tools();
     QCOMPARE(tools.size(), std::size_t{1});
-    QCOMPARE(tools[0].signature, QStringLiteral("QString TestPlugin::echo(QString)"));
-    QCOMPARE(QString::fromStdString(tools[0].tool.name), QStringLiteral("echo"));
+    QCOMPARE(tools[0].signature,
+             QStringLiteral("QString TestPlugin::echo(QString)"));
+    QCOMPARE(QString::fromStdString(tools[0].tool.name),
+             QStringLiteral("echo"));
     QCOMPARE(QString::fromStdString(tools[0].tool.description.value_or("")),
              QStringLiteral("Echo back the message."));
     const QJsonObject schema = tools[0].tool.input_schema.toObject();
-    QCOMPARE(schema.value(QStringLiteral("type")).toString(), QStringLiteral("object"));
+    QCOMPARE(schema.value(QStringLiteral("type")).toString(),
+             QStringLiteral("object"));
     QCOMPARE(schema.value(QStringLiteral("properties"))
                  .toObject()
                  .value(QStringLiteral("message"))
@@ -101,7 +105,8 @@ void PluginManagerTest::ToolsMetadataExposed(void) {
     QVERIFY(tool.has_value());
     QCOMPARE(QString::fromStdString(tool->name), QStringLiteral("echo"));
 
-    QVERIFY(!plugins.tool(QStringLiteral("void TestPlugin::does_not_exist()")).has_value());
+    QVERIFY(!plugins.tool(QStringLiteral("void TestPlugin::does_not_exist()"))
+                 .has_value());
 
     // Unloading removes the plugin's declared tools.
     plugins.unload_all();
@@ -117,7 +122,8 @@ void PluginManagerTest::MissingFileFails(void) {
 
 void PluginManagerTest::MissingDirectoryLoadsNothing(void) {
     mcp::PluginManager plugins;
-    QCOMPARE(plugins.load_directory(QStringLiteral("/no/such/directory")), std::size_t{0});
+    QCOMPARE(plugins.load_directory(QStringLiteral("/no/such/directory")),
+             std::size_t{0});
     QCOMPARE(plugins.plugin_count(), std::size_t{0});
 }
 
@@ -142,23 +148,25 @@ void PluginManagerTest::CallsTypedFunctions(void) {
 
     // QString echo(QString) — natural return type, not QVariant.
     const QVariant echoed = plugins.call_function(
-        QStringLiteral("QString TestPlugin::echo(QString)"), { QStringLiteral("hi") });
+        QStringLiteral("QString TestPlugin::echo(QString)"),
+        {QStringLiteral("hi")});
     QCOMPARE(echoed.metaType(), QMetaType::fromType<QString>());
     QCOMPARE(echoed.toString(), QStringLiteral("hi"));
 
     // double add(double, double) — natural return type.
     const QVariant sum = plugins.call_function(
-        QStringLiteral("double TestPlugin::add(double,double)"), { 2.0, 40.0 });
+        QStringLiteral("double TestPlugin::add(double,double)"), {2.0, 40.0});
     QCOMPARE(sum.metaType(), QMetaType::fromType<double>());
     QCOMPARE(sum.toDouble(), 42.0);
 
     // A convertible argument (int → QString) is accepted.
     const QVariant coerced = plugins.call_function(
-        QStringLiteral("QString TestPlugin::echo(QString)"), { 7 });
+        QStringLiteral("QString TestPlugin::echo(QString)"), {7});
     QCOMPARE(coerced.toString(), QStringLiteral("7"));
 
     // QString dup()
-    const QVariant dup = plugins.call_function(QStringLiteral("QString TestPlugin::dup()"), {});
+    const QVariant dup =
+        plugins.call_function(QStringLiteral("QString TestPlugin::dup()"), {});
     QCOMPARE(dup.metaType(), QMetaType::fromType<QString>());
     QCOMPARE(dup.toString(), QStringLiteral("dup"));
 
@@ -169,7 +177,8 @@ void PluginManagerTest::CallsTypedFunctions(void) {
     QCOMPARE(meaning.toInt(), 42);
 
     const QVariant upper = plugins.call_function(
-        QStringLiteral("QString TestPlugin::upper(QString)"), { QStringLiteral("abc") });
+        QStringLiteral("QString TestPlugin::upper(QString)"),
+        {QStringLiteral("abc")});
     QCOMPARE(upper.metaType(), QMetaType::fromType<QString>());
     QCOMPARE(upper.toString(), QStringLiteral("ABC"));
 }
@@ -200,7 +209,8 @@ void PluginManagerTest::InvalidCallsThrow(void) {
 
     // Wrong arity.
     QVERIFY_EXCEPTION_THROWN(
-        plugins.call_function(QStringLiteral("QString TestPlugin::echo(QString)"), {}),
+        plugins.call_function(
+            QStringLiteral("QString TestPlugin::echo(QString)"), {}),
         mcp::Error);
 }
 
@@ -223,14 +233,15 @@ void PluginManagerTest::CrossPluginForwarding(void) {
     QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN)));
     QVERIFY(plugins.load_file(QString::fromUtf8(MCP_TEST_PLUGIN_PAIR)));
 
-    QCOMPARE(plugins.plugin_ids(), (QStringList{ "test-plugin", "test-pair" }));
+    QCOMPARE(plugins.plugin_ids(), (QStringList{"test-plugin", "test-pair"}));
     QVERIFY(plugins.has_function("QString TestPluginPair::forward(QString)"));
     QVERIFY(plugins.has_function("QString TestPlugin::echo(QString)"));
 
-    // TestPluginPair::forward calls TestPlugin::echo through the host and surfaces
-    // the other plugin's returned value in its own result.
+    // TestPluginPair::forward calls TestPlugin::echo through the host and
+    // surfaces the other plugin's returned value in its own result.
     const QVariant forwarded = plugins.call_function(
-        QStringLiteral("QString TestPluginPair::forward(QString)"), { QStringLiteral("cross") });
+        QStringLiteral("QString TestPluginPair::forward(QString)"),
+        {QStringLiteral("cross")});
     QCOMPARE(forwarded.toString(), QStringLiteral("test-pair received: cross"));
 }
 
@@ -260,20 +271,28 @@ void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced(void) {
     QVERIFY(mcp::log_sink_claimed());
 
     QVERIFY(plugins.plugin_object("test-logger") != nullptr);
-    QVERIFY(plugins.call_function(QStringLiteral("bool TestLogPlugin::claimed()"), {}).toBool());
+    QVERIFY(
+        plugins
+            .call_function(QStringLiteral("bool TestLogPlugin::claimed()"), {})
+            .toBool());
 
     const int before =
-        plugins.call_function(QStringLiteral("int TestLogPlugin::count()"), {}).toInt();
+        plugins.call_function(QStringLiteral("int TestLogPlugin::count()"), {})
+            .toInt();
 
     // A core log event must reach the plugin's sink (the plugin decides how to
     // handle it; here it counts/stashes it).
     MCP_LOG_WARN("logging-plugin-probe-line");
     const int after =
-        plugins.call_function(QStringLiteral("int TestLogPlugin::count()"), {}).toInt();
-    QVERIFY2(after >= before + 1, "logging plugin did not receive the log event");
-    QVERIFY(plugins.call_function(QStringLiteral("QString TestLogPlugin::last()"), {})
-                .toString()
-                .contains("logging-plugin-probe-line"));
+        plugins.call_function(QStringLiteral("int TestLogPlugin::count()"), {})
+            .toInt();
+    QVERIFY2(after >= before + 1,
+             "logging plugin did not receive the log event");
+    QVERIFY(
+        plugins
+            .call_function(QStringLiteral("QString TestLogPlugin::last()"), {})
+            .toString()
+            .contains("logging-plugin-probe-line"));
 
     // Once claimed, nobody can displace the logging system.
     QVERIFY(!mcp::set_log_sink([](mcp::LogLevel, std::string_view) {}));

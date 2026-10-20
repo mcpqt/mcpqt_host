@@ -94,17 +94,17 @@ void HttpEndToEnd::InitializeAndToolCall(void) {
             s.tool("add",
                    QJsonObject{
                        {"type", "object"},
-                       {"properties", QJsonObject{
-                           {"a", QJsonObject{{"type", "number"}}},
-                           {"b", QJsonObject{{"type", "number"}}}}},
+                       {"properties",
+                        QJsonObject{{"a", QJsonObject{{"type", "number"}}},
+                                    {"b", QJsonObject{{"type", "number"}}}}},
                        {"required", QJsonArray{"a", "b"}}},
                    [](const mcp::Json& args) -> mcp::CallToolResult {
                        const QJsonObject o = args.toObject();
                        const double a = mcp::require<double>(o, "a");
                        const double b = mcp::require<double>(o, "b");
-                       return {.content = { mcp::TextContent{
-                           .text = std::to_string(a + b),
-                       }}};
+                       return {.content = {mcp::TextContent{
+                                   .text = std::to_string(a + b),
+                               }}};
                    });
         },
     };
@@ -115,7 +115,7 @@ void HttpEndToEnd::InitializeAndToolCall(void) {
     topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
     topts.open_get_stream = false;  // server doesn't offer one in 3e/2
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::make_unique<mcp::HttpClientTransport>(topts));
 
     auto info = client.initialize().get();
@@ -127,8 +127,8 @@ void HttpEndToEnd::InitializeAndToolCall(void) {
     QCOMPARE(tools.tools.size(), std::size_t{1});
     QCOMPARE(tools.tools[0].name, std::string{"add"});
 
-    auto out = client.call_tool("add",
-                                QJsonObject{{"a", 2.5}, {"b", 1.5}}).get();
+    auto out =
+        client.call_tool("add", QJsonObject{{"a", 2.5}, {"b", 1.5}}).get();
     QVERIFY(!out.is_error.value_or(false));
     QCOMPARE(out.content.size(), std::size_t{1});
     QVERIFY(std::holds_alternative<mcp::TextContent>(out.content[0]));
@@ -160,7 +160,10 @@ void HttpEndToEnd::OriginAllowlistRejectsCrossOrigin(void) {
     std::promise<std::error_code> got_error;
     auto fut = got_error.get_future();
     transport->on_error([&](std::error_code ec) {
-        try { got_error.set_value(ec); } catch (...) {}
+        try {
+            got_error.set_value(ec);
+        } catch (...) {
+        }
     });
     transport->start();
     QVERIFY(!transport->send(R"({"jsonrpc":"2.0","method":"x"})"));
@@ -181,24 +184,31 @@ void HttpEndToEnd::ServerInitiatedSamplingThroughGetStream(void) {
             // Tool that itself asks the client to sample. Exercises
             // the full server-initiated → GET-stream → client →
             // back-through-POST round trip.
-            s.tool("ask",
-                   QJsonObject{
-                       {"type", "object"},
-                       {"properties", QJsonObject{{"q", QJsonObject{{"type", "string"}}}}}},
-                   [&s](const mcp::Json& args) -> mcp::CallToolResult {
-                       const std::string q = args.toObject().value("q").toString("?").toStdString();
-                       auto resp = s.sample(mcp::CreateMessageRequestParams{
-                           .messages = { mcp::SamplingMessage{
-                               .role    = mcp::Role::user,
-                               .content = { mcp::TextContent{.text = q} },
-                           }},
-                           .max_tokens = 100,
-                       }).get();
-                       return {.content = { mcp::TextContent{
-                           .text = "got: " + std::get<mcp::TextContent>(
-                                                resp.content.at(0)).text,
-                       }}};
-                   });
+            s.tool(
+                "ask",
+                QJsonObject{
+                    {"type", "object"},
+                    {"properties",
+                     QJsonObject{{"q", QJsonObject{{"type", "string"}}}}}},
+                [&s](const mcp::Json& args) -> mcp::CallToolResult {
+                    const std::string q =
+                        args.toObject().value("q").toString("?").toStdString();
+                    auto resp =
+                        s
+                            .sample(mcp::CreateMessageRequestParams{
+                                .messages = {mcp::SamplingMessage{
+                                    .role = mcp::Role::user,
+                                    .content = {mcp::TextContent{.text = q}},
+                                }},
+                                .max_tokens = 100,
+                            })
+                            .get();
+                    return {.content = {mcp::TextContent{
+                                .text = "got: " + std::get<mcp::TextContent>(
+                                                      resp.content.at(0))
+                                                      .text,
+                            }}};
+                });
         },
     };
     host.start();
@@ -207,18 +217,17 @@ void HttpEndToEnd::ServerInitiatedSamplingThroughGetStream(void) {
     topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
     topts.open_get_stream = true;  // required for sampling round-trip
 
-    mcp::Client client{ mcp::Implementation{.name = "tester", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::make_unique<mcp::HttpClientTransport>(topts));
-    client.set_sampling_handler(
-        [](const mcp::CreateMessageRequestParams& req) {
-            const std::string in =
-                std::get<mcp::TextContent>(req.messages.at(0).content.at(0)).text;
-            return mcp::CreateMessageResult{
-                .role    = mcp::Role::assistant,
-                .content = { mcp::TextContent{.text = "echo:" + in} },
-                .model   = "test-model",
-            };
-        });
+    client.set_sampling_handler([](const mcp::CreateMessageRequestParams& req) {
+        const std::string in =
+            std::get<mcp::TextContent>(req.messages.at(0).content.at(0)).text;
+        return mcp::CreateMessageResult{
+            .role = mcp::Role::assistant,
+            .content = {mcp::TextContent{.text = "echo:" + in}},
+            .model = "test-model",
+        };
+    });
     (void)client.initialize().get();
 
     auto out = client.call_tool("ask", QJsonObject{{"q", "hello"}}).get();
@@ -241,7 +250,7 @@ void HttpEndToEnd::SessionIdReusedAcrossCalls(void) {
             s.tool("echo", QJsonObject{{"type", "object"}},
                    [](const mcp::Json& args) -> mcp::CallToolResult {
                        (void)args;
-                       return {.content = { mcp::TextContent{.text = "ok"} }};
+                       return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         },
     };
@@ -253,7 +262,7 @@ void HttpEndToEnd::SessionIdReusedAcrossCalls(void) {
     auto transport_ptr = new mcp::HttpClientTransport{topts};
     std::unique_ptr<mcp::HttpClientTransport> transport{transport_ptr};
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::move(transport));
 
     (void)client.initialize().get();
@@ -313,18 +322,17 @@ void HttpEndToEnd::ClientSendsDeleteOnGracefulClose(void) {
         [](mcp::Server& s) {
             s.tool("noop", QJsonObject{{"type", "object"}},
                    [](const mcp::Json&) -> mcp::CallToolResult {
-                       return {.content = { mcp::TextContent{.text = "ok"} }};
+                       return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         },
     };
     host.start();
 
     mcp::HttpClientTransport::Options topts;
-    topts.url             = "http://127.0.0.1:" + std::to_string(host.port())
-                           + "/mcp";
+    topts.url = "http://127.0.0.1:" + std::to_string(host.port()) + "/mcp";
     topts.open_get_stream = false;
 
-    mcp::Client client{ mcp::Implementation{.name = "t", .version = "0"} };
+    mcp::Client client{mcp::Implementation{.name = "t", .version = "0"}};
     client.connect(std::make_unique<mcp::HttpClientTransport>(topts));
     (void)client.initialize().get();
     QCOMPARE(host.active_sessions(), std::size_t{1});
@@ -396,7 +404,8 @@ void HttpEndToEnd::PostToTerminatedSessionIs404(void) {
 
     const Headers base = base_headers();
 
-    auto init = mcp::test::raw_request(host.port(), "POST", "/mcp", base, kInitBody);
+    auto init =
+        mcp::test::raw_request(host.port(), "POST", "/mcp", base, kInitBody);
     QVERIFY(init.connected);
     QCOMPARE(init.status, 200);
     const QByteArray sid = init.header("Mcp-Session-Id");
@@ -409,15 +418,15 @@ void HttpEndToEnd::PostToTerminatedSessionIs404(void) {
 
     Headers stale = base;
     stale.emplace_back("Mcp-Session-Id", sid);
-    auto reuse = mcp::test::raw_request(
-        host.port(), "POST", "/mcp", stale,
-        R"({"jsonrpc":"2.0","id":2,"method":"ping"})");
+    auto reuse =
+        mcp::test::raw_request(host.port(), "POST", "/mcp", stale,
+                               R"({"jsonrpc":"2.0","id":2,"method":"ping"})");
     QVERIFY(reuse.connected);
     QCOMPARE(reuse.status, 404);
 
-    auto no_sid = mcp::test::raw_request(
-        host.port(), "POST", "/mcp", base,
-        R"({"jsonrpc":"2.0","id":3,"method":"ping"})");
+    auto no_sid =
+        mcp::test::raw_request(host.port(), "POST", "/mcp", base,
+                               R"({"jsonrpc":"2.0","id":3,"method":"ping"})");
     QVERIFY(no_sid.connected);
     QCOMPARE(no_sid.status, 400);
 
@@ -428,9 +437,9 @@ void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete(void) {
     // The pre-destruction hook must fire exactly once per session on the
     // client-DELETE teardown path, with the Server still alive. Track the
     // Server* seen so we can assert identity, and count invocations.
-    std::mutex                seen_mu;
+    std::mutex seen_mu;
     std::vector<mcp::Server*> seen;
-    std::atomic<int>          calls{0};
+    std::atomic<int> calls{0};
 
     mcp::HttpServerHost::Options opts;
     opts.host = "127.0.0.1";
@@ -453,7 +462,8 @@ void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete(void) {
     host.start();
 
     const Headers base = base_headers();
-    auto init = mcp::test::raw_request(host.port(), "POST", "/mcp", base, kInitBody);
+    auto init =
+        mcp::test::raw_request(host.port(), "POST", "/mcp", base, kInitBody);
     QVERIFY(init.connected);
     QCOMPARE(init.status, 200);
     const QByteArray sid = init.header("Mcp-Session-Id");
@@ -500,8 +510,8 @@ void HttpEndToEnd::OnSessionClosedFiresOnStop(void) {
     const Headers base = base_headers();
     // Two independent sessions (each a fresh initialize mints its own id).
     for (int i = 0; i < 2; ++i) {
-        auto init =
-            mcp::test::raw_request(host.port(), "POST", "/mcp", base, kInitBody);
+        auto init = mcp::test::raw_request(host.port(), "POST", "/mcp", base,
+                                           kInitBody);
         QVERIFY(init.connected);
         QCOMPARE(init.status, 200);
     }
@@ -520,7 +530,7 @@ void HttpEndToEnd::ClientCapabilitiesCapturedAtInitialize(void) {
     // Before initialize: nullopt. After an initialize advertising known
     // capabilities: the accessor returns them, readable from the factory
     // thread via the session-closed hook (any-thread contract).
-    mcp::Server fresh{ mcp::Implementation{.name = "fresh", .version = "0"} };
+    mcp::Server fresh{mcp::Implementation{.name = "fresh", .version = "0"}};
     QVERIFY(!fresh.client_capabilities().has_value());
 
     std::promise<mcp::ClientCapabilities> captured;
@@ -532,7 +542,10 @@ void HttpEndToEnd::ClientCapabilitiesCapturedAtInitialize(void) {
     opts.on_session_closed = [&](mcp::Server& s) {
         auto caps = s.client_capabilities();
         if (caps) {
-            try { captured.set_value(*caps); } catch (...) {}
+            try {
+                captured.set_value(*caps);
+            } catch (...) {
+            }
         }
     };
 
