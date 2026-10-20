@@ -80,7 +80,7 @@ public:
         /// request that sets an Origin header" — DNS-rebinding
         /// hardening. To accept all origins explicitly, set this to
         /// {"*"} (not recommended in production).
-        std::vector<std::string> allowed_origins;
+        std::vector<std::string> allowed_origins = {};
 
         /// Idle session timeout. RESERVED — not currently enforced.
         /// No reaper reads this: `last_seen` is stamped on each request
@@ -118,11 +118,11 @@ public:
             BearerStatus status = BearerStatus::invalid_token;
             /// For `insufficient_scope` only: space-separated scope
             /// string echoed as `scope="..."` in the 403 challenge.
-            std::string required_scopes;
+            std::string required_scopes = {};
         };
         using BearerValidator =
             std::function<BearerOutcome(std::string_view token)>;
-        BearerValidator bearer_validator;
+        BearerValidator bearer_validator = {};
 
         /// Realm name used in the WWW-Authenticate challenge. Optional;
         /// defaults to "mcp". MUST NOT contain `"`, `\`, or any control
@@ -138,13 +138,13 @@ public:
         /// metadata endpoint includes `Access-Control-Allow-Origin: *`
         /// because RFC 9728 expects discovery to be publicly readable
         /// cross-origin.
-        std::optional<Json> resource_metadata;
+        std::optional<Json> resource_metadata = {};
 
         /// Public URL of the resource metadata document, embedded in
         /// the WWW-Authenticate challenge so the client can discover
         /// the authorization server. Same control-char restriction
         /// as `auth_realm`.
-        std::string resource_metadata_url;
+        std::string resource_metadata_url = {};
 
         /// When `bearer_validator` is set and the host binds anything
         /// other than a loopback address, the SDK refuses to start
@@ -199,7 +199,7 @@ public:
         ///     is caught and logged, not propagated, but it will not
         ///     stop the teardown.
         using SessionClosedHook = std::function<void(Server& server)>;
-        SessionClosedHook on_session_closed;
+        SessionClosedHook on_session_closed = {};
     };
 
     HttpServerHost(Implementation server_info, Options opts,
@@ -234,8 +234,8 @@ private:
     Options m_opts;
     SessionFactory m_factory;
 
-    std::atomic<bool> m_started{false};
-    std::atomic<bool> m_stopping{false};
+    std::atomic<bool> m_started = false;
+    std::atomic<bool> m_stopping = false;
     std::unique_ptr<Impl> m_impl;
 };
 

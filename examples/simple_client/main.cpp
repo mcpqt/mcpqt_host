@@ -5,7 +5,7 @@
 // process, drives an end-to-end conversation, and prints results. Run
 // from the build directory:
 //
-//     ./examples/simple_client/simple_client \
+//     ./examples/simple_client/simple_client
 //         ./examples/calculator_server/calculator_server
 
 #include "mcp.h"

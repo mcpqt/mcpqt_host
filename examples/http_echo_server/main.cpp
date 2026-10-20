@@ -14,7 +14,7 @@
 // Defaults to 127.0.0.1:8848 /mcp. Set MCP_TOKEN in the environment
 // to require `Authorization: Bearer <token>` on every request.
 //
-//   claude mcp add --transport http echo http://127.0.0.1:8848/mcp \
+//   claude mcp add --transport http echo http://127.0.0.1:8848/mcp
 //       --header "Authorization: Bearer $MCP_TOKEN"
 
 #include "http_server_host.h"

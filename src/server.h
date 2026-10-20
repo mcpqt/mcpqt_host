@@ -57,9 +57,9 @@ public:
     /// `_meta`, and an `execution.taskSupport` policy gating
     /// task-augmented inbound calls.
     struct ToolMetadata {
-        std::optional<std::vector<Icon>> icons;
-        std::optional<ToolExecution> execution;
-        std::optional<Json> meta;
+        std::optional<std::vector<Icon>> icons = {};
+        std::optional<ToolExecution> execution = {};
+        std::optional<Json> meta = {};
     };
 
     /// Resource read handler. Receives the requested URI and returns
