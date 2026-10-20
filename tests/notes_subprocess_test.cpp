@@ -6,16 +6,16 @@
 // but exercises the SQLite/FTS5 demo: write → read → list → search →
 // delete (no elicitation prompt for non-glob keys).
 
-#include "client.hpp"
-#include "error.hpp"
-#include "protocol.hpp"
-#include "stdio_transport.hpp"
+#include "client.h"
+#include "error.h"
+#include "protocol.h"
+#include "stdio_transport.h"
 
-#if __has_include("test_binary_paths.hpp")
-#include "test_binary_paths.hpp"
+#if __has_include("test_binary_paths.h")
+#include "test_binary_paths.h"
 #endif
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

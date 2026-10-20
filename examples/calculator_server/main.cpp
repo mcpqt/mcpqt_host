@@ -15,7 +15,7 @@
 //   EOF
 //   }
 
-#include "mcp.hpp"
+#include "mcp.h"
 
 #include <atomic>
 #include <chrono>

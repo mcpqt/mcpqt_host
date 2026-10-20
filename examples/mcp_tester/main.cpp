@@ -19,7 +19,7 @@
 //   help                 show this help
 //   quit                 disconnect and exit
 
-#include "mcp.hpp"
+#include "mcp.h"
 
 #include <fcntl.h>
 #include <signal.h>

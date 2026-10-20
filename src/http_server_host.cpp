@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
-#include "http_server_host.hpp"
+#include "http_server_host.h"
 
-#include "error.hpp"
-#include "json.hpp"
-#include "log.hpp"
-#include "protocol.hpp"
-#include "session.hpp"
-#include "server.hpp"
-#include "transport.hpp"
+#include "error.h"
+#include "json.h"
+#include "log.h"
+#include "protocol.h"
+#include "session.h"
+#include "server.h"
+#include "transport.h"
 
 #include <QAbstractSocket>
 #include <QByteArray>

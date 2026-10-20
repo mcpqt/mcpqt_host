@@ -19,11 +19,11 @@
 
 #pragma once
 
-#include "protocol.hpp"
-#include "session.hpp"
-#include "transport.hpp"
+#include "protocol.h"
+#include "session.h"
+#include "transport.h"
 
-#include "json.hpp"
+#include "json.h"
 
 #include <atomic>
 #include <condition_variable>

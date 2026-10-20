@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // SPDX-License-Identifier: Apache-2.0
-#include "session.hpp"
+#include "session.h"
 
-#include "error.hpp"
-#include "log.hpp"
-#include "protocol.hpp"
-#include "transport.hpp"
+#include "error.h"
+#include "log.h"
+#include "protocol.h"
+#include "transport.h"
 
 #include <chrono>
 #include <exception>

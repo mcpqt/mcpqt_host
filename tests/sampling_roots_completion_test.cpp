@@ -6,13 +6,13 @@
 // session's worker dispatch (a tool handler in the server thread
 // must be able to await a request it issued back to the client).
 
-#include "in_memory_transport.hpp"
+#include "in_memory_transport.h"
 
-#include "client.hpp"
-#include "protocol.hpp"
-#include "server.hpp"
+#include "client.h"
+#include "protocol.h"
+#include "server.h"
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

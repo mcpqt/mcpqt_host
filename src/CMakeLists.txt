@@ -7,23 +7,23 @@ target_sources(mcp PRIVATE
     server.cpp
     session.cpp
     # Headers are listed so IDEs (Qt Creator, CLion, VS) show them.
-    client.hpp
-    error.hpp
-    json.hpp
-    log.hpp
-    mcp.hpp
-    plugin.hpp
-    plugin_manager.hpp
-    protocol.hpp
-    server.hpp
-    session.hpp
-    transport.hpp
+    client.h
+    error.h
+    json.h
+    log.h
+    mcp.h
+    plugin.h
+    plugin_manager.h
+    protocol.h
+    server.h
+    session.h
+    transport.h
 )
 
 # POSIX-only (poll(2) + fds). Windows consumers use the HTTP transport;
 # the header carries a matching #error guard.
 if(NOT WIN32)
-    target_sources(mcp PRIVATE stdio_transport.cpp stdio_transport.hpp)
+    target_sources(mcp PRIVATE stdio_transport.cpp stdio_transport.h)
 endif()
 
 # Optional HTTP transport, split into its own target so that binaries that
@@ -32,9 +32,9 @@ endif()
 if(MCP_ENABLE_HTTP)
     add_library(mcp-http
         http_client_transport.cpp
-        http_client_transport.hpp
+        http_client_transport.h
         http_server_host.cpp
-        http_server_host.hpp
+        http_server_host.h
     )
     add_library(mcp::http ALIAS mcp-http)
     # Export as `mcp::http` (not `mcp::mcp-http`) so installed consumers use the

@@ -9,7 +9,7 @@
 // All cross-plugin communication flows through the HostInterface handed to
 // initialize(); the plugin never knows or touches the host class.
 
-#include "plugin.hpp"
+#include "plugin.h"
 
 #include <QObject>
 #include <QString>
@@ -23,7 +23,7 @@ class HelloPlugin : public mcp::PluginInterface {
     Q_CLASSINFO("id", "hello")
     Q_CLASSINFO("version", "1.0.0")
     Q_CLASSINFO("description", "Demo plugin contributing a greeting and a sum function.")
-    // The IID string must match MCP_PLUGIN_IID in <plugin.hpp>.
+    // The IID string must match MCP_PLUGIN_IID in <plugin.h>.
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "hello_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 

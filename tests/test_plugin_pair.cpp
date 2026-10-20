@@ -9,9 +9,9 @@
 // The pair plugin declares a dependency on test-plugin, so the host will not
 // load it until test-plugin is available.
 
-#include "plugin.hpp"
+#include "plugin.h"
 
-#include "log.hpp"
+#include "log.h"
 
 #include <QObject>
 #include <QString>

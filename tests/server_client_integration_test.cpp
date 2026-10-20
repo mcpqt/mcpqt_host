@@ -5,15 +5,15 @@
 // These exercise the full path: Client → Session → Transport → Session →
 // Server → handler → reverse path back to the Client's future.
 
-#include "in_memory_transport.hpp"
+#include "in_memory_transport.h"
 
-#include "client.hpp"
-#include "error.hpp"
-#include "protocol.hpp"
-#include "server.hpp"
-#include "transport.hpp"
+#include "client.h"
+#include "error.h"
+#include "protocol.h"
+#include "server.h"
+#include "transport.h"
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

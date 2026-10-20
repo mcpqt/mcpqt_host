@@ -12,10 +12,10 @@
 #error "MCP_ENABLE_HTTP must be defined for http_client_transport_test"
 #endif
 
-#include "http_client_transport.hpp"
+#include "http_client_transport.h"
 
-#include "fake_http_server.hpp"
-#include "qt_test_support.hpp"
+#include "fake_http_server.h"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

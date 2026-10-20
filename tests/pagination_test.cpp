@@ -4,13 +4,13 @@
 // Pagination wiring tests. The server caps responses at `page_size`,
 // returning a `nextCursor` so the client can fetch the remainder.
 
-#include "in_memory_transport.hpp"
+#include "in_memory_transport.h"
 
-#include "client.hpp"
-#include "protocol.hpp"
-#include "server.hpp"
+#include "client.h"
+#include "protocol.h"
+#include "server.h"
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

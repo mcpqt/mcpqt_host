@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Plugin support (`mcp::PluginManager`).** The host can load Qt plugins that
-  implement `mcp::PluginInterface` (header `<mcp/plugin.hpp>`). `PluginManager`
+  implement `mcp::PluginInterface` (header `<mcp/plugin.h>`). `PluginManager`
   discovers plugins with `QPluginLoader` (single files or a directory) and
   unloads cleanly. Plugins are separate `MODULE` libraries that link only
   `mcp::mcp`. (Functions are exposed to other plugins only for now; mapping

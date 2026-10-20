@@ -19,12 +19,12 @@
 //
 // Build: see bench/README.md (standalone compile against build-rel/libmcp.a).
 
-#include "in_memory_transport.hpp"
+#include "in_memory_transport.h"
 
-#include "client.hpp"
-#include "protocol.hpp"
-#include "server.hpp"
-#include "transport.hpp"
+#include "client.h"
+#include "protocol.h"
+#include "server.h"
+#include "transport.h"
 
 
 #include <algorithm>

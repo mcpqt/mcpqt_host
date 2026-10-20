@@ -11,7 +11,7 @@
 //                        "QString HelloPlugin::greet(QString)"
 //   - host.callFunc()  → invoke one by signature, one QVariant per parameter
 
-#include "plugin.hpp"
+#include "plugin.h"
 
 #include <QObject>
 #include <QString>

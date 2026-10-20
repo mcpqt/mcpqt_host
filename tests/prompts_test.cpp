@@ -5,13 +5,13 @@
 // get_prompt, plus the protocol types PromptArgument, Prompt,
 // PromptMessage.
 
-#include "in_memory_transport.hpp"
+#include "in_memory_transport.h"
 
-#include "client.hpp"
-#include "protocol.hpp"
-#include "server.hpp"
+#include "client.h"
+#include "protocol.h"
+#include "server.h"
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

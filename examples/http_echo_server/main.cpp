@@ -17,9 +17,9 @@
 //   claude mcp add --transport http echo http://127.0.0.1:8848/mcp \
 //       --header "Authorization: Bearer $MCP_TOKEN"
 
-#include "http_server_host.hpp"
-#include "log.hpp"
-#include "mcp.hpp"
+#include "http_server_host.h"
+#include "log.h"
+#include "mcp.h"
 
 #include <QCoreApplication>
 

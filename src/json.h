@@ -16,7 +16,7 @@
 // `to_json` / `from_json` are overloaded for the STL types the protocol uses
 // (bool, integers, double, std::string, std::optional, std::vector) and for
 // every wire struct, whose overloads are declared alongside the type in
-// protocol.hpp and found via overload resolution / ADL.
+// protocol.h and found via overload resolution / ADL.
 //
 // Reading helpers enforce a single, consistent null-vs-absent policy:
 //   require<T>(obj, key)             required field; throws parse_error if absent
@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "error.hpp"
+#include "error.h"
 
 #include <QByteArray>
 #include <QJsonArray>

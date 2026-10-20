@@ -6,7 +6,7 @@
 // what to do with them, (b) other plugins/embedders cannot replace it once
 // claimed, and (c) the host pins it against unloading.
 
-#include "plugin.hpp"
+#include "plugin.h"
 
 #include <QObject>
 #include <QString>

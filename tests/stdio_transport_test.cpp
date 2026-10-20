@@ -5,9 +5,9 @@
 // pipes as if we were sitting between two processes, then drives the
 // transport directly without ever touching the test binary's real stdio.
 
-#include "stdio_transport.hpp"
+#include "stdio_transport.h"
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

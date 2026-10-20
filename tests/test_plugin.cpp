@@ -7,7 +7,7 @@
 //   QString TestPlugin::echo(QString), double TestPlugin::add(double,double),
 //   void TestPlugin::boom(), QString TestPlugin::dup(), void TestPlugin::reset().
 
-#include "plugin.hpp"
+#include "plugin.h"
 
 #include <QObject>
 #include <QString>
@@ -19,7 +19,7 @@ class TestPlugin : public mcp::PluginInterface {
     Q_OBJECT
     Q_CLASSINFO("id", "test-plugin")
     Q_CLASSINFO("version", "9.9.9")
-    // IID must match MCP_PLUGIN_IID in <plugin.hpp>.
+    // IID must match MCP_PLUGIN_IID in <plugin.h>.
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "test_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 

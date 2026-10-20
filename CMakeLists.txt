@@ -108,7 +108,7 @@ target_compile_features(mcp PUBLIC cxx_std_20)
 # identically for build-tree consumers (add_subdirectory / FetchContent) and
 # installed consumers.
 set(MCP_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated-include")
-file(GLOB _mcp_public_headers CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp")
+file(GLOB _mcp_public_headers CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h")
 foreach(_header IN LISTS _mcp_public_headers)
     get_filename_component(_header_name "${_header}" NAME)
     file(GENERATE
@@ -163,7 +163,7 @@ install(TARGETS ${_mcp_install_targets}
 
 install(DIRECTORY src/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mcp
-    FILES_MATCHING PATTERN "*.hpp"
+    FILES_MATCHING PATTERN "*.h"
 )
 
 install(EXPORT mcp-targets

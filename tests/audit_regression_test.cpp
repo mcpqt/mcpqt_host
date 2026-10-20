@@ -5,21 +5,21 @@
 // Each test pins one previously-broken behavior so it cannot silently
 // come back.
 
-#include "in_memory_transport.hpp"
+#include "in_memory_transport.h"
 
-#include "client.hpp"
-#include "error.hpp"
-#include "protocol.hpp"
-#include "server.hpp"
+#include "client.h"
+#include "error.h"
+#include "protocol.h"
+#include "server.h"
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 
 #include <QCoreApplication>
 
 #if !defined(_WIN32)
-#include "stdio_transport.hpp"
+#include "stdio_transport.h"
 #include <unistd.h>
 #endif
 

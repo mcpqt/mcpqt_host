@@ -12,7 +12,7 @@
 // (the core rejects replacement after a claim), and the host pins this plugin
 // so its sink code is never detached while in use.
 
-#include "plugin.hpp"
+#include "plugin.h"
 
 #include <QByteArray>
 #include <QJsonDocument>

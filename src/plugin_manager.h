@@ -32,7 +32,7 @@
 
 #pragma once
 
-#include "plugin.hpp"
+#include "plugin.h"
 
 #include <QHash>
 #include <QString>

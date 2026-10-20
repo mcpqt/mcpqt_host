@@ -24,8 +24,8 @@
 //   help                 show this help
 //   quit                 exit
 
-#include "mcp.hpp"
-#include "plugin_manager.hpp"
+#include "mcp.h"
+#include "plugin_manager.h"
 
 #include <QDir>
 #include <QFileInfo>

@@ -6,7 +6,7 @@
 // The C++ struct fields are snake_case; the JSON wire format uses the spec's
 // camelCase names. JSON serialization is implemented via ADL `to_json` /
 // `from_json` free functions defined alongside each type so they can be
-// reached through the generic codec in <json.hpp>.
+// reached through the generic codec in <json.h>.
 //
 // Encoding:  QJsonValue to_json(const T&);
 // Decoding:  void from_json(const QJsonValue&, T&);
@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include "error.hpp"
-#include "json.hpp"
+#include "error.h"
+#include "json.h"
 
 #include <cstdint>
 #include <optional>
@@ -119,7 +119,7 @@ struct JsonRpcResponse {
 [[nodiscard]] QJsonValue to_json(const JsonRpcResponse& r);
 void from_json(const QJsonValue& j, JsonRpcResponse& r);
 
-// Codec for the wire error object (defined here rather than in error.hpp so
+// Codec for the wire error object (defined here rather than in error.h so
 // that header stays free of the JSON codec).
 [[nodiscard]] QJsonValue to_json(const ErrorObject& e);
 void from_json(const QJsonValue& j, ErrorObject& e);

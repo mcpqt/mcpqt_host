@@ -22,7 +22,7 @@
     "Win32 stdio transport (overlapped I/O on stdin/stdout handles)."
 #endif
 
-#include "transport.hpp"
+#include "transport.h"
 
 #include <atomic>
 #include <cstddef>

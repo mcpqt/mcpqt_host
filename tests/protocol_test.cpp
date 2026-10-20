@@ -7,11 +7,11 @@
 
 #define QT_NO_DEPRECATED_WARNINGS
 
-#include "protocol.hpp"
+#include "protocol.h"
 
-#include "error.hpp"
+#include "error.h"
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

@@ -8,10 +8,10 @@
 // This first test covers the simple plugin (test_plugin). Additional plugins
 // (pair, logger, ...) are covered by tests added alongside their updates.
 
-#include "test_binary_paths.hpp"
+#include "test_binary_paths.h"
 
-#include "error.hpp"
-#include "plugin_manager.hpp"
+#include "error.h"
+#include "plugin_manager.h"
 
 #include <QCoreApplication>
 #include <QMetaType>

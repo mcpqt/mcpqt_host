@@ -6,13 +6,13 @@
 // the other Session or a hand-rolled handler as the "server", and
 // asserts the wire-level effect.
 
-#include "in_memory_transport.hpp"
+#include "in_memory_transport.h"
 
-#include "error.hpp"
-#include "protocol.hpp"
-#include "session.hpp"
+#include "error.h"
+#include "protocol.h"
+#include "session.h"
 
-#include "qt_test_support.hpp"
+#include "qt_test_support.h"
 
 #include <QtTest/QtTest>
 

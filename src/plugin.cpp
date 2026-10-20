@@ -4,7 +4,7 @@
 // PluginInterface implementation: meta-object-driven publication of public
 // slots as host-registered functions.
 
-#include "plugin.hpp"
+#include "plugin.h"
 
 #include <QMetaClassInfo>
 #include <QMetaMethod>

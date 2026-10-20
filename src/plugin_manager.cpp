@@ -5,10 +5,10 @@
 // reflection of each plugin's public slots into a cross-plugin function
 // registry, and host-side routing with typed QGenericArgument invocation.
 
-#include "plugin_manager.hpp"
+#include "plugin_manager.h"
 
-#include "error.hpp"
-#include "log.hpp"
+#include "error.h"
+#include "log.h"
 
 #include <QDir>
 #include <QFileInfo>

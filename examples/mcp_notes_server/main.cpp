@@ -41,7 +41,7 @@
 // many notes could in principle be slow. We keep individual
 // statements bounded so the worst case is a single file scan.
 
-#include "mcp.hpp"
+#include "mcp.h"
 
 #include <sqlite3.h>
 

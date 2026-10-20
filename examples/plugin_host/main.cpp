@@ -15,7 +15,7 @@
 // NOTE: functions are currently exposed only to other plugins, not as MCP
 // tools; wiring the registry to a Server's tool list is a later step.
 
-#include "mcp.hpp"
+#include "mcp.h"
 
 #include <QString>
 

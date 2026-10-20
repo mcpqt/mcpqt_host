@@ -57,7 +57,7 @@ agents, native applications, and high-throughput servers.
 ### A minimal server
 
 ```cpp
-#include <mcp/mcp.hpp>
+#include <mcp/mcp.h>
 
 int main() {
     mcp::Server server{
@@ -93,7 +93,7 @@ diagnostics; stdout is reserved for the JSON-RPC stream.
 ### A minimal client
 
 ```cpp
-#include <mcp/mcp.hpp>
+#include <mcp/mcp.h>
 
 int main() {
     auto pair = /* spawn the server, wire its stdio to a transport */;
@@ -234,7 +234,7 @@ against the host binary.
 > Functions are currently exposed only to other plugins, not as MCP tools.
 
 ```cpp
-#include <mcp/mcp.hpp>   // brings in PluginManager + PluginInterface
+#include <mcp/mcp.h>   // brings in PluginManager + PluginInterface
 
 mcp::PluginManager plugins;
 plugins.load_directory("/opt/my-host/plugins"); // or plugins.load_file("foo.so")
@@ -248,7 +248,7 @@ reflectively with `QGenericArgument`/`QGenericReturnArgument`, so its signature
 is its address, e.g. `myplugin.reverse(QString)`.
 
 ```cpp
-#include <mcp/plugin.hpp>
+#include <mcp/plugin.h>
 
 class MyPlugin : public mcp::PluginInterface {
     Q_OBJECT
