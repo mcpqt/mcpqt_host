@@ -11,9 +11,11 @@
 #include <stdexcept>
 #include <string>
 
-namespace {
+namespace
+{
 
-class CalculatorPlugin : public mcp::PluginInterface {
+  class CalculatorPlugin : public mcp::PluginInterface
+  {
     Q_OBJECT
     Q_CLASSINFO("id", "calculator")
     Q_CLASSINFO("version", "1.0.0")
@@ -23,29 +25,34 @@ class CalculatorPlugin : public mcp::PluginInterface {
                           "calculator_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 
-public:
+  public:
     explicit CalculatorPlugin(QObject* parent = nullptr)
-        : mcp::PluginInterface(parent) {}
+        : mcp::PluginInterface(parent)
+    {
+    }
 
-    void initialize(const mcp::HostInterface& host) override {
-        m_host = host;
-        registerPublicSlots();
+    void initialize(const mcp::HostInterface& host) override
+    {
+      m_host = host;
+      registerPublicSlots();
     }
     void shutdown(void) override {}
 
-public slots:
+  public slots:
     double add(double a, double b) { return a + b; }
     double subtract(double a, double b) { return a - b; }
     double multiply(double a, double b) { return a * b; }
 
-    double divide(double a, double b) {
-        if (b == 0.0) {
-            throw std::runtime_error("division by zero");
-        }
-        return a / b;
+    double divide(double a, double b)
+    {
+      if(b == 0.0)
+      {
+        throw std::runtime_error("division by zero");
+      }
+      return a / b;
     }
-};
+  };
 
-}  // namespace
+} // namespace
 
 #include "calculator_plugin.moc"

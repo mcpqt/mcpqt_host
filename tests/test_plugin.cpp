@@ -15,43 +15,46 @@
 #include <stdexcept>
 #include <string>
 
-class TestPlugin : public mcp::PluginInterface {
-    Q_OBJECT
-    Q_CLASSINFO("id", "test-plugin")
-    Q_CLASSINFO("version", "9.9.9")
-    // IID must match MCP_PLUGIN_IID in <plugin.h>.
-    Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "test_plugin.json")
-    Q_INTERFACES(mcp::PluginInterface)
+class TestPlugin : public mcp::PluginInterface
+{
+  Q_OBJECT
+  Q_CLASSINFO("id", "test-plugin")
+  Q_CLASSINFO("version", "9.9.9")
+  // IID must match MCP_PLUGIN_IID in <plugin.h>.
+  Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "test_plugin.json")
+  Q_INTERFACES(mcp::PluginInterface)
 
 public:
-    explicit TestPlugin(QObject* parent = nullptr)
-        : mcp::PluginInterface(parent) {}
+  explicit TestPlugin(QObject* parent = nullptr) : mcp::PluginInterface(parent)
+  {
+  }
 
-    void initialize(const mcp::HostInterface& host) override {
-        m_host = host;
-        registerPublicSlots();
-    }
-    void shutdown(void) override {}
+  void initialize(const mcp::HostInterface& host) override
+  {
+    m_host = host;
+    registerPublicSlots();
+  }
+  void shutdown(void) override {}
 
 public slots:
-    // Natural return type, one typed QString parameter.
-    QString echo(QString message) { return message; }
+  // Natural return type, one typed QString parameter.
+  QString echo(QString message) { return message; }
 
-    // Typed numeric parameters and a natural double return.
-    double add(double a, double b) { return a + b; }
+  // Typed numeric parameters and a natural double return.
+  double add(double a, double b) { return a + b; }
 
-    // void return, no parameters.
-    void reset(void) {}
+  // void return, no parameters.
+  void reset(void) {}
 
-    // void return that throws; the host maps this to an error.
-    void boom(void) { throw std::runtime_error("boom from plugin"); }
+  // void return that throws; the host maps this to an error.
+  void boom(void) { throw std::runtime_error("boom from plugin"); }
 
-    // Natural QString return.
-    QString dup(void) { return QStringLiteral("dup"); }
+  // Natural QString return.
+  QString dup(void) { return QStringLiteral("dup"); }
 
-    // Non-QVariant return types (carried via QGenericReturnArgument).
-    int meaning(void) { return 42; }
-    QString upper(QString text) { return text.toUpper(); }
+  // Non-QVariant return types (carried via QGenericReturnArgument).
+  int meaning(void) { return 42; }
+  QString upper(QString text) { return text.toUpper(); }
 };
 
 #include "test_plugin.moc"

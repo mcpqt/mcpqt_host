@@ -18,22 +18,29 @@
 #include <system_error>
 #include <thread>
 
-namespace mcp::test {
+namespace mcp::test
+{
 
-class InMemoryTransport;
+  class InMemoryTransport;
 
-struct Channel;  // forward
+  struct Channel; // forward
 
-struct InMemoryTransportPair {
+  struct InMemoryTransportPair
+  {
     std::unique_ptr<InMemoryTransport> a;
     std::unique_ptr<InMemoryTransport> b;
-};
+  };
 
-InMemoryTransportPair make_in_memory_pair(void);
+  InMemoryTransportPair make_in_memory_pair(void);
 
-class InMemoryTransport final : public Transport {
-public:
-    enum class Side : int { kA = 0, kB = 1 };
+  class InMemoryTransport final : public Transport
+  {
+  public:
+    enum class Side : int
+    {
+      kA = 0,
+      kB = 1
+    };
 
     InMemoryTransport(Side side, std::shared_ptr<Channel> ch);
     ~InMemoryTransport() override;
@@ -46,20 +53,20 @@ public:
     [[nodiscard]] std::error_code send(QByteArrayView frame) override;
     [[nodiscard]] bool is_open(void) const noexcept override;
 
-private:
+  private:
     void run_dispatch(void);
 
     Side m_side;
     std::shared_ptr<Channel> m_ch;
 
-    std::atomic<bool> m_started{false};
-    std::atomic<bool> m_closed{false};
+    std::atomic<bool> m_started{ false };
+    std::atomic<bool> m_closed{ false };
 
     std::thread m_worker;
 
     MessageCallback m_on_message;
     ErrorCallback m_on_error;
     CloseCallback m_on_close;
-};
+  };
 
-}  // namespace mcp::test
+} // namespace mcp::test

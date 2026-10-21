@@ -29,7 +29,7 @@
 #pragma once
 
 #if !defined(MCP_ENABLE_HTTP)
-#error                                                                         \
+#error                                                                        \
     "mcp::HttpClientTransport requires MCP_ENABLE_HTTP=1 (CMake option MCP_ENABLE_HTTP=ON)"
 #endif
 
@@ -52,59 +52,62 @@
 #include <thread>
 #include <unordered_map>
 
-namespace mcp {
+namespace mcp
+{
 
-class HttpClientTransport final : public Transport {
-public:
-    struct Options {
-        /// Endpoint URL, e.g. "http://localhost:8080/mcp".
-        QString url;
+  class HttpClientTransport final : public Transport
+  {
+  public:
+    struct Options
+    {
+      /// Endpoint URL, e.g. "http://localhost:8080/mcp".
+      QString url;
 
-        /// MCP protocol version sent on every request via the
-        /// `MCP-Protocol-Version` header. Defaults to the latest spec
-        /// version this SDK supports.
-        QString protocol_version = "2025-11-25";
+      /// MCP protocol version sent on every request via the
+      /// `MCP-Protocol-Version` header. Defaults to the latest spec
+      /// version this SDK supports.
+      QString protocol_version = "2025-11-25";
 
-        /// Optional pre-existing session id (resume case). Leave empty
-        /// for a fresh session — the server will assign one on the
-        /// initialize response, and we'll capture it.
-        QString session_id;
+      /// Optional pre-existing session id (resume case). Leave empty
+      /// for a fresh session — the server will assign one on the
+      /// initialize response, and we'll capture it.
+      QString session_id;
 
-        /// Connect timeout (TCP handshake + TLS).
-        std::chrono::milliseconds connect_timeout{10'000};
+      /// Connect timeout (TCP handshake + TLS).
+      std::chrono::milliseconds connect_timeout{ 10'000 };
 
-        /// Per-request total timeout.
-        std::chrono::milliseconds request_timeout{30'000};
+      /// Per-request total timeout.
+      std::chrono::milliseconds request_timeout{ 30'000 };
 
-        /// Extra HTTP headers attached to every outbound request.
-        QHash<QString, QString> extra_headers;
+      /// Extra HTTP headers attached to every outbound request.
+      QHash<QString, QString> extra_headers;
 
-        /// If true, open a long-lived GET stream on `start()` so the
-        /// server can push requests and notifications. If false, the
-        /// transport is request/response-only (no server-initiated
-        /// traffic).
-        bool open_get_stream = true;
+      /// If true, open a long-lived GET stream on `start()` so the
+      /// server can push requests and notifications. If false, the
+      /// transport is request/response-only (no server-initiated
+      /// traffic).
+      bool open_get_stream = true;
 
-        // -------- 2025-11-25 OAuth 2.1 authorization (optional) --------
-        //
-        // When `access_token` is non-empty, every outbound POST and
-        // GET carries `Authorization: Bearer <access_token>` per
-        // RFC 6750. The SDK does NOT itself perform the OAuth flow
-        // (PKCE, dynamic client registration, code exchange) — the
-        // application is expected to obtain a token (via Protected
-        // Resource Metadata discovery + AS interaction) and supply
-        // it here.
-        QString access_token;
+      // -------- 2025-11-25 OAuth 2.1 authorization (optional) --------
+      //
+      // When `access_token` is non-empty, every outbound POST and
+      // GET carries `Authorization: Bearer <access_token>` per
+      // RFC 6750. The SDK does NOT itself perform the OAuth flow
+      // (PKCE, dynamic client registration, code exchange) — the
+      // application is expected to obtain a token (via Protected
+      // Resource Metadata discovery + AS interaction) and supply
+      // it here.
+      QString access_token;
 
-        /// Hook fired when the server replies 401/403 to a request.
-        /// Receives the raw `WWW-Authenticate` header value (may be
-        /// empty if the server omits it). The application can parse
-        /// it for `resource_metadata="<url>"` to drive discovery.
-        /// After this fires, the offending POST has already failed
-        /// and the transport delivers an error to the caller; the
-        /// callback is purely a side-channel notification.
-        std::function<void(int status, const QString& www_authenticate)>
-            on_unauthorized;
+      /// Hook fired when the server replies 401/403 to a request.
+      /// Receives the raw `WWW-Authenticate` header value (may be
+      /// empty if the server omits it). The application can parse
+      /// it for `resource_metadata="<url>"` to drive discovery.
+      /// After this fires, the offending POST has already failed
+      /// and the transport delivers an error to the caller; the
+      /// callback is purely a side-channel notification.
+      std::function<void(int status, const QString& www_authenticate)>
+          on_unauthorized;
     };
 
     explicit HttpClientTransport(Options opts);
@@ -120,9 +123,10 @@ public:
     void close(void) override;
 
     [[nodiscard]] std::error_code send(QByteArrayView frame) override;
-    [[nodiscard]] bool is_open(void) const noexcept override {
-        return m_started.load(std::memory_order_acquire) &&
-               !m_closed.load(std::memory_order_acquire);
+    [[nodiscard]] bool is_open(void) const noexcept override
+    {
+      return m_started.load(std::memory_order_acquire)
+             && !m_closed.load(std::memory_order_acquire);
     }
 
     // HTTP-specific ---------------------------------------------------------
@@ -140,7 +144,7 @@ public:
     /// Read the current access token. Thread-safe.
     [[nodiscard]] QString access_token(void) const;
 
-private:
+  private:
     void worker_loop(void);
     void process_send(QByteArray frame);
     void deliver_frame(QByteArray raw);
@@ -150,9 +154,9 @@ private:
 
     Options m_opts;
 
-    std::atomic<bool> m_started{false};
-    std::atomic<bool> m_closed{false};
-    std::atomic<bool> m_close_fired{false};
+    std::atomic<bool> m_started{ false };
+    std::atomic<bool> m_closed{ false };
+    std::atomic<bool> m_close_fired{ false };
 
     // Outbound queue: frames the application has handed us that are
     // waiting to go out as POSTs. The worker thread drains, then
@@ -200,7 +204,7 @@ private:
     // racing the application's token-refresh logic. Fire ONCE per
     // "auth-fail batch" — re-arm on the next successful 2xx. Reads
     // are atomic-CAS so dedup decisions don't need the m_auth_mu.
-    std::atomic<bool> m_auth_callback_armed{true};
+    std::atomic<bool> m_auth_callback_armed{ true };
 
     MessageCallback m_on_message;
     ErrorCallback m_on_error;
@@ -211,6 +215,6 @@ private:
     // QtNetwork's include path on their own translation units.
     struct ClientImpl;
     std::unique_ptr<ClientImpl> m_impl;
-};
+  };
 
-}  // namespace mcp
+} // namespace mcp

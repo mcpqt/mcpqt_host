@@ -36,14 +36,17 @@
 #include <string>
 #include <unordered_map>
 
-namespace mcp {
+namespace mcp
+{
 
-namespace detail {
-class TaskStore;
-}
+  namespace detail
+  {
+    class TaskStore;
+  }
 
-class Server {
-public:
+  class Server
+  {
+  public:
     /// Tool handler. Takes the inbound `arguments` JSON (or null if the
     /// client omitted them) and returns a CallToolResult. Throwing
     /// `mcp::Error` reports a JSON-RPC error to the client; throwing
@@ -52,24 +55,25 @@ public:
     /// The result's `isError` field is the right way to report
     /// in-protocol failures (LLM-visible). MCP errors are reserved for
     /// "I couldn't even find this tool" / out-of-band conditions.
-    using ToolHandler =
-        std::function<CallToolResult(const QJsonValue& arguments)>;
+    using ToolHandler
+        = std::function<CallToolResult(const QJsonValue& arguments)>;
 
     /// Bag of optional per-tool metadata applied at registration. The
     /// 2025-11-25 spec lets every tool advertise icons, structured
     /// `_meta`, and an `execution.taskSupport` policy gating
     /// task-augmented inbound calls.
-    struct ToolMetadata {
-        std::optional<QList<Icon>> icons = {};
-        std::optional<ToolExecution> execution = {};
-        QJsonValue meta;
+    struct ToolMetadata
+    {
+      std::optional<QList<Icon>> icons = {};
+      std::optional<ToolExecution> execution = {};
+      QJsonValue meta;
     };
 
     /// Resource read handler. Receives the requested URI and returns
     /// the resource contents. Throwing mcp::Error is reported back as a
     /// JSON-RPC error.
-    using ResourceReadHandler =
-        std::function<ReadResourceResult(const QString& uri)>;
+    using ResourceReadHandler
+        = std::function<ReadResourceResult(const QString& uri)>;
 
     /// Prompt-get handler. Receives the (string-keyed, string-valued)
     /// argument map (which may be empty) and returns the rendered
@@ -181,8 +185,8 @@ public:
     /// The spec lets either side emit the completion notification
     /// (the originator depends on which side actually witnesses the
     /// out-of-band flow conclude) — the SDK accepts it on either.
-    using ElicitationCompleteHandler =
-        std::function<void(QString elicitation_id)>;
+    using ElicitationCompleteHandler
+        = std::function<void(QString elicitation_id)>;
     void set_elicitation_complete_handler(ElicitationCompleteHandler handler);
 
     /// `Server::elicit` with an explicit per-call timeout. Useful when
@@ -193,8 +197,8 @@ public:
 
     /// Register an autocompletion handler for prompt args or resource
     /// template URIs. The handler returns a list of candidate values.
-    using CompletionHandler =
-        std::function<CompletionValues(const CompleteRequestParams&)>;
+    using CompletionHandler
+        = std::function<CompletionValues(const CompleteRequestParams&)>;
     Server& enable_completion(CompletionHandler handler);
 
     /// Enable the `tasks` capability for tool calls. Once enabled, a
@@ -215,9 +219,9 @@ public:
     /// Calling enable_tasks() takes effect at the next `run()`. Calling
     /// it again replaces the configured limits. Calling it after
     /// `run()` is in progress is racy and not supported.
-    Server&
-    enable_tasks(std::optional<std::int64_t> default_ttl_ms = std::nullopt,
-                 std::size_t max_concurrent = 0);
+    Server& enable_tasks(std::optional<std::int64_t> default_ttl_ms
+                         = std::nullopt,
+                         std::size_t max_concurrent = 0);
 
     /// The capabilities the connected client advertised in its
     /// `initialize` request (roots, sampling, elicitation, tasks, …).
@@ -247,7 +251,7 @@ public:
     /// stop() from the main thread).
     void stop(void);
 
-private:
+  private:
     void on_initialize(const InitializeRequestParams& params,
                        JsonRpcResponse& resp);
     QJsonValue handle_initialize(const QJsonValue& params);
@@ -268,18 +272,20 @@ private:
     QJsonValue handle_list_tasks(const QJsonValue& params);
     QJsonValue handle_cancel_task(const QJsonValue& params);
 
-    struct ToolEntry {
-        Tool descriptor;
-        ToolHandler handler;
+    struct ToolEntry
+    {
+      Tool descriptor;
+      ToolHandler handler;
     };
-    struct ResourceEntry {
-        Resource descriptor;
-        ResourceReadHandler handler;
+    struct ResourceEntry
+    {
+      Resource descriptor;
+      ResourceReadHandler handler;
     };
 
     Implementation m_server_info;
     QString m_instructions;
-    std::size_t m_page_size{0};
+    std::size_t m_page_size{ 0 };
     QHash<QString, ToolEntry> m_tools;
     std::mutex m_tools_mu;
 
@@ -288,15 +294,16 @@ private:
     ResourceReadHandler m_fallback_resource_handler;
     std::mutex m_resources_mu;
 
-    struct PromptEntry {
-        Prompt descriptor;
-        PromptGetHandler handler;
+    struct PromptEntry
+    {
+      Prompt descriptor;
+      PromptGetHandler handler;
     };
     QHash<QString, PromptEntry> m_prompts;
     std::mutex m_prompts_mu;
 
-    std::atomic<bool> m_logging_enabled{false};
-    std::atomic<LoggingLevel> m_log_level{LoggingLevel::info};
+    std::atomic<bool> m_logging_enabled{ false };
+    std::atomic<LoggingLevel> m_log_level{ LoggingLevel::info };
 
     CompletionHandler m_completion_handler;
     std::mutex m_completion_mu;
@@ -313,7 +320,7 @@ private:
     /// error.
     std::unique_ptr<detail::TaskStore> m_tasks;
     std::optional<std::int64_t> m_tasks_default_ttl_ms;
-    std::size_t m_tasks_max_concurrent{0};
+    std::size_t m_tasks_max_concurrent{ 0 };
 
     /// Acquire a strong reference to the live Session; returns empty
     /// when run() has not started or has already returned. Lets
@@ -323,7 +330,7 @@ private:
 
     std::shared_ptr<Session> m_session;
     mutable std::mutex m_session_mu;
-    std::atomic<bool> m_initialized{false};
+    std::atomic<bool> m_initialized{ false };
 
     /// Client capabilities captured at initialize, readable any-thread.
     /// Guarded by its own mutex (narrow surface, like the handler
@@ -331,9 +338,9 @@ private:
     /// m_session_mu.
     std::optional<ClientCapabilities> m_client_capabilities;
     mutable std::mutex m_client_capabilities_mu;
-    std::atomic<bool> m_stop_requested{false};
+    std::atomic<bool> m_stop_requested{ false };
     std::mutex m_stop_mu;
     std::condition_variable m_stop_cv;
-};
+  };
 
-}  // namespace mcp
+} // namespace mcp

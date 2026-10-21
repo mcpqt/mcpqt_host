@@ -53,55 +53,59 @@ class QMetaMethod;
 class QObject;
 class QPluginLoader;
 
-namespace mcp {
+namespace mcp
+{
 
-class Server;
+  class Server;
 
-/// One tool declaration from a plugin's metadata: a published function
-/// signature paired with the MCP Tool descriptor. Declared in the
-/// plugin's Q_PLUGIN_METADATA JSON as a signature-keyed object:
-///
-///   "Tools": {
-///     "QString MyPlugin::reverse(QString)": {
-///       "name": "reverse",
-///       "description": "Reverse a string.",
-///       "inputSchema": {
-///         "type": "object",
-///         "properties": { "text": { "type": "string" } }
-///       }
-///     }
-///   }
-///
-/// Only entries whose signature names a function the plugin actually publishes
-/// are retained.
-struct PluginTool {
+  /// One tool declaration from a plugin's metadata: a published function
+  /// signature paired with the MCP Tool descriptor. Declared in the
+  /// plugin's Q_PLUGIN_METADATA JSON as a signature-keyed object:
+  ///
+  ///   "Tools": {
+  ///     "QString MyPlugin::reverse(QString)": {
+  ///       "name": "reverse",
+  ///       "description": "Reverse a string.",
+  ///       "inputSchema": {
+  ///         "type": "object",
+  ///         "properties": { "text": { "type": "string" } }
+  ///       }
+  ///     }
+  ///   }
+  ///
+  /// Only entries whose signature names a function the plugin actually
+  /// publishes are retained.
+  struct PluginTool
+  {
     QString signature;
     Tool tool;
-};
+  };
 
-/// One resource declaration from a plugin's metadata: the resource descriptor
-/// plus the signature of the published function that renders it. Declared as a
-/// URI-keyed object:
-///
-///   "Resources": {
-///     "notes://all": {
-///       "name": "all-notes",
-///       "description": "Every note as JSON",
-///       "mimeType": "application/json",
-///       "signature": "QString NotesPlugin::readAll(QString)"
-///     }
-///   }
-///
-/// The reader takes an optional single QString (the URI) and returns the
-/// resource text (QString, or any value converted to JSON text).
-struct PluginResource {
+  /// One resource declaration from a plugin's metadata: the resource
+  /// descriptor plus the signature of the published function that renders it.
+  /// Declared as a URI-keyed object:
+  ///
+  ///   "Resources": {
+  ///     "notes://all": {
+  ///       "name": "all-notes",
+  ///       "description": "Every note as JSON",
+  ///       "mimeType": "application/json",
+  ///       "signature": "QString NotesPlugin::readAll(QString)"
+  ///     }
+  ///   }
+  ///
+  /// The reader takes an optional single QString (the URI) and returns the
+  /// resource text (QString, or any value converted to JSON text).
+  struct PluginResource
+  {
     QString uri;
     Resource resource;
     QString signature;
-};
+  };
 
-class PluginManager {
-public:
+  class PluginManager
+  {
+  public:
     PluginManager(void);
     ~PluginManager();
 
@@ -117,10 +121,10 @@ public:
     /// Dependencies: a plugin may declare, in its metadata JSON, a
     /// `dependencies` array of fully-qualified function signatures (and/or
     /// plugin ids) that must be available before it is initialized — e.g.
-    /// `"dependencies": ["QString HelloPlugin::greet(QString)"]`. Each entry is
-    /// satisfied if a previously-loaded plugin already published that
-    /// signature, or if a plugin with that id is already loaded. A plugin whose
-    /// dependencies are not yet satisfiable fails to load (false);
+    /// `"dependencies": ["QString HelloPlugin::greet(QString)"]`. Each entry
+    /// is satisfied if a previously-loaded plugin already published that
+    /// signature, or if a plugin with that id is already loaded. A plugin
+    /// whose dependencies are not yet satisfiable fails to load (false);
     /// `load_directory()` retries such plugins automatically.
     bool load_file(const QString& file);
 
@@ -132,10 +136,10 @@ public:
     std::size_t load_directory(const QString& directory);
 
     /// Unload a single plugin by its id. Returns false if no such plugin is
-    /// loaded, if it is pinned (owns the log sink), or if another loaded plugin
-    /// declares a dependency on it or on one of its published functions —
-    /// reverse dependencies are honored so a dependent is never left dangling.
-    /// Must not be called while that plugin's calls are in flight.
+    /// loaded, if it is pinned (owns the log sink), or if another loaded
+    /// plugin declares a dependency on it or on one of its published functions
+    /// — reverse dependencies are honored so a dependent is never left
+    /// dangling. Must not be called while that plugin's calls are in flight.
     bool unload_plugin(const QString& id);
 
     /// Call shutdown() on every unloadable plugin and detach its shared
@@ -187,14 +191,15 @@ public:
     [[nodiscard]] QVariant call_function(const QString& signature,
                                          const QVariantList& args = {}) const;
 
-private:
+  private:
     struct Instance;
     struct FunctionEntry;
 
-    enum class LoadOutcome {
-        Loaded,
-        UnsatisfiedDependencies,  ///< declared deps not all available yet
-        Failed,                   ///< any other failure
+    enum class LoadOutcome
+    {
+      Loaded,
+      UnsatisfiedDependencies, ///< declared deps not all available yet
+      Failed,                  ///< any other failure
     };
 
     /// Parse the `dependencies` array from a plugin's metadata JSON.
@@ -235,8 +240,8 @@ private:
     /// Unload a single plugin (shutdown + detach + erase from the registry).
     void unload_instance(const std::shared_ptr<Instance>& inst);
 
-    QHash<QString, FunctionEntry> m_registry;  // signature -> entry
+    QHash<QString, FunctionEntry> m_registry; // signature -> entry
     QList<std::shared_ptr<Instance>> m_plugins;
-};
+  };
 
-}  // namespace mcp
+} // namespace mcp

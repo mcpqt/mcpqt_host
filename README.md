@@ -402,7 +402,7 @@ logging plugin is present.
 
 A claiming plugin is **pinned**: `PluginManager::unload_all()` will not detach
 it, because the installed sink runs code from the plugin's library. See
-`examples/log_plugin` for a JSON-lines implementation (writes to
+`plugins/log_plugin` for a JSON-lines implementation (writes to
 `$MCP_LOG_FILE`, else stderr).
 
 ## Building

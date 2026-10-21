@@ -22,23 +22,25 @@
 #include <cstdlib>
 #include <iostream>
 
-int main(int argc, char** argv) {
-    mcp::set_log_level(mcp::LogLevel::info);
+int main(int argc, char** argv)
+{
+  mcp::set_log_level(mcp::LogLevel::info);
 
-    const QString directory =
-        (argc > 1)
-            ? QString::fromLocal8Bit(argv[1])
-            : qEnvironmentVariable("MCP_PLUGIN_DIR", QStringLiteral("plugins"));
+  const QString directory
+      = (argc > 1) ? QString::fromLocal8Bit(argv[1])
+                   : qEnvironmentVariable("MCP_PLUGIN_DIR",
+                                          QStringLiteral("plugins"));
 
-    mcp::PluginManager plugins;
+  mcp::PluginManager plugins;
 
-    const std::size_t loaded = plugins.load_directory(directory);
-    std::cerr << "Loaded " << loaded << " plugin(s) from "
-              << directory.toStdString() << "\n";
-    for (const QString& signature : plugins.functions()) {
-        std::cerr << "  function: " << signature.toStdString() << "\n";
-    }
+  const std::size_t loaded = plugins.load_directory(directory);
+  std::cerr << "Loaded " << loaded << " plugin(s) from "
+            << directory.toStdString() << "\n";
+  for(const QString& signature : plugins.functions())
+  {
+    std::cerr << "  function: " << signature.toStdString() << "\n";
+  }
 
-    plugins.unload_all();
-    return EXIT_SUCCESS;
+  plugins.unload_all();
+  return EXIT_SUCCESS;
 }

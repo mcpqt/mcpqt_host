@@ -28,36 +28,30 @@
 #include <cstdint>
 #include <string>
 
-namespace mcp::test {
+namespace mcp::test
+{
 
-inline QJsonValue jv(bool v) {
-    return QJsonValue(v);
-}
-inline QJsonValue jv(int v) {
-    return QJsonValue(v);
-}
-inline QJsonValue jv(qint64 v) {
-    return QJsonValue(v);
-}
-inline QJsonValue jv(double v) {
-    return QJsonValue(v);
-}
-inline QJsonValue jv(const char* v) {
+  inline QJsonValue jv(bool v) { return QJsonValue(v); }
+  inline QJsonValue jv(int v) { return QJsonValue(v); }
+  inline QJsonValue jv(qint64 v) { return QJsonValue(v); }
+  inline QJsonValue jv(double v) { return QJsonValue(v); }
+  inline QJsonValue jv(const char* v)
+  {
     return QJsonValue(QString::fromUtf8(v));
-}
-inline QJsonValue jv(const QString& v) {
-    return QJsonValue(v);
-}
+  }
+  inline QJsonValue jv(const QString& v) { return QJsonValue(v); }
 
-/// True when `v` is an object that contains `key`.
-inline bool has_key(const QJsonValue& v, const char* key) {
+  /// True when `v` is an object that contains `key`.
+  inline bool has_key(const QJsonValue& v, const char* key)
+  {
     return v.isObject() && v.toObject().contains(QString::fromUtf8(key));
-}
+  }
 
-/// Object/array equality that sidesteps QJsonValue's ordering-independent
-/// assumptions when comparing whole documents.
-inline bool json_equal(const QJsonValue& a, const QJsonValue& b) {
+  /// Object/array equality that sidesteps QJsonValue's ordering-independent
+  /// assumptions when comparing whole documents.
+  inline bool json_equal(const QJsonValue& a, const QJsonValue& b)
+  {
     return a == b;
-}
+  }
 
-}  // namespace mcp::test
+} // namespace mcp::test

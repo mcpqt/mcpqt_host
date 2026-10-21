@@ -29,10 +29,12 @@
 #include <optional>
 #include <string>
 
-namespace mcp {
+namespace mcp
+{
 
-class Client {
-public:
+  class Client
+  {
+  public:
     explicit Client(Implementation client_info);
 
     Client(const Client&) = delete;
@@ -118,8 +120,8 @@ public:
     /// Register a handler for inbound resource-update notifications.
     /// The handler is called whenever the server sends
     /// `notifications/resources/updated`.
-    using ResourceUpdatedHandler =
-        std::function<void(const ResourceUpdatedNotificationParams&)>;
+    using ResourceUpdatedHandler
+        = std::function<void(const ResourceUpdatedNotificationParams&)>;
     void set_resource_updated_handler(ResourceUpdatedHandler handler);
 
     /// Register a handler for inbound resource-list-changed notifications.
@@ -127,14 +129,14 @@ public:
     void set_resources_list_changed_handler(ListChangedHandler handler);
 
     /// `prompts/list`.
-    [[nodiscard]] std::future<ListPromptsResult>
-    list_prompts(QString cursor = {});
+    [[nodiscard]] std::future<ListPromptsResult> list_prompts(QString cursor
+                                                              = {});
 
     /// `prompts/get` with the given prompt name and (optional) string-keyed
     /// arguments to fill in template parameters.
     [[nodiscard]] std::future<GetPromptResult>
-    get_prompt(QString name,
-               std::optional<QHash<QString, QString>> arguments = std::nullopt);
+    get_prompt(QString name, std::optional<QHash<QString, QString>> arguments
+                             = std::nullopt);
 
     /// Hook for inbound notifications/prompts/list_changed.
     void set_prompts_list_changed_handler(ListChangedHandler handler);
@@ -158,20 +160,20 @@ public:
     [[nodiscard]] std::future<void> set_log_level(LoggingLevel level);
 
     /// Hook for inbound `notifications/message` (server-emitted log).
-    using LogMessageHandler =
-        std::function<void(const LoggingMessageNotificationParams&)>;
+    using LogMessageHandler
+        = std::function<void(const LoggingMessageNotificationParams&)>;
     void set_log_message_handler(LogMessageHandler handler);
 
     /// Hook for inbound `notifications/progress`.
-    using ProgressHandler =
-        std::function<void(const ProgressNotificationParams&)>;
+    using ProgressHandler
+        = std::function<void(const ProgressNotificationParams&)>;
     void set_progress_handler(ProgressHandler handler);
 
     /// Handler for `sampling/createMessage` requests from the server.
     /// Setting this also advertises the `sampling` capability when the
     /// next initialize() runs (see set_capabilities()).
-    using SamplingHandler =
-        std::function<CreateMessageResult(const CreateMessageRequestParams&)>;
+    using SamplingHandler = std::function<CreateMessageResult(
+        const CreateMessageRequestParams&)>;
     void set_sampling_handler(SamplingHandler handler);
 
     /// Handler for `roots/list` requests from the server. Setting this
@@ -183,15 +185,15 @@ public:
     /// this also advertises the `elicitation` capability (form+url) on
     /// the next initialize(). Use set_client_capabilities() to declare a
     /// narrower mode set.
-    using ElicitationHandler =
-        std::function<ElicitResult(const ElicitRequestParams&)>;
+    using ElicitationHandler
+        = std::function<ElicitResult(const ElicitRequestParams&)>;
     void set_elicitation_handler(ElicitationHandler handler);
 
     /// Handler for `notifications/elicitation/complete` (URL-mode
     /// completion). Receives the elicitation_id of the flow that
     /// finished out of band. Pass nullptr to clear.
-    using ElicitationCompleteHandler =
-        std::function<void(QString elicitation_id)>;
+    using ElicitationCompleteHandler
+        = std::function<void(QString elicitation_id)>;
     void set_elicitation_complete_handler(ElicitationCompleteHandler handler);
 
     /// Send `notifications/elicitation/complete` to the server. The
@@ -204,8 +206,8 @@ public:
     /// suggestions.
     [[nodiscard]] std::future<CompleteResult>
     complete(CompletionReference reference, CompleteArgument argument,
-             std::optional<QHash<QString, QString>> context_arguments =
-                 std::nullopt);
+             std::optional<QHash<QString, QString>> context_arguments
+             = std::nullopt);
 
     /// Layer extra / narrowed capabilities on top of the ones derived
     /// from registered handlers. Engaged fields in `caps` REPLACE the
@@ -226,7 +228,7 @@ public:
     /// Cached server information from the last successful initialize().
     [[nodiscard]] std::optional<InitializeResult> server(void) const;
 
-private:
+  private:
     /// Acquire a strong reference to the live Session, or empty if
     /// disconnected. Centralises the lock+copy that protects against
     /// races with disconnect() resetting `m_session`. Returns by value
@@ -239,7 +241,7 @@ private:
     mutable std::mutex m_session_mu;
     std::optional<InitializeResult> m_server;
     mutable std::mutex m_server_mu;
-    std::atomic<bool> m_connected{false};
+    std::atomic<bool> m_connected{ false };
 
     SamplingHandler m_sampling_handler;
     RootsListHandler m_roots_handler;
@@ -248,6 +250,6 @@ private:
     TaskStatusHandler m_task_status_handler;
     std::optional<ClientCapabilities> m_capabilities_override;
     std::mutex m_handlers_mu;
-};
+  };
 
-}  // namespace mcp
+} // namespace mcp

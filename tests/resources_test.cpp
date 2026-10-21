@@ -24,15 +24,17 @@
 #include <thread>
 #include <variant>
 
-namespace {
+namespace
+{
 
-using namespace std::chrono_literals;
+  using namespace std::chrono_literals;
 
-// -------------------------------------------------------------------------
-// Server + Client integration harness
-// -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Server + Client integration harness
+  // -------------------------------------------------------------------------
 
-struct ResourcesServerThread {
+  struct ResourcesServerThread
+  {
     std::shared_ptr<mcp::Server> server;
     std::thread thread;
 
@@ -41,123 +43,133 @@ struct ResourcesServerThread {
         : server(std::make_shared<mcp::Server>(mcp::Implementation{
               .name = "resources-test",
               .version = "1.0",
-          })) {
-        cfg(*server);
-        thread = std::thread(
-            [s = server, t = std::move(t)]() mutable { s->run(std::move(t)); });
+          }))
+    {
+      cfg(*server);
+      thread = std::thread(
+          [s = server, t = std::move(t)]() mutable { s->run(std::move(t)); });
     }
-    ~ResourcesServerThread() {
-        server->stop();
-        if (thread.joinable())
-            thread.join();
+    ~ResourcesServerThread()
+    {
+      server->stop();
+      if(thread.joinable())
+        thread.join();
     }
-};
+  };
 
-}  // namespace
+} // namespace
 
 // -------------------------------------------------------------------------
 // Round-trip tests for the new types
 // -------------------------------------------------------------------------
 
-class Resources : public QObject {
-    Q_OBJECT
+class Resources : public QObject
+{
+  Q_OBJECT
 private slots:
-    void TextContentsRoundTrip(void);
-    void BlobContentsRoundTrip(void);
-    void ContentsVariantDispatchesByDiscriminator(void);
-    void ResourceRoundTrip(void);
-    void ResourceTemplateRoundTrip(void);
-    void ResourceLinkContentBlock(void);
-    void EmbeddedResourceContentBlock(void);
+  void TextContentsRoundTrip(void);
+  void BlobContentsRoundTrip(void);
+  void ContentsVariantDispatchesByDiscriminator(void);
+  void ResourceRoundTrip(void);
+  void ResourceTemplateRoundTrip(void);
+  void ResourceLinkContentBlock(void);
+  void EmbeddedResourceContentBlock(void);
 };
 
-void Resources::TextContentsRoundTrip(void) {
-    mcp::TextResourceContents c{
-        .uri = "file:///hi.txt",
-        .mime_type = "text/plain",
-        .text = "hi",
-    };
-    QJsonValue j = mcp::to_json(c);
-    QCOMPARE(j["uri"], mcp::test::jv("file:///hi.txt"));
-    QCOMPARE(j["mimeType"], mcp::test::jv("text/plain"));
-    QCOMPARE(j["text"], mcp::test::jv("hi"));
-    auto back = mcp::from_json<mcp::TextResourceContents>(j);
-    QCOMPARE(back.uri, c.uri);
-    QCOMPARE(back.text, c.text);
+void Resources::TextContentsRoundTrip(void)
+{
+  mcp::TextResourceContents c{
+    .uri = "file:///hi.txt",
+    .mime_type = "text/plain",
+    .text = "hi",
+  };
+  QJsonValue j = mcp::to_json(c);
+  QCOMPARE(j["uri"], mcp::test::jv("file:///hi.txt"));
+  QCOMPARE(j["mimeType"], mcp::test::jv("text/plain"));
+  QCOMPARE(j["text"], mcp::test::jv("hi"));
+  auto back = mcp::from_json<mcp::TextResourceContents>(j);
+  QCOMPARE(back.uri, c.uri);
+  QCOMPARE(back.text, c.text);
 }
 
-void Resources::BlobContentsRoundTrip(void) {
-    mcp::BlobResourceContents c{
-        .uri = "file:///bin",
-        .mime_type = "application/octet-stream",
-        .blob = "Zm9v",
-    };
-    QJsonValue j = mcp::to_json(c);
-    QCOMPARE(j["blob"], mcp::test::jv("Zm9v"));
-    auto back = mcp::from_json<mcp::BlobResourceContents>(j);
-    QCOMPARE(back.blob, c.blob);
+void Resources::BlobContentsRoundTrip(void)
+{
+  mcp::BlobResourceContents c{
+    .uri = "file:///bin",
+    .mime_type = "application/octet-stream",
+    .blob = "Zm9v",
+  };
+  QJsonValue j = mcp::to_json(c);
+  QCOMPARE(j["blob"], mcp::test::jv("Zm9v"));
+  auto back = mcp::from_json<mcp::BlobResourceContents>(j);
+  QCOMPARE(back.blob, c.blob);
 }
 
-void Resources::ContentsVariantDispatchesByDiscriminator(void) {
-    QJsonObject text_obj = {{"uri", "x"}, {"text", "y"}};
-    auto v = mcp::from_json<mcp::ResourceContents>(text_obj);
-    QVERIFY(v.is_text());
-    QCOMPARE(mcp::TextResourceContents(v).text, QString{"y"});
+void Resources::ContentsVariantDispatchesByDiscriminator(void)
+{
+  QJsonObject text_obj = { { "uri", "x" }, { "text", "y" } };
+  auto v = mcp::from_json<mcp::ResourceContents>(text_obj);
+  QVERIFY(v.is_text());
+  QCOMPARE(mcp::TextResourceContents(v).text, QString{ "y" });
 
-    QJsonObject blob_obj = {{"uri", "x"}, {"blob", "Zm9v"}};
-    v = mcp::from_json<mcp::ResourceContents>(blob_obj);
-    QVERIFY(v.is_blob());
-    QCOMPARE(mcp::BlobResourceContents(v).blob, QByteArray{"Zm9v"});
+  QJsonObject blob_obj = { { "uri", "x" }, { "blob", "Zm9v" } };
+  v = mcp::from_json<mcp::ResourceContents>(blob_obj);
+  QVERIFY(v.is_blob());
+  QCOMPARE(mcp::BlobResourceContents(v).blob, QByteArray{ "Zm9v" });
 
-    QJsonObject bad = {{"uri", "x"}};
-    QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::ResourceContents>(bad),
-                             mcp::Error);
+  QJsonObject bad = { { "uri", "x" } };
+  QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::ResourceContents>(bad),
+                           mcp::Error);
 }
 
-void Resources::ResourceRoundTrip(void) {
-    mcp::Resource r{
-        .uri = "file:///hi",
-        .name = "hi",
-        .title = "Hi",
-        .mime_type = "text/plain",
-        .size = 10,
-    };
-    QJsonValue j = mcp::to_json(r);
-    QCOMPARE(j["uri"], mcp::test::jv("file:///hi"));
-    QCOMPARE(j["mimeType"], mcp::test::jv("text/plain"));
-    QCOMPARE(j["size"], mcp::test::jv(10));
-    auto back = mcp::from_json<mcp::Resource>(j);
-    QCOMPARE(back.uri, r.uri);
-    QCOMPARE(back.size, r.size);
+void Resources::ResourceRoundTrip(void)
+{
+  mcp::Resource r{
+    .uri = "file:///hi",
+    .name = "hi",
+    .title = "Hi",
+    .mime_type = "text/plain",
+    .size = 10,
+  };
+  QJsonValue j = mcp::to_json(r);
+  QCOMPARE(j["uri"], mcp::test::jv("file:///hi"));
+  QCOMPARE(j["mimeType"], mcp::test::jv("text/plain"));
+  QCOMPARE(j["size"], mcp::test::jv(10));
+  auto back = mcp::from_json<mcp::Resource>(j);
+  QCOMPARE(back.uri, r.uri);
+  QCOMPARE(back.size, r.size);
 }
 
-void Resources::ResourceTemplateRoundTrip(void) {
-    mcp::ResourceTemplate r{
-        .uri_template = "file:///{name}.txt",
-        .name = "files",
-    };
-    QJsonValue j = mcp::to_json(r);
-    QCOMPARE(j["uriTemplate"], mcp::test::jv("file:///{name}.txt"));
-    auto back = mcp::from_json<mcp::ResourceTemplate>(j);
-    QCOMPARE(back.uri_template, r.uri_template);
+void Resources::ResourceTemplateRoundTrip(void)
+{
+  mcp::ResourceTemplate r{
+    .uri_template = "file:///{name}.txt",
+    .name = "files",
+  };
+  QJsonValue j = mcp::to_json(r);
+  QCOMPARE(j["uriTemplate"], mcp::test::jv("file:///{name}.txt"));
+  auto back = mcp::from_json<mcp::ResourceTemplate>(j);
+  QCOMPARE(back.uri_template, r.uri_template);
 }
 
-void Resources::ResourceLinkContentBlock(void) {
-    mcp::ResourceLink rl{
-        .uri = "file:///doc",
-        .name = "Doc",
-    };
-    QJsonValue j = mcp::to_json(mcp::ContentBlock{rl});
-    QCOMPARE(j["type"], mcp::test::jv("resource_link"));
-    QCOMPARE(j["uri"], mcp::test::jv("file:///doc"));
+void Resources::ResourceLinkContentBlock(void)
+{
+  mcp::ResourceLink rl{
+    .uri = "file:///doc",
+    .name = "Doc",
+  };
+  QJsonValue j = mcp::to_json(mcp::ContentBlock{ rl });
+  QCOMPARE(j["type"], mcp::test::jv("resource_link"));
+  QCOMPARE(j["uri"], mcp::test::jv("file:///doc"));
 
-    auto block = mcp::from_json<mcp::ContentBlock>(j);
-    QVERIFY(std::holds_alternative<mcp::ResourceLink>(block));
-    QCOMPARE(std::get<mcp::ResourceLink>(block).uri, rl.uri);
+  auto block = mcp::from_json<mcp::ContentBlock>(j);
+  QVERIFY(std::holds_alternative<mcp::ResourceLink>(block));
+  QCOMPARE(std::get<mcp::ResourceLink>(block).uri, rl.uri);
 }
 
-void Resources::EmbeddedResourceContentBlock(void) {
-    mcp::EmbeddedResource er{
+void Resources::EmbeddedResourceContentBlock(void)
+{
+  mcp::EmbeddedResource er{
         .resource =
             mcp::TextResourceContents{
                 .uri = "file:///r",
@@ -165,165 +177,178 @@ void Resources::EmbeddedResourceContentBlock(void) {
                 .text = "embedded",
             },
     };
-    QJsonValue j = mcp::to_json(mcp::ContentBlock{er});
-    QCOMPARE(j["type"], mcp::test::jv("resource"));
-    QCOMPARE(j["resource"]["text"], mcp::test::jv("embedded"));
+  QJsonValue j = mcp::to_json(mcp::ContentBlock{ er });
+  QCOMPARE(j["type"], mcp::test::jv("resource"));
+  QCOMPARE(j["resource"]["text"], mcp::test::jv("embedded"));
 
-    auto block = mcp::from_json<mcp::ContentBlock>(j);
-    QVERIFY(std::holds_alternative<mcp::EmbeddedResource>(block));
-    auto inner = std::get<mcp::EmbeddedResource>(block);
-    QVERIFY(inner.resource.is_text());
+  auto block = mcp::from_json<mcp::ContentBlock>(j);
+  QVERIFY(std::holds_alternative<mcp::EmbeddedResource>(block));
+  auto inner = std::get<mcp::EmbeddedResource>(block);
+  QVERIFY(inner.resource.is_text());
 }
 
 // -------------------------------------------------------------------------
 // Server + Client integration
 // -------------------------------------------------------------------------
 
-class ResourcesIntegration : public QObject {
-    Q_OBJECT
+class ResourcesIntegration : public QObject
+{
+  Q_OBJECT
 private slots:
-    void ListAndRead(void);
-    void MissingResourceMapsToError(void);
-    void FallbackHandlesUnknownUri(void);
-    void ResourceTemplateIsReturned(void);
+  void ListAndRead(void);
+  void MissingResourceMapsToError(void);
+  void FallbackHandlesUnknownUri(void);
+  void ResourceTemplateIsReturned(void);
 };
 
-void ResourcesIntegration::ListAndRead(void) {
-    auto p = mcp::test::make_in_memory_pair();
-    ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.resource(
-            mcp::Resource{
-                .uri = "file:///hello.txt",
-                .name = "hello",
+void ResourcesIntegration::ListAndRead(void)
+{
+  auto p = mcp::test::make_in_memory_pair();
+  ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
+    s.resource(
+        mcp::Resource{
+            .uri = "file:///hello.txt",
+            .name = "hello",
+            .mime_type = "text/plain",
+        },
+        [](const QString& uri) {
+          return mcp::ReadResourceResult{
+            .contents = { mcp::TextResourceContents{
+                .uri = uri,
                 .mime_type = "text/plain",
-            },
-            [](const QString& uri) {
-                return mcp::ReadResourceResult{
-                    .contents = {mcp::TextResourceContents{
-                        .uri = uri,
-                        .mime_type = "text/plain",
-                        .text = "hello, world\n",
-                    }},
-                };
-            });
-        s.resource(
-            mcp::Resource{
-                .uri = "file:///bin",
-                .name = "bin",
+                .text = "hello, world\n",
+            } },
+          };
+        });
+    s.resource(
+        mcp::Resource{
+            .uri = "file:///bin",
+            .name = "bin",
+            .mime_type = "application/octet-stream",
+        },
+        [](const QString& uri) {
+          return mcp::ReadResourceResult{
+            .contents = { mcp::BlobResourceContents{
+                .uri = uri,
                 .mime_type = "application/octet-stream",
-            },
-            [](const QString& uri) {
-                return mcp::ReadResourceResult{
-                    .contents = {mcp::BlobResourceContents{
-                        .uri = uri,
-                        .mime_type = "application/octet-stream",
-                        .blob = "Zm9vYmFy",
-                    }},
-                };
-            });
-    });
-
-    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
-    client.connect(std::move(p.a));
-    auto info = client.initialize().get();
-    QVERIFY(info.capabilities.resources.has_value());
-
-    auto list = client.list_resources().get();
-    QCOMPARE(list.resources.size(), std::size_t{2});
-
-    auto read = client.read_resource("file:///hello.txt").get();
-    QCOMPARE(read.contents.size(), std::size_t{1});
-    QVERIFY(read.contents[0].is_text());
-    QCOMPARE(mcp::TextResourceContents(read.contents[0]).text,
-             QString{"hello, world\n"});
-
-    auto blob = client.read_resource("file:///bin").get();
-    QCOMPARE(blob.contents.size(), std::size_t{1});
-    QVERIFY(blob.contents[0].is_blob());
-
-    client.disconnect();
-}
-
-void ResourcesIntegration::MissingResourceMapsToError(void) {
-    auto p = mcp::test::make_in_memory_pair();
-    ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.resource(mcp::Resource{.uri = "file:///x", .name = "x"},
-                   [](const QString&) { return mcp::ReadResourceResult{}; });
-    });
-
-    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
-    client.connect(std::move(p.a));
-    (void)client.initialize().get();
-
-    auto fut = client.read_resource("file:///nope");
-    try {
-        (void)fut.get();
-        QFAIL("expected Error");
-    } catch (const mcp::Error& e) {
-        QCOMPARE(e.code(), mcp::error_code::method_not_found);
-    }
-
-    client.disconnect();
-}
-
-void ResourcesIntegration::FallbackHandlesUnknownUri(void) {
-    auto p = mcp::test::make_in_memory_pair();
-    ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.fallback_resource_handler([](const QString& uri) {
-            return mcp::ReadResourceResult{
-                .contents = {mcp::TextResourceContents{
-                    .uri = uri,
-                    .text = "fallback for " + uri,
-                }},
-            };
+                .blob = "Zm9vYmFy",
+            } },
+          };
         });
-    });
+  });
 
-    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
-    client.connect(std::move(p.a));
-    (void)client.initialize().get();
+  mcp::Client client{ mcp::Implementation{ .name = "tester",
+                                           .version = "0" } };
+  client.connect(std::move(p.a));
+  auto info = client.initialize().get();
+  QVERIFY(info.capabilities.resources.has_value());
 
-    auto read = client.read_resource("file:///anything").get();
-    QCOMPARE(read.contents.size(), std::size_t{1});
-    QVERIFY(mcp::TextResourceContents(read.contents[0])
-                .text.contains("fallback"));
+  auto list = client.list_resources().get();
+  QCOMPARE(list.resources.size(), std::size_t{ 2 });
 
-    client.disconnect();
+  auto read = client.read_resource("file:///hello.txt").get();
+  QCOMPARE(read.contents.size(), std::size_t{ 1 });
+  QVERIFY(read.contents[0].is_text());
+  QCOMPARE(mcp::TextResourceContents(read.contents[0]).text,
+           QString{ "hello, world\n" });
+
+  auto blob = client.read_resource("file:///bin").get();
+  QCOMPARE(blob.contents.size(), std::size_t{ 1 });
+  QVERIFY(blob.contents[0].is_blob());
+
+  client.disconnect();
 }
 
-void ResourcesIntegration::ResourceTemplateIsReturned(void) {
-    auto p = mcp::test::make_in_memory_pair();
-    ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.resource_template(mcp::ResourceTemplate{
-            .uri_template = "file:///{name}.txt",
-            .name = "files",
-        });
-    });
+void ResourcesIntegration::MissingResourceMapsToError(void)
+{
+  auto p = mcp::test::make_in_memory_pair();
+  ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
+    s.resource(mcp::Resource{ .uri = "file:///x", .name = "x" },
+               [](const QString&) { return mcp::ReadResourceResult{}; });
+  });
 
-    mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
-    client.connect(std::move(p.a));
-    (void)client.initialize().get();
+  mcp::Client client{ mcp::Implementation{ .name = "tester",
+                                           .version = "0" } };
+  client.connect(std::move(p.a));
+  (void)client.initialize().get();
 
-    auto list = client.list_resource_templates().get();
-    QCOMPARE(list.resource_templates.size(), std::size_t{1});
-    QCOMPARE(list.resource_templates[0].uri_template,
-             QString{"file:///{name}.txt"});
+  auto fut = client.read_resource("file:///nope");
+  try
+  {
+    (void)fut.get();
+    QFAIL("expected Error");
+  }
+  catch(const mcp::Error& e)
+  {
+    QCOMPARE(e.code(), mcp::error_code::method_not_found);
+  }
 
-    client.disconnect();
+  client.disconnect();
 }
 
-int main(int argc, char** argv) {
-    QCoreApplication app(argc, argv);
-    int status = 0;
-    {
-        Resources suite;
-        status |= QTest::qExec(&suite, argc, argv);
-    }
-    {
-        ResourcesIntegration suite;
-        status |= QTest::qExec(&suite, argc, argv);
-    }
-    return status;
+void ResourcesIntegration::FallbackHandlesUnknownUri(void)
+{
+  auto p = mcp::test::make_in_memory_pair();
+  ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
+    s.fallback_resource_handler([](const QString& uri) {
+      return mcp::ReadResourceResult{
+        .contents = { mcp::TextResourceContents{
+            .uri = uri,
+            .text = "fallback for " + uri,
+        } },
+      };
+    });
+  });
+
+  mcp::Client client{ mcp::Implementation{ .name = "tester",
+                                           .version = "0" } };
+  client.connect(std::move(p.a));
+  (void)client.initialize().get();
+
+  auto read = client.read_resource("file:///anything").get();
+  QCOMPARE(read.contents.size(), std::size_t{ 1 });
+  QVERIFY(
+      mcp::TextResourceContents(read.contents[0]).text.contains("fallback"));
+
+  client.disconnect();
+}
+
+void ResourcesIntegration::ResourceTemplateIsReturned(void)
+{
+  auto p = mcp::test::make_in_memory_pair();
+  ResourcesServerThread srv(std::move(p.b), [](mcp::Server& s) {
+    s.resource_template(mcp::ResourceTemplate{
+        .uri_template = "file:///{name}.txt",
+        .name = "files",
+    });
+  });
+
+  mcp::Client client{ mcp::Implementation{ .name = "tester",
+                                           .version = "0" } };
+  client.connect(std::move(p.a));
+  (void)client.initialize().get();
+
+  auto list = client.list_resource_templates().get();
+  QCOMPARE(list.resource_templates.size(), std::size_t{ 1 });
+  QCOMPARE(list.resource_templates[0].uri_template,
+           QString{ "file:///{name}.txt" });
+
+  client.disconnect();
+}
+
+int main(int argc, char** argv)
+{
+  QCoreApplication app(argc, argv);
+  int status = 0;
+  {
+    Resources suite;
+    status |= QTest::qExec(&suite, argc, argv);
+  }
+  {
+    ResourcesIntegration suite;
+    status |= QTest::qExec(&suite, argc, argv);
+  }
+  return status;
 }
 
 #include "resources_test.moc"

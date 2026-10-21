@@ -7,9 +7,11 @@
 #include <QObject>
 #include <QString>
 
-namespace {
+namespace
+{
 
-class EchoPlugin : public mcp::PluginInterface {
+  class EchoPlugin : public mcp::PluginInterface
+  {
     Q_OBJECT
     Q_CLASSINFO("id", "echo")
     Q_CLASSINFO("version", "1.0.0")
@@ -17,20 +19,23 @@ class EchoPlugin : public mcp::PluginInterface {
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "echo_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 
-public:
+  public:
     explicit EchoPlugin(QObject* parent = nullptr)
-        : mcp::PluginInterface(parent) {}
+        : mcp::PluginInterface(parent)
+    {
+    }
 
-    void initialize(const mcp::HostInterface& host) override {
-        m_host = host;
-        registerPublicSlots();
+    void initialize(const mcp::HostInterface& host) override
+    {
+      m_host = host;
+      registerPublicSlots();
     }
     void shutdown(void) override {}
 
-public slots:
+  public slots:
     QString echo(QString text) { return QStringLiteral("echo: ") + text; }
-};
+  };
 
-}  // namespace
+} // namespace
 
 #include "echo_plugin.moc"

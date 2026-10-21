@@ -47,10 +47,12 @@
 #include <unordered_map>
 #include <utility>
 
-namespace mcp {
+namespace mcp
+{
 
-class Session {
-public:
+  class Session
+  {
+  public:
     /// Handler invoked when a peer sends a request with `method`.
     /// Returns the result JSON (which is wrapped into a JSON-RPC response).
     /// Throwing `mcp::Error` reports back to the peer as a JSON-RPC error.
@@ -61,8 +63,9 @@ public:
     /// Exceptions are caught and logged.
     using NotificationHandler = std::function<void(const QJsonValue& params)>;
 
-    struct Options {
-        std::chrono::milliseconds default_request_timeout{30 * 1000};  // 30s
+    struct Options
+    {
+      std::chrono::milliseconds default_request_timeout{ 30 * 1000 }; // 30s
     };
 
     explicit Session(std::unique_ptr<Transport> transport);
@@ -114,9 +117,10 @@ public:
 
     /// Send a JSON-RPC request and return a future for its result.
     /// `timeout` of zero means use `Options::default_request_timeout`.
-    [[nodiscard]] std::future<QJsonValue> send_request(
-        QString method, QJsonValue params = {},
-        std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
+    [[nodiscard]] std::future<QJsonValue>
+    send_request(QString method, QJsonValue params = {},
+                 std::chrono::milliseconds timeout
+                 = std::chrono::milliseconds{ 0 });
 
     /// Send a JSON-RPC request and return a future for a *typed* result.
     /// `convert` turns the raw result JSON into `T`; it runs on the
@@ -127,41 +131,49 @@ public:
     /// normally (the future is backed by a real promise resolved in the
     /// background).
     template <class T>
-    [[nodiscard]] std::future<T> send_request_for(
-        QString method, QJsonValue params, std::function<T(QJsonValue)> convert,
-        std::chrono::milliseconds timeout = std::chrono::milliseconds{0}) {
-        auto pr = std::make_shared<std::promise<T>>();
-        auto fut = pr->get_future();
-        Pending pending;
-        pending.resolve = [pr, convert = std::move(convert)](QJsonValue j) {
-            try {
-                pr->set_value(convert(std::move(j)));
-            } catch (...) {
-                pr->set_exception(std::current_exception());
-            }
-        };
-        pending.reject = [pr](std::exception_ptr e) { pr->set_exception(e); };
-        register_pending(std::move(method), std::move(params),
-                         std::move(pending), timeout);
-        return fut;
+    [[nodiscard]] std::future<T>
+    send_request_for(QString method, QJsonValue params,
+                     std::function<T(QJsonValue)> convert,
+                     std::chrono::milliseconds timeout
+                     = std::chrono::milliseconds{ 0 })
+    {
+      auto pr = std::make_shared<std::promise<T>>();
+      auto fut = pr->get_future();
+      Pending pending;
+      pending.resolve = [pr, convert = std::move(convert)](QJsonValue j) {
+        try
+        {
+          pr->set_value(convert(std::move(j)));
+        }
+        catch(...)
+        {
+          pr->set_exception(std::current_exception());
+        }
+      };
+      pending.reject = [pr](std::exception_ptr e) { pr->set_exception(e); };
+      register_pending(std::move(method), std::move(params),
+                       std::move(pending), timeout);
+      return fut;
     }
 
     /// Like `send_request_for`, but for methods whose result carries no
     /// payload the caller cares about (`ping`, `subscribe`, ...). The
     /// future resolves to void on success and throws on error.
-    [[nodiscard]] std::future<void> send_request_void(
-        QString method, QJsonValue params = {},
-        std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
+    [[nodiscard]] std::future<void>
+    send_request_void(QString method, QJsonValue params = {},
+                      std::chrono::milliseconds timeout
+                      = std::chrono::milliseconds{ 0 });
 
     /// Send a JSON-RPC notification (fire-and-forget).
     std::error_code send_notification(QString method, QJsonValue params = {});
 
-    [[nodiscard]] bool is_open(void) const noexcept {
-        return m_started.load(std::memory_order_acquire) &&
-               !m_closed.load(std::memory_order_acquire);
+    [[nodiscard]] bool is_open(void) const noexcept
+    {
+      return m_started.load(std::memory_order_acquire)
+             && !m_closed.load(std::memory_order_acquire);
     }
 
-private:
+  private:
     void handle_frame(QByteArray raw);
     void handle_request(JsonRpcRequest req);
     void handle_notification(JsonRpcNotification note);
@@ -177,10 +189,11 @@ private:
     /// its json->T conversion at resolution time. Exactly one of
     /// `resolve` / `reject` is invoked, always *outside* `m_pending_mu`
     /// (resolving a future can wake a waiter that re-enters the Session).
-    struct Pending {
-        std::function<void(QJsonValue)> resolve;
-        std::function<void(std::exception_ptr)> reject;
-        std::chrono::steady_clock::time_point deadline;
+    struct Pending
+    {
+      std::function<void(QJsonValue)> resolve;
+      std::function<void(std::exception_ptr)> reject;
+      std::chrono::steady_clock::time_point deadline;
     };
 
     /// Allocate an id, park `pending`, and send the request frame. On a
@@ -192,9 +205,9 @@ private:
     std::unique_ptr<Transport> m_transport;
     Options m_opts;
 
-    std::atomic<bool> m_started{false};
-    std::atomic<bool> m_closed{false};
-    std::atomic<std::int64_t> m_next_id{1};
+    std::atomic<bool> m_started{ false };
+    std::atomic<bool> m_closed{ false };
+    std::atomic<std::int64_t> m_next_id{ 1 };
 
     // Pending outbound requests awaiting a response. Keyed by canonical
     // RequestId string so int and string ids never collide.
@@ -213,7 +226,7 @@ private:
 
     std::mutex m_closed_cb_mu;
     ClosedCallback m_on_closed;
-    std::atomic<bool> m_closed_cb_fired{false};
+    std::atomic<bool> m_closed_cb_fired{ false };
 
     // Tracks live request-dispatch workers so close() can wait for
     // them to finish before any member they touch (m_transport,
@@ -221,6 +234,6 @@ private:
     std::mutex m_workers_mu;
     std::condition_variable m_workers_cv;
     int m_workers_running = 0;
-};
+  };
 
-}  // namespace mcp
+} // namespace mcp

@@ -30,22 +30,25 @@
 #include <string>
 #include <thread>
 
-namespace mcp {
+namespace mcp
+{
 
-class StdioTransport final : public Transport {
-public:
-    struct Options {
-        /// File descriptor to read from (default: STDIN_FILENO).
-        int read_fd = 0;
-        /// File descriptor to write to (default: STDOUT_FILENO).
-        int write_fd = 1;
-        /// Maximum size of a single frame the parser will accept. Frames
-        /// exceeding this size cause a transport error and disconnect.
-        std::size_t max_frame_bytes = 16 * 1024 * 1024;
-        /// Whether the transport owns and should `close()` the file
-        /// descriptors on destruction. Stdin/stdout are the typical case
-        /// (false). Pipe-based test transports usually want true.
-        bool owns_fds = false;
+  class StdioTransport final : public Transport
+  {
+  public:
+    struct Options
+    {
+      /// File descriptor to read from (default: STDIN_FILENO).
+      int read_fd = 0;
+      /// File descriptor to write to (default: STDOUT_FILENO).
+      int write_fd = 1;
+      /// Maximum size of a single frame the parser will accept. Frames
+      /// exceeding this size cause a transport error and disconnect.
+      std::size_t max_frame_bytes = 16 * 1024 * 1024;
+      /// Whether the transport owns and should `close()` the file
+      /// descriptors on destruction. Stdin/stdout are the typical case
+      /// (false). Pipe-based test transports usually want true.
+      bool owns_fds = false;
     };
 
     StdioTransport(void);
@@ -60,31 +63,32 @@ public:
     void close(void) override;
 
     [[nodiscard]] std::error_code send(QByteArrayView frame) override;
-    [[nodiscard]] bool is_open(void) const noexcept override {
-        return m_running.load(std::memory_order_acquire);
+    [[nodiscard]] bool is_open(void) const noexcept override
+    {
+      return m_running.load(std::memory_order_acquire);
     }
 
-private:
+  private:
     void read_loop(void) noexcept;
     void deliver_error(std::error_code ec) noexcept;
     void fire_close(void) noexcept;
 
     Options m_opts;
 
-    int m_wakeup_read_fd = -1;  // self-pipe read end (closed-on-stop)
+    int m_wakeup_read_fd = -1; // self-pipe read end (closed-on-stop)
     int m_wakeup_write_fd = -1;
 
-    std::atomic<bool> m_running{false};
-    std::atomic<bool> m_closing{false};
-    std::atomic<bool> m_close_fired{false};
+    std::atomic<bool> m_running{ false };
+    std::atomic<bool> m_closing{ false };
+    std::atomic<bool> m_close_fired{ false };
 
     std::thread m_read_thread;
-    std::mutex m_write_mutex;  // serializes writes to Options::write_fd
+    std::mutex m_write_mutex; // serializes writes to Options::write_fd
 
     // Callbacks. Set once before start(); read without locking thereafter.
     MessageCallback m_on_message;
     ErrorCallback m_on_error;
     CloseCallback m_on_close;
-};
+  };
 
-}  // namespace mcp
+} // namespace mcp

@@ -22,10 +22,12 @@
 #include <string_view>
 #include <system_error>
 
-namespace mcp {
+namespace mcp
+{
 
-class Transport {
-public:
+  class Transport
+  {
+  public:
     using MessageCallback = std::function<void(QByteArray)>;
     using ErrorCallback = std::function<void(std::error_code)>;
     using CloseCallback = std::function<void()>;
@@ -63,6 +65,6 @@ public:
 
     /// Whether the transport is currently running.
     [[nodiscard]] virtual bool is_open(void) const noexcept = 0;
-};
+  };
 
-}  // namespace mcp
+} // namespace mcp

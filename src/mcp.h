@@ -15,6 +15,6 @@
 #include "server.h"
 #include "session.h"
 #if !defined(_WIN32)
-#include "stdio_transport.h"  // POSIX-only; see that header's guard
+#include "stdio_transport.h" // POSIX-only; see that header's guard
 #endif
 #include "transport.h"

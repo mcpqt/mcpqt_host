@@ -15,9 +15,11 @@
 
 #include <string>
 
-namespace {
+namespace
+{
 
-class HelloPlugin : public mcp::PluginInterface {
+  class HelloPlugin : public mcp::PluginInterface
+  {
     Q_OBJECT
     Q_CLASSINFO("id", "hello")
     Q_CLASSINFO("version", "1.0.0")
@@ -27,31 +29,36 @@ class HelloPlugin : public mcp::PluginInterface {
     Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "hello_plugin.json")
     Q_INTERFACES(mcp::PluginInterface)
 
-public:
+  public:
     // The public slots below are ordinary typed functions; the host reflects
     // them. The Q_CLASSINFO("id") prefixes the function signatures.
     explicit HelloPlugin(QObject* parent = nullptr)
-        : mcp::PluginInterface(parent) {}
+        : mcp::PluginInterface(parent)
+    {
+    }
 
-    void initialize(const mcp::HostInterface& host) override {
-        m_host = host;
-        registerPublicSlots();
+    void initialize(const mcp::HostInterface& host) override
+    {
+      m_host = host;
+      registerPublicSlots();
     }
     void shutdown(void) override {}
 
-public slots:
+  public slots:
     // "QString HelloPlugin::greet(QString)"
-    QString greet(QString name) {
-        if (name.isEmpty()) {
-            name = QStringLiteral("world");
-        }
-        return QStringLiteral("Hello, %1!").arg(name);
+    QString greet(QString name)
+    {
+      if(name.isEmpty())
+      {
+        name = QStringLiteral("world");
+      }
+      return QStringLiteral("Hello, %1!").arg(name);
     }
 
     // "double HelloPlugin::sum(double,double)"
     double sum(double a, double b) { return a + b; }
-};
+  };
 
-}  // namespace
+} // namespace
 
 #include "hello_plugin.moc"
