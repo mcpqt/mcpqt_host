@@ -20,15 +20,16 @@ namespace mcp {
 /// `no_error` (0) represents the absence of an error. This is an unscoped
 /// enumeration: it converts implicitly to the wire integer, so it can be
 /// passed to Error and compared with ErrorObject::code without casts.
-enum error_code : int {
+enum error_code : int
+{
     no_error = 0,
 
     // JSON-RPC 2.0 standard codes.
-    parse_error = -32700,
-    invalid_request = -32600,
-    method_not_found,  // -32601
-    invalid_params,    // -32602
-    internal_error,    // -32603
+    parse_error      = -32700,
+    invalid_request  = -32600,
+    method_not_found = -32601,
+    invalid_params   = -32602,
+    internal_error   = -32603,
 
     // MCP-specific (in the implementation-defined JSON-RPC range).
     url_elicitation_required = -32042,
@@ -40,7 +41,7 @@ enum error_code : int {
 /// also raised as `Error` (an exception) when a method call receives an error
 /// response and the caller asks for the result via a future.
 struct ErrorObject {
-    int code{error_code::no_error};
+    error_code code{error_code::no_error};
     QString message;
     QJsonValue data;  // optional; null when absent on the wire
 
@@ -63,7 +64,8 @@ public:
 
     Error(int code, QString msg, QJsonValue data = QJsonValue(QJsonValue::Null))
         : std::runtime_error(msg.toStdString()),
-          m_error{code, std::move(msg), std::move(data)} {}
+          m_error{static_cast<error_code>(code), std::move(msg),
+                  std::move(data)} {}
 
     [[nodiscard]] const ErrorObject& object(void) const noexcept {
         return m_error;

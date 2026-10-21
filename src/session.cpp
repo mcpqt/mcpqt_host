@@ -447,7 +447,7 @@ void Session::handle_notification(JsonRpcNotification note) {
 }
 
 void Session::handle_response(JsonRpcResponse resp) {
-    if (!resp.id.has_value()) {
+    if (resp.id.isNull()) {
         // Per spec, an error response with no id can occur on parse errors
         // we issued; nothing to correlate against.
         if (resp.is_error()) {
@@ -460,10 +460,10 @@ void Session::handle_response(JsonRpcResponse resp) {
     Pending pending;
     {
         std::lock_guard<std::mutex> lk(m_pending_mu);
-        auto it = m_pending.find(*resp.id);
+        auto it = m_pending.find(resp.id);
         if (it == m_pending.end()) {
             MCP_LOG_WARN("received response for unknown id: " +
-                         resp.id->canonical());
+                         resp.id.canonical());
             return;
         }
         pending = std::move(it.value());

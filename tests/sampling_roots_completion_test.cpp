@@ -146,8 +146,8 @@ void Completion::ReferenceVariantRoundTrip(void) {
     QJsonValue j = mcp::to_json(ref);
     QCOMPARE(j["type"], mcp::test::jv("ref/prompt"));
     auto back = mcp::from_json<mcp::CompletionReference>(j);
-    QVERIFY(std::holds_alternative<mcp::PromptReference>(back));
-    QCOMPARE(std::get<mcp::PromptReference>(back).name, QString{"p1"});
+    QVERIFY(back.is_prompt());
+    QCOMPARE(static_cast<mcp::PromptReference>(back).name, QString{"p1"});
 
     ref = mcp::ResourceTemplateReference{.uri_template = "file:///{x}"};
     j = mcp::to_json(ref);
@@ -346,7 +346,7 @@ void CompletionIntegration::ServerProvidesCompletions(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.enable_completion([](const mcp::CompleteRequestParams& req)
                                 -> mcp::CompletionValues {
-            if (std::holds_alternative<mcp::PromptReference>(req.reference)) {
+            if (req.reference.is_prompt()) {
                 return mcp::CompletionValues{
                     .values = {req.argument.value + "_a",
                                req.argument.value + "_b"},

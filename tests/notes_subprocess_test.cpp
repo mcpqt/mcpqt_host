@@ -211,7 +211,8 @@ void NotesSubprocess::EndToEnd(void) {
     {
         auto res = client.read_resource("notes://all").get();
         QCOMPARE(res.contents.size(), std::size_t{1});
-        const auto& tc = std::get<mcp::TextResourceContents>(res.contents[0]);
+        QVERIFY(res.contents[0].is_text());
+        const auto tc = static_cast<mcp::TextResourceContents>(res.contents[0]);
         QVERIFY(tc.text.contains("db.prod"));
     }
 

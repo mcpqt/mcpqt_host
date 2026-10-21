@@ -218,10 +218,10 @@ public:
         // resumability). This build ships without resumability so in
         // practice we simply lose the queue's contents on disconnect.
     }
-    std::optional<QByteArray> try_get_frame(void) {
+    QByteArray try_get_frame(void) {
         std::lock_guard<std::mutex> lk(m_get_mu);
         if (m_get_queue.empty())
-            return std::nullopt;
+            return QByteArray();
         QByteArray out = std::move(m_get_queue.front());
         m_get_queue.pop_front();
         return out;
@@ -378,10 +378,10 @@ QString make_session_id(void) {
 // HTTP request helpers (Qt-typed)
 // =====================================================================
 
-// Fetch the first value for a header, case-insensitively. std::nullopt
-// if the header is absent.
-inline std::optional<QByteArray> header_value(const QHttpServerRequest& req,
-                                              const char* name) {
+// Fetch the first value for a header, case-insensitively. A null QByteArray
+// is returned when the header is absent.
+inline QByteArray header_value(const QHttpServerRequest& req,
+                               const char* name) {
     const QByteArray wanted{name};
     const auto headers = req.headers();
     for (const auto& kv : headers) {
@@ -389,7 +389,7 @@ inline std::optional<QByteArray> header_value(const QHttpServerRequest& req,
             return kv.second;
         }
     }
-    return std::nullopt;
+    return QByteArray();
 }
 
 // Count occurrences of a header (used to reject duplicate Authorization).
@@ -445,12 +445,12 @@ text_response(const QString& body, QHttpServerResponder::StatusCode code) {
 inline bool origin_allowed(const QHttpServerRequest& req,
                            const QList<QString>& allow) {
     const auto origin = header_value(req, "Origin");
-    if (!origin)
+    if (origin.isNull())
         return true;  // no Origin header -> not a browser XS request
     if (allow.isEmpty())
         return false;
     for (const auto& a : allow) {
-        if (a == "*" || a == QString::fromUtf8(*origin))
+        if (a == "*" || a == QString::fromUtf8(origin))
             return true;
     }
     return false;
@@ -480,9 +480,9 @@ inline bool valid_quoted_param(QStringView s) noexcept {
 inline QString resolve_cors_origin(const QHttpServerRequest& req,
                                    const QList<QString>& allow) {
     const auto it = header_value(req, "Origin");
-    if (!it || it->isEmpty())
+    if (it.isNull() || it.isEmpty())
         return {};
-    const QString origin = QString::fromUtf8(*it);
+    const QString origin = QString::fromUtf8(it);
     for (const auto& a : allow) {
         if (a == "*")
             return "*";
@@ -577,7 +577,7 @@ inline AuthOutcome authorize(const QHttpServerRequest& req,
         return out;
     }
 
-    const QString auth = QString::fromUtf8(*header_value(req, "Authorization"));
+    const QString auth = QString::fromUtf8(header_value(req, "Authorization"));
     if (!starts_with_bearer_ci(auth)) {
         out.allowed = false;
         out.status = 401;
@@ -878,10 +878,10 @@ void HttpServerHost::start(void) {
             // Spec MUST: a present-but-unsupported MCP-Protocol-Version
             // is a 400. Header is allowed to be absent.
             if (const auto v = header_value(req, "MCP-Protocol-Version");
-                v && !valid_protocol_version_header(*v)) {
+                !v.isNull() && !valid_protocol_version_header(v)) {
                 send({400,
                       QByteArrayLiteral("text/plain"),
-                      QByteArray("unsupported MCP-Protocol-Version: ") + *v,
+                      QByteArray("unsupported MCP-Protocol-Version: ") + v,
                       {}});
                 return;
             }
@@ -901,8 +901,9 @@ void HttpServerHost::start(void) {
 
             // Resolve or mint session id.
             QString sid;
-            if (const auto h = header_value(req, "Mcp-Session-Id"))
-                sid = *h;
+            if (const auto h = header_value(req, "Mcp-Session-Id");
+                !h.isNull())
+                sid = h;
             const QString body = req.body();
             const bool is_initialize_body = body.contains("\"initialize\"");
             if (sid.isEmpty() && is_initialize_body)
@@ -1061,7 +1062,7 @@ void HttpServerHost::start(void) {
                     return;
                 }
                 const auto sid = header_value(req, "Mcp-Session-Id");
-                if (!sid || sid->isEmpty()) {
+                if (sid.isEmpty()) {
                     // No session -> we have no business holding a stream.
                     write_raw_http_error(socket, 405, "");
                     return;
@@ -1069,7 +1070,7 @@ void HttpServerHost::start(void) {
                 std::shared_ptr<SessionContext> ctx;
                 {
                     std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
-                    auto sit = m_impl->sessions.find(QString::fromUtf8(*sid));
+                    auto sit = m_impl->sessions.find(QString::fromUtf8(sid));
                     if (sit != m_impl->sessions.end())
                         ctx = sit.value();
                 }
@@ -1113,8 +1114,12 @@ void HttpServerHost::start(void) {
                             timer->deleteLater();
                             return;
                         }
-                        while (auto frame = transport->try_get_frame()) {
-                            write_sse_chunk(sock, *frame);
+                        while (true) {
+                            const QByteArray frame =
+                                transport->try_get_frame();
+                            if (frame.isNull())
+                                break;
+                            write_sse_chunk(sock, frame);
                         }
                         const auto now = std::chrono::steady_clock::now();
                         if (now - *last_beat >= std::chrono::seconds{15}) {
@@ -1150,14 +1155,14 @@ void HttpServerHost::start(void) {
                 return r;
             }
             const auto it = header_value(req, "Mcp-Session-Id");
-            if (!it) {
+            if (it.isNull()) {
                 return QHttpServerResponse(
                     QHttpServerResponder::StatusCode::BadRequest);
             }
             std::shared_ptr<SessionContext> ctx;
             {
                 std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
-                auto sit = m_impl->sessions.find(QString::fromUtf8(*it));
+                auto sit = m_impl->sessions.find(QString::fromUtf8(it));
                 if (sit != m_impl->sessions.end()) {
                     ctx = sit.value();
                     m_impl->sessions.erase(sit);

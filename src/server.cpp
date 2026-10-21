@@ -1248,9 +1248,9 @@ void Server::handle_cancelled(const QJsonValue& params) {
     // cancellation token through to ToolHandler etc.
     try {
         auto p = from_json<CancelledNotificationParams>(params);
-        if (p.request_id.has_value()) {
+        if (!p.request_id.isNull()) {
             MCP_LOG_INFO(
-                "client cancelled request id=" + p.request_id->canonical() +
+                "client cancelled request id=" + p.request_id.canonical() +
                 (p.reason.isNull() ? QString() : " reason=" + p.reason));
         }
     } catch (...) {

@@ -35,10 +35,6 @@ QString RequestId::canonical(void) const {
     return "i:" + QString::number(as_integer());
 }
 
-RequestId::operator QJsonValue() const {
-    return std::visit([](const auto& v) { return to_json(v); }, value());
-}
-
 RequestId& RequestId::operator=(const QJsonValue& j) {
     if (j.isString()) {
         *this = RequestId{j.toString()};
@@ -109,7 +105,7 @@ JsonRpcNotification& JsonRpcNotification::operator=(const QJsonValue& j) {
 
 ErrorObject::operator QJsonValue() const {
     QJsonObject o;
-    o.insert(QStringLiteral("code"), to_json(code));
+    o.insert(QStringLiteral("code"), to_json(static_cast<int>(code)));
     o.insert(QStringLiteral("message"), to_json(message));
     if (has_data())
         o.insert(QStringLiteral("data"), data);
@@ -118,7 +114,7 @@ ErrorObject::operator QJsonValue() const {
 
 ErrorObject& ErrorObject::operator=(const QJsonValue& j) {
     const QJsonObject o = as_object(j);
-    code = require<int>(o, "code");
+    code = static_cast<error_code>(require<int>(o, "code"));
     message = require<QString>(o, "message");
     const auto it = o.constFind(QStringLiteral("data"));
     data = (it != o.constEnd() && !it->isNull()) ? *it
@@ -130,8 +126,8 @@ ErrorObject& ErrorObject::operator=(const QJsonValue& j) {
 JsonRpcResponse::operator QJsonValue() const {
     QJsonObject o;
     o.insert(QStringLiteral("jsonrpc"), to_json(kJsonrpcVersion));
-    if (id.has_value())
-        o.insert(QStringLiteral("id"), to_json(*id));
+    if (!id.isNull())
+        o.insert(QStringLiteral("id"), to_json(id));
     else
         o.insert(QStringLiteral("id"), QJsonValue(QJsonValue::Null));
     if (is_success())
@@ -150,7 +146,7 @@ JsonRpcResponse& JsonRpcResponse::operator=(const QJsonValue& j) {
     if (idIt != o.constEnd() && !idIt->isNull()) {
         id = from_json<RequestId>(*idIt);
     } else {
-        id.reset();
+        id = RequestId();
     }
     const bool has_result = o.contains(QStringLiteral("result"));
     const bool has_error = o.contains(QStringLiteral("error"));
@@ -594,24 +590,6 @@ BlobResourceContents& BlobResourceContents::operator=(const QJsonValue& j) {
     return *this;
 }
 
-QJsonValue to_json(const ResourceContents& c) {
-    return std::visit([](const auto& v) { return to_json(v); }, c);
-}
-
-void from_json(const QJsonValue& j, ResourceContents& c) {
-    const QJsonObject o = as_object(j);
-    if (o.contains(QStringLiteral("text"))) {
-        c = from_json<TextResourceContents>(j);
-        return;
-    }
-    if (o.contains(QStringLiteral("blob"))) {
-        c = from_json<BlobResourceContents>(j);
-        return;
-    }
-    throw Error(error_code::parse_error,
-                "ResourceContents must have either \"text\" or \"blob\"");
-}
-
 Resource::operator QJsonValue() const {
     QJsonObject o;
     o.insert(QStringLiteral("uri"), to_json(uri));
@@ -792,36 +770,16 @@ QJsonValue to_json(const ContentBlock& c) {
 void from_json(const QJsonValue& j, ContentBlock& c) {
     const QJsonObject o = as_object(j);
     const auto t = require<QString>(o, "type");
-    if (t == "text") {
-        c = from_json<TextContent>(j);
-        return;
-    }
-    if (t == "image") {
-        c = from_json<ImageContent>(j);
-        return;
-    }
-    if (t == "audio") {
-        c = from_json<AudioContent>(j);
-        return;
-    }
-    if (t == "resource_link") {
-        c = from_json<ResourceLink>(j);
-        return;
-    }
-    if (t == "resource") {
-        c = from_json<EmbeddedResource>(j);
-        return;
-    }
-    if (t == "tool_use") {
-        c = from_json<ToolUseContent>(j);
-        return;
-    }
-    if (t == "tool_result") {
-        c = from_json<ToolResultContent>(j);
-        return;
-    }
-    throw Error(error_code::parse_error,
-                QString{"unknown content block type: "} + t);
+    if (t == "text")                c = from_json<TextContent>(j);
+    else if (t == "image")          c = from_json<ImageContent>(j);
+    else if (t == "audio")          c = from_json<AudioContent>(j);
+    else if (t == "resource_link")  c = from_json<ResourceLink>(j);
+    else if (t == "resource")       c = from_json<EmbeddedResource>(j);
+    else if (t == "tool_use")       c = from_json<ToolUseContent>(j);
+    else if (t == "tool_result")    c = from_json<ToolResultContent>(j);
+    else
+        throw Error(error_code::parse_error,
+                    QString{"unknown content block type: "} + t);
 }
 
 // =====================================================================
@@ -1251,8 +1209,8 @@ GetPromptResult& GetPromptResult::operator=(const QJsonValue& j) {
 
 CancelledNotificationParams::operator QJsonValue() const {
     QJsonObject o;
-    if (request_id.has_value())
-        o.insert(QStringLiteral("requestId"), to_json(*request_id));
+    if (!request_id.isNull())
+        o.insert(QStringLiteral("requestId"), to_json(request_id));
     put_optional_string(o, "reason", reason);
     return o;
 }
@@ -1263,6 +1221,8 @@ CancelledNotificationParams::operator=(const QJsonValue& j) {
     if (auto it = o.constFind(QStringLiteral("requestId"));
         it != o.constEnd() && !it->isNull()) {
         request_id = from_json<RequestId>(*it);
+    } else {
+        request_id = RequestId();
     }
     take_optional_string(o, "reason", reason);
 
@@ -1276,12 +1236,6 @@ CancelledNotificationParams::operator=(const QJsonValue& j) {
 QString ProgressToken::canonical(void) const {
     return is_string() ? "s:" + as_string()
                        : "i:" + QString::number(as_integer());
-}
-
-ProgressToken::operator QJsonValue() const {
-    if (is_string())
-        return to_json(as_string());
-    return to_json(as_integer());
 }
 
 ProgressToken& ProgressToken::operator=(const QJsonValue& j) {
@@ -1646,24 +1600,6 @@ PromptReference& PromptReference::operator=(const QJsonValue& j) {
     return *this;
 }
 
-QJsonValue to_json(const CompletionReference& r) {
-    return std::visit([](const auto& v) { return to_json(v); }, r);
-}
-void from_json(const QJsonValue& j, CompletionReference& r) {
-    const QJsonObject o = as_object(j);
-    const auto t = require<QString>(o, "type");
-    if (t == "ref/resource") {
-        r = from_json<ResourceTemplateReference>(j);
-        return;
-    }
-    if (t == "ref/prompt") {
-        r = from_json<PromptReference>(j);
-        return;
-    }
-    throw Error(error_code::parse_error,
-                QString{"unknown completion reference type: "} + t);
-}
-
 CompleteArgument::operator QJsonValue() const {
     QJsonObject o;
     o.insert(QStringLiteral("name"), to_json(name));
@@ -1796,33 +1732,6 @@ ElicitUrlRequestParams& ElicitUrlRequestParams::operator=(const QJsonValue& j) {
     elicitation_id = require<QString>(o, "elicitationId");
 
     return *this;
-}
-
-QJsonValue to_json(const ElicitRequestParams& p) {
-    return std::visit([](const auto& alt) { return to_json(alt); }, p);
-}
-void from_json(const QJsonValue& j, ElicitRequestParams& p) {
-    // Tag-by-`mode`: omitted ⇒ form mode (spec default). A present
-    // `mode` field MUST be a string; null and other types are
-    // rejected so a future spec extension that ships a
-    // non-string-mode shape can't silently fall through to form.
-    const QJsonObject o = as_object(j);
-    QString mode = "form";
-    if (auto it = o.constFind(QStringLiteral("mode")); it != o.constEnd()) {
-        if (!it->isString()) {
-            throw Error(error_code::invalid_params,
-                        "elicitation/create: `mode` must be a string");
-        }
-        mode = it->toString();
-    }
-    if (mode == "form") {
-        p = from_json<ElicitFormRequestParams>(j);
-    } else if (mode == "url") {
-        p = from_json<ElicitUrlRequestParams>(j);
-    } else {
-        throw Error(error_code::invalid_params,
-                    "elicitation/create: unknown mode \"" + mode + "\"");
-    }
 }
 
 ElicitResult::operator QJsonValue() const {

@@ -106,7 +106,7 @@ void Elicitation::VariantTagDispatch(void) {
         {"requestedSchema", QJsonObject{{"type", "object"}}},
     };
     auto v = mcp::from_json<mcp::ElicitRequestParams>(form_wire);
-    QVERIFY(std::holds_alternative<mcp::ElicitFormRequestParams>(v));
+    QVERIFY(v.is_form());
 
     // URL mode
     QJsonValue url_wire = QJsonObject{
@@ -116,7 +116,7 @@ void Elicitation::VariantTagDispatch(void) {
         {"elicitationId", "id-1"},
     };
     auto v2 = mcp::from_json<mcp::ElicitRequestParams>(url_wire);
-    QVERIFY(std::holds_alternative<mcp::ElicitUrlRequestParams>(v2));
+    QVERIFY(v2.is_url());
 
     // Unknown mode is rejected (so a future "mode": "voice" doesn't
     // get silently parsed as a form).
@@ -222,11 +222,10 @@ void ElicitationIntegration::FormModeRoundTripThroughClient(void) {
     client.set_elicitation_handler(
         [&](const mcp::ElicitRequestParams& req) -> mcp::ElicitResult {
             // Should be form mode in this test.
-            held_form =
-                std::holds_alternative<mcp::ElicitFormRequestParams>(req);
+            held_form = req.is_form();
             if (held_form) {
                 got_message =
-                    std::get<mcp::ElicitFormRequestParams>(req).message;
+                    static_cast<mcp::ElicitFormRequestParams>(req).message;
             }
             return mcp::ElicitResult{
                 .action = mcp::ElicitAction::accept,
@@ -413,8 +412,8 @@ void ElicitationIntegration::UrlModeFullRoundTripWithCompletion(void) {
     client.connect(std::move(p.a));
     client.set_elicitation_handler(
         [&](const mcp::ElicitRequestParams& req) -> mcp::ElicitResult {
-            if (std::holds_alternative<mcp::ElicitUrlRequestParams>(req)) {
-                const auto& u = std::get<mcp::ElicitUrlRequestParams>(req);
+            if (req.is_url()) {
+                const auto u = static_cast<mcp::ElicitUrlRequestParams>(req);
                 got_elicitation_id = u.elicitation_id;
                 got_url = u.url;
                 got_url_mode_request = true;

@@ -107,8 +107,8 @@ void Cancelled::RoundTrip(void) {
     QCOMPARE(j["requestId"], mcp::test::jv(42));
     QCOMPARE(j["reason"], mcp::test::jv("user requested"));
     auto back = mcp::from_json<mcp::CancelledNotificationParams>(j);
-    QVERIFY(back.request_id.has_value());
-    QCOMPARE(back.request_id->as_integer(), std::int64_t{42});
+    QVERIFY(!back.request_id.isNull());
+    QCOMPARE(back.request_id.as_integer(), std::int64_t{42});
 }
 
 void Progress::RoundTrip(void) {
@@ -321,8 +321,8 @@ void CancellationIntegration::ClientCanSendCancelledNotification(void) {
         }))));
 
     auto received = fut.get();
-    QVERIFY(received.request_id.has_value());
-    QCOMPARE(received.request_id->as_integer(), std::int64_t{7});
+    QVERIFY(!received.request_id.isNull());
+    QCOMPARE(received.request_id.as_integer(), std::int64_t{7});
 
     client_session->close();
     server_session->close();

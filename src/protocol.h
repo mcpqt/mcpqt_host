@@ -23,6 +23,7 @@
 #include <QHash>
 #include <QList>
 #include <QString>
+#include <QVariant>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -45,35 +46,30 @@ inline const QString kJsonrpcVersion = "2.0";
 // --------------------------------------------------------------------------
 // JSON-RPC envelope
 // --------------------------------------------------------------------------
-
 /// A JSON-RPC request id. The spec permits string or number; we preserve the
 /// original kind on round-trip so a client that emits integer ids gets back
 /// integer ids, and likewise for strings.
-class RequestId {
-public:
-    using Value = std::variant<QString, std::int64_t>;
-
-    RequestId(void) : m_value(std::int64_t{0}) {}
-    RequestId(QString s) : m_value(std::move(s)) {}
-    RequestId(const char* s) : m_value(QString{s}) {}
-    RequestId(std::int64_t i) : m_value(i) {}
-    RequestId(int i) : m_value(static_cast<std::int64_t>(i)) {}
-
-    [[nodiscard]] const Value& value(void) const noexcept { return m_value; }
+///
+/// The value is the QJsonValue itself (the struct inherits QJsonValue), so no
+/// custom metatype registration or extra QVariant boxing is needed. Conversion
+/// operators expose the string and integer views; assignment accepts a wire
+/// value and validates the kind.
+struct RequestId : QJsonValue {
+    RequestId(void) : QJsonValue(QJsonValue::Null) {}
+    RequestId(QString s) : QJsonValue(std::move(s)) {}
+    RequestId(const char* s) : QJsonValue(QString::fromUtf8(s)) {}
+    RequestId(std::int64_t i) : QJsonValue(static_cast<qint64>(i)) {}
+    RequestId(int i) : QJsonValue(static_cast<qint64>(i)) {}
 
     [[nodiscard]] bool is_string(void) const noexcept {
-        return m_value.index() == 0;
+        return isString();
     }
     [[nodiscard]] bool is_integer(void) const noexcept {
-        return m_value.index() == 1;
+        return isDouble();
     }
 
-    [[nodiscard]] const QString& as_string(void) const {
-        return std::get<0>(m_value);
-    }
-    [[nodiscard]] std::int64_t as_integer(void) const {
-        return std::get<1>(m_value);
-    }
+    [[nodiscard]] QString as_string(void) const { return toString(); }
+    [[nodiscard]] std::int64_t as_integer(void) const { return toInteger(); }
 
     /// Canonical string form used for hash/map keys. String ids are returned
     /// as-is with a leading 's:' marker; integer ids get an 'i:' marker. This
@@ -82,11 +78,9 @@ public:
 
     friend bool operator==(const RequestId&, const RequestId&) = default;
 
-    [[nodiscard]] operator QJsonValue() const;
+    inline operator std::int64_t(void) const { return as_integer(); }
+    inline operator QString(void) const { return as_string(); }
     RequestId& operator=(const QJsonValue&);
-
-private:
-    Value m_value;
 };
 
 /// A JSON-RPC 2.0 request. Always has an id.
@@ -110,10 +104,10 @@ struct JsonRpcNotification {
 
 /// A JSON-RPC 2.0 response. Carries either a `result` or an `error`. Per
 /// the spec the id is REQUIRED on success, and `null`/absent only on parse
-/// errors that prevented identifying the request — we model that with
-/// `std::optional<RequestId>`.
+/// errors that prevented identifying the request — we model that with a
+/// null RequestId.
 struct JsonRpcResponse {
-    std::optional<RequestId> id = {};
+    RequestId id;
     std::variant<QJsonValue /*result*/, ErrorObject /*error*/> outcome;
 
     [[nodiscard]] bool is_error(void) const noexcept {
@@ -399,11 +393,41 @@ struct BlobResourceContents {
 
 /// Resource contents carry either text or a base64 blob; on the wire
 /// the discriminator is which member ("text" or "blob") is present.
-using ResourceContents =
-    std::variant<TextResourceContents, BlobResourceContents>;
+struct ResourceContents : QJsonValue {
+    ResourceContents(void) : QJsonValue(QJsonValue::Null) {}
+    ResourceContents(const QJsonValue& j) : QJsonValue(j) {}
+    ResourceContents(const TextResourceContents& c) : QJsonValue(c) {}
+    ResourceContents(const BlobResourceContents& c) : QJsonValue(c) {}
 
-[[nodiscard]] QJsonValue to_json(const ResourceContents& c);
-void from_json(const QJsonValue& j, ResourceContents& c);
+    [[nodiscard]] bool is_text(void) const {
+        return toObject().contains(QStringLiteral("text"));
+    }
+    [[nodiscard]] bool is_blob(void) const {
+        return toObject().contains(QStringLiteral("blob"));
+    }
+
+    [[nodiscard]] operator TextResourceContents(void) const {
+        return from_json<TextResourceContents>(*this);
+    }
+    [[nodiscard]] operator BlobResourceContents(void) const {
+        return from_json<BlobResourceContents>(*this);
+    }
+
+    ResourceContents& operator=(const QJsonValue& j) {
+        const QJsonObject o = as_object(j);
+        if (o.contains(QStringLiteral("text"))) {
+            (void)from_json<TextResourceContents>(j);
+        } else if (o.contains(QStringLiteral("blob"))) {
+            (void)from_json<BlobResourceContents>(j);
+        } else {
+            throw Error(error_code::parse_error,
+                        "ResourceContents must have either \"text\" or "
+                        "\"blob\"");
+        }
+        QJsonValue::operator=(j);
+        return *this;
+    }
+};
 
 struct Resource {
     QString uri;
@@ -766,7 +790,7 @@ inline const QString method_notifications_prompts_list_changed =
 // --------------------------------------------------------------------------
 
 struct CancelledNotificationParams {
-    std::optional<RequestId> request_id = {};
+    RequestId request_id;
     QString reason = {};
 
     [[nodiscard]] operator QJsonValue() const;
@@ -786,37 +810,28 @@ inline std::size_t qHash(const RequestId& id, std::size_t seed = 0) noexcept {
     return qHash(id.canonical(), seed);
 }
 
-class ProgressToken {
-public:
-    ProgressToken(void) : m_value(std::int64_t{0}) {}
-    ProgressToken(QString s) : m_value(std::move(s)) {}
-    ProgressToken(const char* s) : m_value(QString{s}) {}
-    ProgressToken(std::int64_t i) : m_value(i) {}
-    ProgressToken(int i) : m_value(static_cast<std::int64_t>(i)) {}
+struct ProgressToken : QJsonValue {
+    ProgressToken(void) : QJsonValue(QJsonValue::Null) {}
+    ProgressToken(QString s) : QJsonValue(std::move(s)) {}
+    ProgressToken(const char* s) : QJsonValue(QString::fromUtf8(s)) {}
+    ProgressToken(std::int64_t i) : QJsonValue(static_cast<qint64>(i)) {}
+    ProgressToken(int i) : QJsonValue(static_cast<qint64>(i)) {}
 
     [[nodiscard]] bool is_string(void) const noexcept {
-        return m_value.index() == 0;
+        return isString();
     }
     [[nodiscard]] bool is_integer(void) const noexcept {
-        return m_value.index() == 1;
+        return isDouble();
     }
 
-    [[nodiscard]] const QString& as_string(void) const {
-        return std::get<0>(m_value);
-    }
-    [[nodiscard]] std::int64_t as_integer(void) const {
-        return std::get<1>(m_value);
-    }
+    [[nodiscard]] QString as_string(void) const { return toString(); }
+    [[nodiscard]] std::int64_t as_integer(void) const { return toInteger(); }
     [[nodiscard]] QString canonical(void) const;
 
     friend bool operator==(const ProgressToken&,
                            const ProgressToken&) = default;
 
-    [[nodiscard]] operator QJsonValue() const;
     ProgressToken& operator=(const QJsonValue&);
-
-private:
-    std::variant<QString, std::int64_t> m_value;
 };
 
 struct ProgressNotificationParams {
@@ -1019,10 +1034,52 @@ struct PromptReference {
     PromptReference& operator=(const QJsonValue&);
 };
 
-using CompletionReference =
-    std::variant<ResourceTemplateReference, PromptReference>;
-[[nodiscard]] QJsonValue to_json(const CompletionReference& r);
-void from_json(const QJsonValue& j, CompletionReference& r);
+struct CompletionReference : QJsonValue {
+    CompletionReference(void) : QJsonValue(QJsonValue::Null) {}
+    CompletionReference(const QJsonValue& j) : QJsonValue(j) {}
+    CompletionReference(const ResourceTemplateReference& r) : QJsonValue(r) {}
+    CompletionReference(const PromptReference& r) : QJsonValue(r) {}
+
+    [[nodiscard]] bool is_resource_template(void) const {
+        return toObject().value(QStringLiteral("type")).toString() ==
+               QStringLiteral("ref/resource");
+    }
+    [[nodiscard]] bool is_prompt(void) const {
+        return toObject().value(QStringLiteral("type")).toString() ==
+               QStringLiteral("ref/prompt");
+    }
+
+    [[nodiscard]] operator ResourceTemplateReference(void) const {
+        return from_json<ResourceTemplateReference>(*this);
+    }
+    [[nodiscard]] operator PromptReference(void) const {
+        return from_json<PromptReference>(*this);
+    }
+
+    CompletionReference& operator=(const QJsonValue& j) {
+        const QJsonObject o = as_object(j);
+        const QString t = require<QString>(o, "type");
+        if (t == "ref/resource") {
+            (void)from_json<ResourceTemplateReference>(j);
+        } else if (t == "ref/prompt") {
+            (void)from_json<PromptReference>(j);
+        } else {
+            throw Error(error_code::parse_error,
+                        QString{"unknown completion reference type: "} + t);
+        }
+        QJsonValue::operator=(j);
+        return *this;
+    }
+
+    CompletionReference& operator=(const ResourceTemplateReference& r) {
+        QJsonValue::operator=(r);
+        return *this;
+    }
+    CompletionReference& operator=(const PromptReference& r) {
+        QJsonValue::operator=(r);
+        return *this;
+    }
+};
 
 struct CompleteArgument {
     QString name;
@@ -1096,10 +1153,62 @@ struct ElicitUrlRequestParams {
     ElicitUrlRequestParams& operator=(const QJsonValue&);
 };
 
-using ElicitRequestParams =
-    std::variant<ElicitFormRequestParams, ElicitUrlRequestParams>;
-[[nodiscard]] QJsonValue to_json(const ElicitRequestParams& p);
-void from_json(const QJsonValue& j, ElicitRequestParams& p);
+struct ElicitRequestParams : QJsonValue {
+    ElicitRequestParams(void) : QJsonValue(QJsonValue::Null) {}
+    ElicitRequestParams(const QJsonValue& j) : QJsonValue(j) {}
+    ElicitRequestParams(const ElicitFormRequestParams& p) : QJsonValue(p) {}
+    ElicitRequestParams(const ElicitUrlRequestParams& p) : QJsonValue(p) {}
+
+    [[nodiscard]] bool is_form(void) const {
+        const auto o = toObject();
+        if (auto it = o.constFind(QStringLiteral("mode")); it != o.constEnd())
+            return it->toString() == QStringLiteral("form");
+        return true;
+    }
+    [[nodiscard]] bool is_url(void) const {
+        return toObject().value(QStringLiteral("mode")).toString() ==
+               QStringLiteral("url");
+    }
+
+    [[nodiscard]] operator ElicitFormRequestParams(void) const {
+        return from_json<ElicitFormRequestParams>(*this);
+    }
+    [[nodiscard]] operator ElicitUrlRequestParams(void) const {
+        return from_json<ElicitUrlRequestParams>(*this);
+    }
+
+    ElicitRequestParams& operator=(const QJsonValue& j) {
+        const QJsonObject o = as_object(j);
+        QString mode = QStringLiteral("form");
+        if (auto it = o.constFind(QStringLiteral("mode"));
+            it != o.constEnd()) {
+            if (!it->isString()) {
+                throw Error(error_code::invalid_params,
+                            "elicitation/create: `mode` must be a string");
+            }
+            mode = it->toString();
+        }
+        if (mode == "form") {
+            (void)from_json<ElicitFormRequestParams>(j);
+        } else if (mode == "url") {
+            (void)from_json<ElicitUrlRequestParams>(j);
+        } else {
+            throw Error(error_code::invalid_params,
+                        "elicitation/create: unknown mode \"" + mode + "\"");
+        }
+        QJsonValue::operator=(j);
+        return *this;
+    }
+
+    ElicitRequestParams& operator=(const ElicitFormRequestParams& p) {
+        QJsonValue::operator=(p);
+        return *this;
+    }
+    ElicitRequestParams& operator=(const ElicitUrlRequestParams& p) {
+        QJsonValue::operator=(p);
+        return *this;
+    }
+};
 
 enum class ElicitAction { accept, decline, cancel };
 Q_ENUM_NS(ElicitAction)

@@ -101,11 +101,13 @@ void Resources::BlobContentsRoundTrip(void) {
 void Resources::ContentsVariantDispatchesByDiscriminator(void) {
     QJsonObject text_obj = {{"uri", "x"}, {"text", "y"}};
     auto v = mcp::from_json<mcp::ResourceContents>(text_obj);
-    QVERIFY(std::holds_alternative<mcp::TextResourceContents>(v));
+    QVERIFY(v.is_text());
+    QCOMPARE(mcp::TextResourceContents(v).text, QString{"y"});
 
     QJsonObject blob_obj = {{"uri", "x"}, {"blob", "Zm9v"}};
     v = mcp::from_json<mcp::ResourceContents>(blob_obj);
-    QVERIFY(std::holds_alternative<mcp::BlobResourceContents>(v));
+    QVERIFY(v.is_blob());
+    QCOMPARE(mcp::BlobResourceContents(v).blob, QByteArray{"Zm9v"});
 
     QJsonObject bad = {{"uri", "x"}};
     QVERIFY_EXCEPTION_THROWN(mcp::from_json<mcp::ResourceContents>(bad),
@@ -170,7 +172,7 @@ void Resources::EmbeddedResourceContentBlock(void) {
     auto block = mcp::from_json<mcp::ContentBlock>(j);
     QVERIFY(std::holds_alternative<mcp::EmbeddedResource>(block));
     auto inner = std::get<mcp::EmbeddedResource>(block);
-    QVERIFY(std::holds_alternative<mcp::TextResourceContents>(inner.resource));
+    QVERIFY(inner.resource.is_text());
 }
 
 // -------------------------------------------------------------------------
@@ -231,15 +233,13 @@ void ResourcesIntegration::ListAndRead(void) {
 
     auto read = client.read_resource("file:///hello.txt").get();
     QCOMPARE(read.contents.size(), std::size_t{1});
-    QVERIFY(
-        std::holds_alternative<mcp::TextResourceContents>(read.contents[0]));
-    QCOMPARE(std::get<mcp::TextResourceContents>(read.contents[0]).text,
+    QVERIFY(read.contents[0].is_text());
+    QCOMPARE(mcp::TextResourceContents(read.contents[0]).text,
              QString{"hello, world\n"});
 
     auto blob = client.read_resource("file:///bin").get();
     QCOMPARE(blob.contents.size(), std::size_t{1});
-    QVERIFY(
-        std::holds_alternative<mcp::BlobResourceContents>(blob.contents[0]));
+    QVERIFY(blob.contents[0].is_blob());
 
     client.disconnect();
 }
@@ -285,7 +285,7 @@ void ResourcesIntegration::FallbackHandlesUnknownUri(void) {
 
     auto read = client.read_resource("file:///anything").get();
     QCOMPARE(read.contents.size(), std::size_t{1});
-    QVERIFY(std::get<mcp::TextResourceContents>(read.contents[0])
+    QVERIFY(mcp::TextResourceContents(read.contents[0])
                 .text.contains("fallback"));
 
     client.disconnect();
