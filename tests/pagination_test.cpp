@@ -22,8 +22,6 @@
 
 namespace {
 
-using mcp::QJsonValue;
-
 struct ServerThread {
     std::shared_ptr<mcp::Server> server;
     std::thread thread;

@@ -80,31 +80,31 @@ public:
 
     friend bool operator==(const RequestId&, const RequestId&) = default;
 
+    [[nodiscard]] operator QJsonValue() const;
+    RequestId& operator=(const QJsonValue&);
+
 private:
     Value m_value;
 };
-
-[[nodiscard]] QJsonValue to_json(const RequestId& id);
-void from_json(const QJsonValue& j, RequestId& id);
 
 /// A JSON-RPC 2.0 request. Always has an id.
 struct JsonRpcRequest {
     RequestId id;
     QString method;
-    std::optional<QJsonValue> params = {};
-};
+    QJsonValue params;
 
-[[nodiscard]] QJsonValue to_json(const JsonRpcRequest& r);
-void from_json(const QJsonValue& j, JsonRpcRequest& r);
+    [[nodiscard]] operator QJsonValue() const;
+    JsonRpcRequest& operator=(const QJsonValue&);
+};
 
 /// A JSON-RPC 2.0 notification. Has no id; sender expects no response.
 struct JsonRpcNotification {
     QString method;
-    std::optional<QJsonValue> params = {};
-};
+    QJsonValue params;
 
-[[nodiscard]] QJsonValue to_json(const JsonRpcNotification& n);
-void from_json(const QJsonValue& j, JsonRpcNotification& n);
+    [[nodiscard]] operator QJsonValue() const;
+    JsonRpcNotification& operator=(const QJsonValue&);
+};
 
 /// A JSON-RPC 2.0 response. Carries either a `result` or an `error`. Per
 /// the spec the id is REQUIRED on success, and `null`/absent only on parse
@@ -127,15 +127,13 @@ struct JsonRpcResponse {
     [[nodiscard]] const ErrorObject& error(void) const {
         return std::get<1>(outcome);
     }
-};
 
-[[nodiscard]] QJsonValue to_json(const JsonRpcResponse& r);
-void from_json(const QJsonValue& j, JsonRpcResponse& r);
+    [[nodiscard]] operator QJsonValue() const;
+    JsonRpcResponse& operator=(const QJsonValue&);
+};
 
 // Codec for the wire error object (defined here rather than in error.h so
 // that header stays free of the JSON codec).
-[[nodiscard]] QJsonValue to_json(const ErrorObject& e);
-void from_json(const QJsonValue& j, ErrorObject& e);
 
 /// Tagged union over every JSON-RPC frame we accept off the wire. Use
 /// `std::visit` to dispatch on the concrete kind.
@@ -166,9 +164,10 @@ struct Icon {
     QString sizes = {};
     /// "light" / "dark" / "monochrome" / app-defined.
     QString theme = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    Icon& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const Icon& c);
-void from_json(const QJsonValue& j, Icon& c);
 
 struct Implementation {
     QString name;
@@ -181,11 +180,11 @@ struct Implementation {
     /// Top-level `_meta` envelope for protocol-level metadata.
     /// Round-trips opaquely; spec reserves keys with the
     /// `io.modelcontextprotocol/` prefix.
-    std::optional<QJsonValue> meta = {};
-};
+    QJsonValue meta;
 
-[[nodiscard]] QJsonValue to_json(const Implementation& i);
-void from_json(const QJsonValue& j, Implementation& i);
+    [[nodiscard]] operator QJsonValue() const;
+    Implementation& operator=(const QJsonValue&);
+};
 
 // --------------------------------------------------------------------------
 // Tasks: small capability/augmentation types (the primitive's own
@@ -197,29 +196,32 @@ struct TaskAugmentation {
     /// Milliseconds the task is retained after creation. Empty / null
     /// means unlimited (or implementation-defined retention).
     std::optional<std::int64_t> ttl = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    TaskAugmentation& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const TaskAugmentation& t);
-void from_json(const QJsonValue& j, TaskAugmentation& t);
 
 struct TasksRequestsCapability {
     /// Per-namespace presence-only objects — e.g. `tools.call`,
     /// `sampling.createMessage`, `elicitation.create`. Held as raw
     /// json so a future spec extension (a new method) round-trips
     /// without an SDK release.
-    std::optional<QJsonValue> tools = {};
-    std::optional<QJsonValue> sampling = {};
-    std::optional<QJsonValue> elicitation = {};
+    QJsonValue tools;
+    QJsonValue sampling;
+    QJsonValue elicitation;
+
+    [[nodiscard]] operator QJsonValue() const;
+    TasksRequestsCapability& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const TasksRequestsCapability& c);
-void from_json(const QJsonValue& j, TasksRequestsCapability& c);
 
 struct TasksCapability {
-    std::optional<QJsonValue> list = {};
-    std::optional<QJsonValue> cancel = {};
+    QJsonValue list;
+    QJsonValue cancel;
     std::optional<TasksRequestsCapability> requests = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    TasksCapability& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const TasksCapability& c);
-void from_json(const QJsonValue& j, TasksCapability& c);
 
 // --------------------------------------------------------------------------
 // Capabilities
@@ -227,70 +229,78 @@ void from_json(const QJsonValue& j, TasksCapability& c);
 
 struct RootsCapability {
     std::optional<bool> list_changed = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    RootsCapability& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const RootsCapability& c);
-void from_json(const QJsonValue& j, RootsCapability& c);
 
 struct SamplingCapability {
     // Per spec: `context?: object`, `tools?: object`. Presence-only flags;
     // we capture the raw object so future fields round-trip.
-    std::optional<QJsonValue> context = {};
-    std::optional<QJsonValue> tools = {};
+    QJsonValue context;
+    QJsonValue tools;
+
+    [[nodiscard]] operator QJsonValue() const;
+    SamplingCapability& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const SamplingCapability& c);
-void from_json(const QJsonValue& j, SamplingCapability& c);
 
 struct ElicitationCapability {
-    std::optional<QJsonValue> form = {};  // form-based elicitation
-    std::optional<QJsonValue> url = {};   // URL-based elicitation
+    QJsonValue form;  // form-based elicitation
+    QJsonValue url;   // URL-based elicitation
+
+    [[nodiscard]] operator QJsonValue() const;
+    ElicitationCapability& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ElicitationCapability& c);
-void from_json(const QJsonValue& j, ElicitationCapability& c);
 
 struct ClientCapabilities {
-    std::optional<QJsonValue> experimental = {};
+    QJsonValue experimental;
     std::optional<RootsCapability> roots = {};
     std::optional<SamplingCapability> sampling = {};
     std::optional<ElicitationCapability> elicitation = {};
     /// 2025-11-25: client advertises which task-augmentable inbound
     /// methods it can handle (e.g. sampling/createMessage as a task).
     std::optional<TasksCapability> tasks = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ClientCapabilities& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ClientCapabilities& c);
-void from_json(const QJsonValue& j, ClientCapabilities& c);
 
 struct PromptsCapability {
     std::optional<bool> list_changed = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    PromptsCapability& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const PromptsCapability& c);
-void from_json(const QJsonValue& j, PromptsCapability& c);
 
 struct ResourcesCapability {
     std::optional<bool> subscribe = {};
     std::optional<bool> list_changed = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ResourcesCapability& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ResourcesCapability& c);
-void from_json(const QJsonValue& j, ResourcesCapability& c);
 
 struct ToolsCapability {
     std::optional<bool> list_changed = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ToolsCapability& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ToolsCapability& c);
-void from_json(const QJsonValue& j, ToolsCapability& c);
 
 struct ServerCapabilities {
-    std::optional<QJsonValue> experimental = {};
-    std::optional<QJsonValue> logging = {};      // presence-only
-    std::optional<QJsonValue> completions = {};  // presence-only
+    QJsonValue experimental;
+    QJsonValue logging;      // presence-only
+    QJsonValue completions;  // presence-only
     std::optional<PromptsCapability> prompts = {};
     std::optional<ResourcesCapability> resources = {};
     std::optional<ToolsCapability> tools = {};
     /// 2025-11-25: which task-augmentable inbound methods the server
     /// can handle (e.g. tools/call as a task), plus list/cancel.
     std::optional<TasksCapability> tasks = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ServerCapabilities& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ServerCapabilities& c);
-void from_json(const QJsonValue& j, ServerCapabilities& c);
 
 // --------------------------------------------------------------------------
 // initialize / initialized
@@ -300,19 +310,21 @@ struct InitializeRequestParams {
     QString protocol_version;
     ClientCapabilities capabilities;
     Implementation client_info;
+
+    [[nodiscard]] operator QJsonValue() const;
+    InitializeRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const InitializeRequestParams& p);
-void from_json(const QJsonValue& j, InitializeRequestParams& p);
 
 struct InitializeResult {
     QString protocol_version;
     ServerCapabilities capabilities;
     Implementation server_info;
     QString instructions = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    InitializeResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const InitializeResult& r);
-void from_json(const QJsonValue& j, InitializeResult& r);
 
 inline const QString method_initialize = "initialize";
 inline const QString method_notifications_initialized =
@@ -331,32 +343,36 @@ struct Annotations {
     std::optional<QList<Role>> audience = {};
     std::optional<double> priority = {};
     QString last_modified = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    Annotations& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const Annotations& a);
-void from_json(const QJsonValue& j, Annotations& a);
 
 struct TextContent {
     QString text;
     std::optional<Annotations> annotations = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    TextContent& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const TextContent& c);
-void from_json(const QJsonValue& j, TextContent& c);
 
 struct ImageContent {
     QString data;  // base64
     QString mime_type;
     std::optional<Annotations> annotations = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ImageContent& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ImageContent& c);
-void from_json(const QJsonValue& j, ImageContent& c);
 
 struct AudioContent {
     QString data;  // base64
     QString mime_type;
     std::optional<Annotations> annotations = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    AudioContent& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const AudioContent& c);
-void from_json(const QJsonValue& j, AudioContent& c);
 
 // --------------------------------------------------------------------------
 // Resources (must come before ContentBlock; ResourceLink and
@@ -367,17 +383,19 @@ struct TextResourceContents {
     QString uri;
     QString mime_type = {};
     QString text;
+
+    [[nodiscard]] operator QJsonValue() const;
+    TextResourceContents& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const TextResourceContents& c);
-void from_json(const QJsonValue& j, TextResourceContents& c);
 
 struct BlobResourceContents {
     QString uri;
     QString mime_type = {};
     QString blob;  // base64
+
+    [[nodiscard]] operator QJsonValue() const;
+    BlobResourceContents& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const BlobResourceContents& c);
-void from_json(const QJsonValue& j, BlobResourceContents& c);
 
 /// Resource contents carry either text or a base64 blob; on the wire
 /// the discriminator is which member ("text" or "blob") is present.
@@ -397,10 +415,11 @@ struct Resource {
     std::optional<std::int64_t> size = {};  // bytes
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    Resource& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const Resource& r);
-void from_json(const QJsonValue& j, Resource& r);
 
 struct ResourceTemplate {
     QString uri_template;
@@ -411,10 +430,11 @@ struct ResourceTemplate {
     std::optional<Annotations> annotations = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ResourceTemplate& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ResourceTemplate& r);
-void from_json(const QJsonValue& j, ResourceTemplate& r);
 
 struct ResourceLink {
     QString uri;
@@ -426,17 +446,19 @@ struct ResourceLink {
     std::optional<std::int64_t> size = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ResourceLink& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ResourceLink& r);
-void from_json(const QJsonValue& j, ResourceLink& r);
 
 struct EmbeddedResource {
     ResourceContents resource;
     std::optional<Annotations> annotations = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    EmbeddedResource& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const EmbeddedResource& r);
-void from_json(const QJsonValue& j, EmbeddedResource& r);
 
 /// 2025-11-25: tool-use content block. Used in sampling messages to
 /// represent the assistant emitting a tool call (i.e. an
@@ -452,9 +474,10 @@ struct ToolUseContent {
     /// `inputSchema`.
     QJsonValue input;
     std::optional<Annotations> annotations = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ToolUseContent& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ToolUseContent& c);
-void from_json(const QJsonValue& j, ToolUseContent& c);
 
 /// Plain (non-tool) content blocks — the subset legal as the
 /// `content` of a ToolResultContent. The spec forbids nested
@@ -478,9 +501,10 @@ struct ToolResultContent {
     /// carries a TextContent describing the error in that case.
     std::optional<bool> is_error = {};
     std::optional<Annotations> annotations = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ToolResultContent& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ToolResultContent& c);
-void from_json(const QJsonValue& j, ToolResultContent& c);
 
 /// Content blocks used by tools/calls, prompts, and sampling. The
 /// type discriminator on the wire is `"text" | "image" | "audio"
@@ -504,9 +528,10 @@ struct ToolAnnotations {
     std::optional<bool> destructive_hint = {};
     std::optional<bool> idempotent_hint = {};
     std::optional<bool> open_world_hint = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ToolAnnotations& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ToolAnnotations& a);
-void from_json(const QJsonValue& j, ToolAnnotations& a);
 
 /// 2025-11-25: per-tool execution policy. The receiver advertises
 /// whether a tool supports being task-augmented at all, optionally,
@@ -519,58 +544,64 @@ struct ToolExecution {
     /// "forbidden" / "optional" / "required". Default is
     /// "optional" when `execution` is absent.
     TaskSupport task_support = TaskSupport::optional;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ToolExecution& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ToolExecution& e);
-void from_json(const QJsonValue& j, ToolExecution& e);
 
 struct Tool {
     QString name;
     QString title = {};
     QString description = {};
-    QJsonValue input_schema;                       // JSON Schema; type:"object"
-    std::optional<QJsonValue> output_schema = {};  // optional JSON Schema
+    QJsonValue input_schema;   // JSON Schema; type:"object"
+    QJsonValue output_schema;  // optional JSON Schema
     std::optional<ToolAnnotations> annotations = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
     std::optional<ToolExecution> execution = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    Tool& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const Tool& t);
-void from_json(const QJsonValue& j, Tool& t);
 
 struct ListToolsRequestParams {
     QString cursor = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListToolsRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListToolsRequestParams& p);
-void from_json(const QJsonValue& j, ListToolsRequestParams& p);
 
 struct ListToolsResult {
     QList<Tool> tools;
     QString next_cursor = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListToolsResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListToolsResult& r);
-void from_json(const QJsonValue& j, ListToolsResult& r);
 
 struct CallToolRequestParams {
     QString name;
-    std::optional<QJsonValue> arguments = {};  // JSON object
+    QJsonValue arguments;  // JSON object
     /// When set, the request is task-augmented: the receiver should
     /// return a CreateTaskResult envelope and run the call async. The
     /// final CallToolResult is fetched via `tasks/result`.
     std::optional<TaskAugmentation> task = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    CallToolRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CallToolRequestParams& p);
-void from_json(const QJsonValue& j, CallToolRequestParams& p);
 
 struct CallToolResult {
     QList<ContentBlock> content;
-    std::optional<QJsonValue> structured_content = {};  // matches outputSchema
+    QJsonValue structured_content;  // matches outputSchema
     std::optional<bool> is_error = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    CallToolResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CallToolResult& r);
-void from_json(const QJsonValue& j, CallToolResult& r);
 
 inline const QString method_tools_list = "tools/list";
 inline const QString method_tools_call = "tools/call";
@@ -581,62 +612,71 @@ inline const QString method_tools_call = "tools/call";
 
 struct ListResourcesRequestParams {
     QString cursor = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListResourcesRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListResourcesRequestParams& p);
-void from_json(const QJsonValue& j, ListResourcesRequestParams& p);
 
 struct ListResourcesResult {
     QList<Resource> resources;
     QString next_cursor = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListResourcesResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListResourcesResult& r);
-void from_json(const QJsonValue& j, ListResourcesResult& r);
 
 struct ListResourceTemplatesRequestParams {
     QString cursor = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListResourceTemplatesRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListResourceTemplatesRequestParams& p);
-void from_json(const QJsonValue& j, ListResourceTemplatesRequestParams& p);
 
 struct ListResourceTemplatesResult {
     QList<ResourceTemplate> resource_templates;
     QString next_cursor = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListResourceTemplatesResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListResourceTemplatesResult& r);
-void from_json(const QJsonValue& j, ListResourceTemplatesResult& r);
 
 struct ReadResourceRequestParams {
     QString uri;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ReadResourceRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ReadResourceRequestParams& p);
-void from_json(const QJsonValue& j, ReadResourceRequestParams& p);
 
 struct ReadResourceResult {
     QList<ResourceContents> contents;
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ReadResourceResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ReadResourceResult& r);
-void from_json(const QJsonValue& j, ReadResourceResult& r);
 
 struct SubscribeRequestParams {
     QString uri;
+
+    [[nodiscard]] operator QJsonValue() const;
+    SubscribeRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const SubscribeRequestParams& p);
-void from_json(const QJsonValue& j, SubscribeRequestParams& p);
 
 struct UnsubscribeRequestParams {
     QString uri;
+
+    [[nodiscard]] operator QJsonValue() const;
+    UnsubscribeRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const UnsubscribeRequestParams& p);
-void from_json(const QJsonValue& j, UnsubscribeRequestParams& p);
 
 struct ResourceUpdatedNotificationParams {
     QString uri;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ResourceUpdatedNotificationParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ResourceUpdatedNotificationParams& p);
-void from_json(const QJsonValue& j, ResourceUpdatedNotificationParams& p);
 
 inline const QString method_resources_list = "resources/list";
 inline const QString method_resources_templates_list =
@@ -658,9 +698,10 @@ struct PromptArgument {
     QString title = {};
     QString description = {};
     std::optional<bool> required = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    PromptArgument& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const PromptArgument& a);
-void from_json(const QJsonValue& j, PromptArgument& a);
 
 struct Prompt {
     QString name;
@@ -669,46 +710,52 @@ struct Prompt {
     std::optional<QList<PromptArgument>> arguments = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    Prompt& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const Prompt& p);
-void from_json(const QJsonValue& j, Prompt& p);
 
 struct PromptMessage {
     Role role;
     ContentBlock content;
+
+    [[nodiscard]] operator QJsonValue() const;
+    PromptMessage& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const PromptMessage& m);
-void from_json(const QJsonValue& j, PromptMessage& m);
 
 struct ListPromptsRequestParams {
     QString cursor = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListPromptsRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListPromptsRequestParams& p);
-void from_json(const QJsonValue& j, ListPromptsRequestParams& p);
 
 struct ListPromptsResult {
     QList<Prompt> prompts;
     QString next_cursor = {};
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListPromptsResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListPromptsResult& r);
-void from_json(const QJsonValue& j, ListPromptsResult& r);
 
 struct GetPromptRequestParams {
     QString name;
     std::optional<QHash<QString, QString>> arguments = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    GetPromptRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const GetPromptRequestParams& p);
-void from_json(const QJsonValue& j, GetPromptRequestParams& p);
 
 struct GetPromptResult {
     QString description = {};
     QList<PromptMessage> messages;
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    GetPromptResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const GetPromptResult& r);
-void from_json(const QJsonValue& j, GetPromptResult& r);
 
 inline const QString method_prompts_list = "prompts/list";
 inline const QString method_prompts_get = "prompts/get";
@@ -722,9 +769,10 @@ inline const QString method_notifications_prompts_list_changed =
 struct CancelledNotificationParams {
     std::optional<RequestId> request_id = {};
     QString reason = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    CancelledNotificationParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CancelledNotificationParams& p);
-void from_json(const QJsonValue& j, CancelledNotificationParams& p);
 
 inline const QString method_notifications_cancelled = "notifications/cancelled";
 
@@ -765,20 +813,22 @@ public:
     friend bool operator==(const ProgressToken&,
                            const ProgressToken&) = default;
 
+    [[nodiscard]] operator QJsonValue() const;
+    ProgressToken& operator=(const QJsonValue&);
+
 private:
     std::variant<QString, std::int64_t> m_value;
 };
-[[nodiscard]] QJsonValue to_json(const ProgressToken& t);
-void from_json(const QJsonValue& j, ProgressToken& t);
 
 struct ProgressNotificationParams {
     ProgressToken progress_token;
     double progress;
     std::optional<double> total = {};
     QString message = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ProgressNotificationParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ProgressNotificationParams& p);
-void from_json(const QJsonValue& j, ProgressNotificationParams& p);
 
 inline const QString method_notifications_progress = "notifications/progress";
 
@@ -805,17 +855,19 @@ void from_json(const QJsonValue& j, LoggingLevel& l);
 
 struct SetLevelRequestParams {
     LoggingLevel level;
+
+    [[nodiscard]] operator QJsonValue() const;
+    SetLevelRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const SetLevelRequestParams& p);
-void from_json(const QJsonValue& j, SetLevelRequestParams& p);
 
 struct LoggingMessageNotificationParams {
     LoggingLevel level;
     QString logger = {};  // optional name of the logger source
-    QJsonValue data;            // free-form payload (string/object/...)
+    QJsonValue data;      // free-form payload (string/object/...)
+
+    [[nodiscard]] operator QJsonValue() const;
+    LoggingMessageNotificationParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const LoggingMessageNotificationParams& p);
-void from_json(const QJsonValue& j, LoggingMessageNotificationParams& p);
 
 inline const QString method_logging_set_level = "logging/setLevel";
 inline const QString method_notifications_message = "notifications/message";
@@ -832,18 +884,20 @@ inline const QString method_ping = "ping";
 
 struct ModelHint {
     QString name = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ModelHint& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ModelHint& h);
-void from_json(const QJsonValue& j, ModelHint& h);
 
 struct ModelPreferences {
     std::optional<QList<ModelHint>> hints = {};
     std::optional<double> cost_priority = {};
     std::optional<double> speed_priority = {};
     std::optional<double> intelligence_priority = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ModelPreferences& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ModelPreferences& p);
-void from_json(const QJsonValue& j, ModelPreferences& p);
 
 enum class IncludeContext { none, this_server, all_servers };
 [[nodiscard]] QString to_string(IncludeContext c) noexcept;
@@ -870,9 +924,10 @@ struct ToolChoice {
     std::optional<ToolChoiceMode> mode = {};
     /// Required when mode == ToolChoiceMode::tool.
     QString name = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ToolChoice& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ToolChoice& c);
-void from_json(const QJsonValue& j, ToolChoice& c);
 
 /// A message in a sampling exchange. Phase 3 supports text/image/audio
 /// content; tool_use and tool_result variants land in Phase 4 alongside
@@ -886,9 +941,10 @@ void from_json(const QJsonValue& j, ToolChoice& c);
 struct SamplingMessage {
     Role role;
     QList<ContentBlock> content;
+
+    [[nodiscard]] operator QJsonValue() const;
+    SamplingMessage& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const SamplingMessage& m);
-void from_json(const QJsonValue& j, SamplingMessage& m);
 
 struct CreateMessageRequestParams {
     QList<SamplingMessage> messages;
@@ -898,7 +954,7 @@ struct CreateMessageRequestParams {
     std::optional<double> temperature = {};
     std::int64_t max_tokens{};  // required by spec
     std::optional<QList<QString>> stop_sequences = {};
-    std::optional<QJsonValue> metadata = {};
+    QJsonValue metadata;
     /// 2025-11-25: tools the assistant may call during this
     /// sampling. Server side is expected to translate to the
     /// underlying LLM's tool-calling shape; `Tool::input_schema`
@@ -906,9 +962,10 @@ struct CreateMessageRequestParams {
     std::optional<QList<Tool>> tools = {};
     /// 2025-11-25: how to constrain tool calling.
     std::optional<ToolChoice> tool_choice = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    CreateMessageRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CreateMessageRequestParams& p);
-void from_json(const QJsonValue& j, CreateMessageRequestParams& p);
 
 struct CreateMessageResult {
     Role role;
@@ -916,10 +973,11 @@ struct CreateMessageResult {
     QString model;
     QString stop_reason = {};
     /// Top-level _meta envelope for protocol-level metadata.
-    std::optional<QJsonValue> meta = {};
+    QJsonValue meta;
+
+    [[nodiscard]] operator QJsonValue() const;
+    CreateMessageResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CreateMessageResult& r);
-void from_json(const QJsonValue& j, CreateMessageResult& r);
 
 inline const QString method_sampling_create_message = "sampling/createMessage";
 
@@ -930,15 +988,17 @@ inline const QString method_sampling_create_message = "sampling/createMessage";
 struct Root {
     QString uri;
     QString name = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    Root& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const Root& r);
-void from_json(const QJsonValue& j, Root& r);
 
 struct ListRootsResult {
     QList<Root> roots;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListRootsResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListRootsResult& r);
-void from_json(const QJsonValue& j, ListRootsResult& r);
 
 inline const QString method_roots_list = "roots/list";
 inline const QString method_notifications_roots_list_changed =
@@ -950,16 +1010,18 @@ inline const QString method_notifications_roots_list_changed =
 
 struct ResourceTemplateReference {
     QString uri_template;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ResourceTemplateReference& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ResourceTemplateReference& r);
-void from_json(const QJsonValue& j, ResourceTemplateReference& r);
 
 struct PromptReference {
     QString name;
     QString title = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    PromptReference& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const PromptReference& r);
-void from_json(const QJsonValue& j, PromptReference& r);
 
 using CompletionReference =
     std::variant<ResourceTemplateReference, PromptReference>;
@@ -969,31 +1031,35 @@ void from_json(const QJsonValue& j, CompletionReference& r);
 struct CompleteArgument {
     QString name;
     QString value;
+
+    [[nodiscard]] operator QJsonValue() const;
+    CompleteArgument& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CompleteArgument& a);
-void from_json(const QJsonValue& j, CompleteArgument& a);
 
 struct CompleteRequestParams {
     CompletionReference reference;
     CompleteArgument argument;
     std::optional<QHash<QString, QString>> context_arguments;
+
+    [[nodiscard]] operator QJsonValue() const;
+    CompleteRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CompleteRequestParams& p);
-void from_json(const QJsonValue& j, CompleteRequestParams& p);
 
 struct CompletionValues {
     QList<QString> values;
     std::optional<std::int64_t> total = {};
     std::optional<bool> has_more = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    CompletionValues& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CompletionValues& v);
-void from_json(const QJsonValue& j, CompletionValues& v);
 
 struct CompleteResult {
     CompletionValues completion;
+
+    [[nodiscard]] operator QJsonValue() const;
+    CompleteResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CompleteResult& r);
-void from_json(const QJsonValue& j, CompleteResult& r);
 
 inline const QString method_completion_complete = "completion/complete";
 
@@ -1017,9 +1083,10 @@ struct ElicitFormRequestParams {
     /// here so applications can negotiate richer shapes when both sides
     /// agree, but the basic SDK sticks to the spec.
     QJsonValue requested_schema;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ElicitFormRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ElicitFormRequestParams& p);
-void from_json(const QJsonValue& j, ElicitFormRequestParams& p);
 
 struct ElicitUrlRequestParams {
     QString message;
@@ -1028,9 +1095,10 @@ struct ElicitUrlRequestParams {
     /// Identifier the server uses to correlate later
     /// `notifications/elicitation/complete` notifications.
     QString elicitation_id;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ElicitUrlRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ElicitUrlRequestParams& p);
-void from_json(const QJsonValue& j, ElicitUrlRequestParams& p);
 
 using ElicitRequestParams =
     std::variant<ElicitFormRequestParams, ElicitUrlRequestParams>;
@@ -1046,10 +1114,11 @@ struct ElicitResult {
     /// Form-mode only: the user's submission, conforming to the
     /// server-supplied schema. Absent for decline/cancel and for URL
     /// mode.
-    std::optional<QJsonValue> content = {};
+    QJsonValue content;
+
+    [[nodiscard]] operator QJsonValue() const;
+    ElicitResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ElicitResult& r);
-void from_json(const QJsonValue& j, ElicitResult& r);
 
 /// URL-mode out-of-band completion notification. Emitted by the server
 /// or relayed by the client once the out-of-band flow finishes — but
@@ -1057,11 +1126,10 @@ void from_json(const QJsonValue& j, ElicitResult& r);
 /// accepts the notification on either side.
 struct ElicitationCompleteNotificationParams {
     QString elicitation_id;
-};
-[[nodiscard]] QJsonValue
-to_json(const ElicitationCompleteNotificationParams& p);
-void from_json(const QJsonValue& j, ElicitationCompleteNotificationParams& p);
 
+    [[nodiscard]] operator QJsonValue() const;
+    ElicitationCompleteNotificationParams& operator=(const QJsonValue&);
+};
 inline const QString method_elicitation_create = "elicitation/create";
 inline const QString method_notifications_elicitation_complete =
     "notifications/elicitation/complete";
@@ -1077,9 +1145,10 @@ struct UrlElicitationRequiredErrorData {
     /// Each element is the params shape of an `elicitation/create`
     /// request — message + url + elicitationId.
     QList<ElicitUrlRequestParams> elicitations;
+
+    [[nodiscard]] operator QJsonValue() const;
+    UrlElicitationRequiredErrorData& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const UrlElicitationRequiredErrorData& d);
-void from_json(const QJsonValue& j, UrlElicitationRequiredErrorData& d);
 
 // --------------------------------------------------------------------------
 // Tasks (long-running operations)
@@ -1118,56 +1187,64 @@ struct Task {
     std::optional<std::int64_t> ttl = {};
     /// Suggested polling interval in milliseconds; advisory.
     std::optional<std::int64_t> poll_interval = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    Task& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const Task& t);
-void from_json(const QJsonValue& j, Task& t);
 
 /// Returned in place of the underlying request's normal result when
 /// the request was task-augmented.
 struct CreateTaskResult {
     Task task;
+
+    [[nodiscard]] operator QJsonValue() const;
+    CreateTaskResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CreateTaskResult& r);
-void from_json(const QJsonValue& j, CreateTaskResult& r);
 
 struct GetTaskRequestParams {
     QString task_id;
+
+    [[nodiscard]] operator QJsonValue() const;
+    GetTaskRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const GetTaskRequestParams& p);
-void from_json(const QJsonValue& j, GetTaskRequestParams& p);
 
 struct GetTaskResultRequestParams {
     QString task_id;
+
+    [[nodiscard]] operator QJsonValue() const;
+    GetTaskResultRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const GetTaskResultRequestParams& p);
-void from_json(const QJsonValue& j, GetTaskResultRequestParams& p);
 
 struct ListTasksRequestParams {
     QString cursor = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListTasksRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListTasksRequestParams& p);
-void from_json(const QJsonValue& j, ListTasksRequestParams& p);
 
 struct ListTasksResult {
     QList<Task> tasks;
     QString next_cursor = {};
+
+    [[nodiscard]] operator QJsonValue() const;
+    ListTasksResult& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const ListTasksResult& r);
-void from_json(const QJsonValue& j, ListTasksResult& r);
 
 struct CancelTaskRequestParams {
     QString task_id;
+
+    [[nodiscard]] operator QJsonValue() const;
+    CancelTaskRequestParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const CancelTaskRequestParams& p);
-void from_json(const QJsonValue& j, CancelTaskRequestParams& p);
 
 struct TaskStatusNotificationParams {
     /// A point-in-time projection of the underlying Task. Same shape
     /// as Task, no extra fields.
     Task task;
+
+    [[nodiscard]] operator QJsonValue() const;
+    TaskStatusNotificationParams& operator=(const QJsonValue&);
 };
-[[nodiscard]] QJsonValue to_json(const TaskStatusNotificationParams& p);
-void from_json(const QJsonValue& j, TaskStatusNotificationParams& p);
 
 inline const QString method_tasks_get = "tasks/get";
 inline const QString method_tasks_result = "tasks/result";

@@ -1210,8 +1210,8 @@ void HttpServerHost::start(void) {
     }
 
     // ---- RFC 9728 Protected Resource Metadata ----
-    if (m_opts.resource_metadata.has_value()) {
-        const QByteArray body = dump(*m_opts.resource_metadata).toUtf8();
+    if (!m_opts.resource_metadata.isNull()) {
+        const QByteArray body = dump(m_opts.resource_metadata).toUtf8();
         const auto handler =
             [body](const QHttpServerRequest&) -> QHttpServerResponse {
             auto r =

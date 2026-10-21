@@ -45,6 +45,9 @@ struct ErrorObject {
     QJsonValue data;  // optional; null when absent on the wire
 
     [[nodiscard]] bool has_data(void) const noexcept { return !data.isNull(); }
+
+    [[nodiscard]] operator QJsonValue() const;
+    ErrorObject& operator=(const QJsonValue&);
 };
 
 /// Exception type for MCP errors. Carries the wire `ErrorObject`.

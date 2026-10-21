@@ -463,8 +463,8 @@ public slots:
             const mcp::ElicitResult result =
                 mcp::from_json<mcp::ElicitResult>(encoded.value<QJsonValue>());
             const bool accepted = result.action == mcp::ElicitAction::accept &&
-                                  result.content.has_value() &&
-                                  result.content->toObject()
+                                  !result.content.isNull() &&
+                                  result.content.toObject()
                                       .value(QStringLiteral("confirm"))
                                       .toBool();
             if (!accepted) {

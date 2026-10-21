@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (plugin-first server)
 
+- **Operator-based JSON conversion.** Wire structs/classes now provide
+  `operator QJsonValue() const` and `operator=(const QJsonValue&)`; the
+  per-type free `to_json`/`from_json` overloads were removed. Enums (string-
+  and integer-encoded), `std::variant` aliases, `QList`, and `std::optional`
+  keep generic adapter templates because C++ does not allow member operators
+  on them. `std::optional<QJsonValue>` was replaced by a null `QJsonValue`
+  as the "absent" sentinel (`isNull()`), with `put_optional_json`/
+  `take_optional_json` helpers.
 - **Qt value types throughout.** The wire types and public APIs now use
   `QString`, `QList`, `QStringView`, and `QByteArrayView` instead of
   `std::string`, `std::vector`, and `std::string_view`. Optional strings are

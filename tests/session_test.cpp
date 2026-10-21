@@ -26,7 +26,6 @@
 
 namespace {
 
-using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 // Helper that builds two Sessions back-to-back via in-memory pair.
@@ -71,9 +70,10 @@ private slots:
 
 void Session::RequestRoundTripThroughHandler(void) {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("echo", [](const QJsonValue& params) -> QJsonValue {
-        return QJsonObject{{"echoed", params}};
-    });
+    sp.b->set_request_handler("echo",
+                              [](const QJsonValue& params) -> QJsonValue {
+                                  return QJsonObject{{"echoed", params}};
+                              });
 
     auto fut = sp.a->send_request("echo", QJsonObject{{"hi", 1}}, 2s);
     auto result = fut.get();

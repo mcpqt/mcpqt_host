@@ -59,8 +59,8 @@ public:
     [[nodiscard]] std::future<ListToolsResult> list_tools(QString cursor = {});
 
     /// `tools/call` with the given name and JSON-shaped arguments.
-    [[nodiscard]] std::future<CallToolResult> call_tool(QString name,
-                                                        QJsonValue arguments = {});
+    [[nodiscard]] std::future<CallToolResult>
+    call_tool(QString name, QJsonValue arguments = {});
 
     /// `tools/call` with a `task` augmentation. The server returns a
     /// `CreateTaskResult` envelope right away; the actual

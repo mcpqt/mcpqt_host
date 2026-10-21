@@ -110,7 +110,7 @@ std::future<InitializeResult> Client::initialize(void) {
         // semantics.
         if (m_capabilities_override.has_value()) {
             const auto& o = *m_capabilities_override;
-            if (o.experimental.has_value())
+            if (!o.experimental.isNull())
                 caps.experimental = o.experimental;
             if (o.roots.has_value())
                 caps.roots = o.roots;
@@ -166,16 +166,15 @@ std::future<ListToolsResult> Client::list_tools(QString cursor) {
         [](QJsonValue j) { return from_json<ListToolsResult>(j); });
 }
 
-std::future<CallToolResult> Client::call_tool(QString name, QJsonValue arguments) {
+std::future<CallToolResult> Client::call_tool(QString name,
+                                              QJsonValue arguments) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
     }
     CallToolRequestParams params{
         .name = std::move(name),
-        .arguments = arguments.isNull()
-                         ? std::nullopt
-                         : std::optional<QJsonValue>(std::move(arguments)),
+        .arguments = arguments.isNull() ? QJsonValue() : arguments,
         .task = std::nullopt,
     };
     return session->send_request_for<CallToolResult>(
@@ -192,9 +191,7 @@ Client::call_tool_as_task(QString name, QJsonValue arguments,
     }
     CallToolRequestParams params{
         .name = std::move(name),
-        .arguments = arguments.isNull()
-                         ? std::nullopt
-                         : std::optional<QJsonValue>(std::move(arguments)),
+        .arguments = arguments.isNull() ? QJsonValue() : arguments,
         .task = TaskAugmentation{.ttl = ttl_ms},
     };
     return session->send_request_for<CreateTaskResult>(
@@ -483,7 +480,8 @@ void Client::set_sampling_handler(SamplingHandler handler) {
     const QString method{method_sampling_create_message};
     if (handler) {
         session->set_request_handler(
-            method, [h = std::move(handler)](const QJsonValue& params) -> QJsonValue {
+            method,
+            [h = std::move(handler)](const QJsonValue& params) -> QJsonValue {
                 if (params.isNull()) {
                     throw Error{error_code::invalid_params,
                                 "sampling/createMessage requires params"};
@@ -514,7 +512,8 @@ void Client::set_elicitation_handler(ElicitationHandler handler) {
     const QString method{method_elicitation_create};
     if (handler) {
         session->set_request_handler(
-            method, [h = std::move(handler)](const QJsonValue& params) -> QJsonValue {
+            method,
+            [h = std::move(handler)](const QJsonValue& params) -> QJsonValue {
                 if (params.isNull()) {
                     throw Error{error_code::invalid_params,
                                 "elicitation/create requires params"};
@@ -547,24 +546,24 @@ void Client::set_elicitation_complete_handler(
     }
     const QString method{method_notifications_elicitation_complete};
     if (handler) {
-        session->set_notification_handler(method, [h = std::move(handler)](
-                                                      const QJsonValue& params) {
-            if (!params.isObject())
-                return;
-            ElicitationCompleteNotificationParams parsed;
-            try {
-                parsed =
-                    from_json<ElicitationCompleteNotificationParams>(params);
-            } catch (const std::exception& e) {
-                MCP_LOG_WARN(QString{"malformed elicitation/complete: "} +
-                             e.what());
-                return;
-            } catch (...) {
-                MCP_LOG_WARN("malformed elicitation/complete");
-                return;
-            }
-            h(std::move(parsed.elicitation_id));
-        });
+        session->set_notification_handler(
+            method, [h = std::move(handler)](const QJsonValue& params) {
+                if (!params.isObject())
+                    return;
+                ElicitationCompleteNotificationParams parsed;
+                try {
+                    parsed = from_json<ElicitationCompleteNotificationParams>(
+                        params);
+                } catch (const std::exception& e) {
+                    MCP_LOG_WARN(QString{"malformed elicitation/complete: "} +
+                                 e.what());
+                    return;
+                } catch (...) {
+                    MCP_LOG_WARN("malformed elicitation/complete");
+                    return;
+                }
+                h(std::move(parsed.elicitation_id));
+            });
     } else {
         session->clear_notification_handler(method);
     }

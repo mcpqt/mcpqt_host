@@ -27,7 +27,6 @@
 
 namespace {
 
-using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 // Run a Server in a background thread with the supplied transport, and

@@ -38,7 +38,6 @@ extern char** environ;
 namespace {
 
 namespace fs = std::filesystem;
-using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 struct Subprocess {
@@ -182,8 +181,8 @@ void NotesSubprocess::EndToEnd(void) {
             client.call_tool("notes/read", QJsonObject{{"key", "db.prod"}})
                 .get();
         QVERIFY(!out.is_error.value_or(false));
-        QVERIFY(out.structured_content.has_value());
-        QCOMPARE((*out.structured_content)["value"].toString(),
+        QVERIFY(!out.structured_content.isNull());
+        QCOMPARE(out.structured_content["value"].toString(),
                  QStringLiteral("postgres://prod.example/main"));
     }
 
@@ -191,8 +190,8 @@ void NotesSubprocess::EndToEnd(void) {
     {
         auto out = client.call_tool("notes/list", QJsonObject{}).get();
         QVERIFY(!out.is_error.value_or(false));
-        QVERIFY(out.structured_content.has_value());
-        QCOMPARE((*out.structured_content)["notes"].toArray().size(),
+        QVERIFY(!out.structured_content.isNull());
+        QCOMPARE(out.structured_content["notes"].toArray().size(),
                  std::size_t{1});
     }
 
@@ -202,8 +201,8 @@ void NotesSubprocess::EndToEnd(void) {
             client.call_tool("notes/search", QJsonObject{{"query", "postgres"}})
                 .get();
         QVERIFY(!out.is_error.value_or(false));
-        QVERIFY(out.structured_content.has_value());
-        const auto matches = (*out.structured_content)["matches"];
+        QVERIFY(!out.structured_content.isNull());
+        const auto matches = out.structured_content["matches"];
         QCOMPARE(matches.toArray().size(), std::size_t{1});
         QVERIFY(matches[0]["snippet"].toString().contains("postgres"));
     }
@@ -232,8 +231,8 @@ void NotesSubprocess::EndToEnd(void) {
     {
         auto out = client.call_tool("notes/info", QJsonObject{}).get();
         QVERIFY(!out.is_error.value_or(false));
-        QVERIFY(out.structured_content.has_value());
-        QCOMPARE((*out.structured_content)["noteCount"].toInt(), 0);
+        QVERIFY(!out.structured_content.isNull());
+        QCOMPARE(out.structured_content["noteCount"].toInt(), 0);
     }
 
     client.disconnect();
@@ -297,8 +296,8 @@ void NotesSubprocess::DeleteWithoutConfirmIsAbortedOnElicitDecline(void) {
 
     // Note should still be there.
     auto info = client.call_tool("notes/info", QJsonObject{}).get();
-    QVERIFY(info.structured_content.has_value());
-    QCOMPARE((*info.structured_content)["noteCount"].toInt(), 1);
+    QVERIFY(!info.structured_content.isNull());
+    QCOMPARE(info.structured_content["noteCount"].toInt(), 1);
 
     client.disconnect();
     fs::remove(db_path, ec);

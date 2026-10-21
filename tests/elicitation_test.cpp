@@ -24,7 +24,6 @@
 
 namespace {
 
-using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 struct ServerThread {
@@ -136,8 +135,8 @@ void Elicitation::ResultRoundTrip(void) {
     QCOMPARE(j["content"]["name"], mcp::test::jv("Alice"));
     auto back = mcp::from_json<mcp::ElicitResult>(j);
     QCOMPARE(back.action, mcp::ElicitAction::accept);
-    QVERIFY(back.content.has_value());
-    QCOMPARE((*back.content)["age"], mcp::test::jv(30));
+    QVERIFY(!back.content.isNull());
+    QCOMPARE(back.content["age"], mcp::test::jv(30));
 
     // Decline / cancel: content omitted on the wire.
     mcp::ElicitResult r2{.action = mcp::ElicitAction::decline};
@@ -146,7 +145,7 @@ void Elicitation::ResultRoundTrip(void) {
     QCOMPARE(j2["action"], mcp::test::jv("decline"));
     auto back2 = mcp::from_json<mcp::ElicitResult>(j2);
     QCOMPARE(back2.action, mcp::ElicitAction::decline);
-    QVERIFY(!back2.content.has_value());
+    QVERIFY(back2.content.isNull());
 
     // Unknown action string ⇒ Error.
     QJsonValue bad = QJsonObject{{"action", "nope"}};
@@ -200,13 +199,13 @@ void ElicitationIntegration::FormModeRoundTripThroughClient(void) {
                    });
                    auto er = fut.get();
                    if (er.action != mcp::ElicitAction::accept ||
-                       !er.content.has_value()) {
+                       er.content.isNull()) {
                        return mcp::CallToolResult{
                            .content = {mcp::TextContent{.text = "no answer"}},
                            .is_error = true,
                        };
                    }
-                   const QJsonObject co = er.content->toObject();
+                   const QJsonObject co = er.content.toObject();
                    const QJsonValue nv = co.value(QStringLiteral("name"));
                    const QString nm =
                        nv.isString() ? nv.toString() : QString{"<none>"};
@@ -492,7 +491,7 @@ void ElicitationIntegration::CapabilityActuallyAdvertisedOnInitialize(void) {
     // initialize handler that captures + responds.
     auto b_session = std::make_unique<mcp::Session>(std::move(p.b));
     b_session->set_request_handler(
-        "initialize", [&](const mcp::QJsonValue& params) -> mcp::QJsonValue {
+        "initialize", [&](const QJsonValue& params) -> QJsonValue {
             auto parsed = mcp::from_json<mcp::InitializeRequestParams>(params);
             try {
                 caps_p.set_value(parsed.capabilities);
@@ -522,8 +521,8 @@ void ElicitationIntegration::CapabilityActuallyAdvertisedOnInitialize(void) {
     QCOMPARE(caps_fut.wait_for(2s), std::future_status::ready);
     auto caps = caps_fut.get();
     QVERIFY(caps.elicitation.has_value());
-    QVERIFY(caps.elicitation->form.has_value());
-    QVERIFY(caps.elicitation->url.has_value());
+    QVERIFY(!caps.elicitation->form.isNull());
+    QVERIFY(!caps.elicitation->url.isNull());
 
     client.disconnect();
     b_session->close();
@@ -542,7 +541,7 @@ void ElicitationIntegration::NarrowedCapabilityOverrideKeepsOtherDerivedCaps(
 
     auto b_session = std::make_unique<mcp::Session>(std::move(p.b));
     b_session->set_request_handler(
-        "initialize", [&](const mcp::QJsonValue& params) -> mcp::QJsonValue {
+        "initialize", [&](const QJsonValue& params) -> QJsonValue {
             auto parsed = mcp::from_json<mcp::InitializeRequestParams>(params);
             try {
                 caps_p.set_value(parsed.capabilities);
@@ -583,8 +582,8 @@ void ElicitationIntegration::NarrowedCapabilityOverrideKeepsOtherDerivedCaps(
     QCOMPARE(caps_fut.wait_for(2s), std::future_status::ready);
     auto caps = caps_fut.get();
     QVERIFY(caps.elicitation.has_value());
-    QVERIFY(caps.elicitation->form.has_value());
-    QVERIFY(!caps.elicitation->url.has_value());
+    QVERIFY(!caps.elicitation->form.isNull());
+    QVERIFY(caps.elicitation->url.isNull());
     // The sampling capability survived because we didn't override it.
     QVERIFY(caps.sampling.has_value());
 

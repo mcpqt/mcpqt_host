@@ -108,8 +108,8 @@ public:
     /// elapses. Returns the final result payload on completed, throws
     /// Error on failed/cancelled, or returns std::nullopt if the task
     /// wasn't terminal in time.
-    std::optional<QJsonValue> wait_result(const QString& id,
-                                    std::chrono::milliseconds timeout);
+    QJsonValue wait_result(const QString& id,
+                           std::chrono::milliseconds timeout);
 
     /// Paginated listing in creation order.
     [[nodiscard]] ListTasksResult list(QString cursor,
@@ -147,7 +147,7 @@ public:
 private:
     struct Entry {
         Task task;
-        std::optional<QJsonValue> result;
+        QJsonValue result;
         QString error;
         std::atomic<bool> cancelled{false};
         std::chrono::steady_clock::time_point created_steady;
@@ -317,8 +317,8 @@ bool TaskStore::is_cancelled(const QString& id) const {
     return it->second->cancelled.load(std::memory_order_acquire);
 }
 
-std::optional<QJsonValue> TaskStore::wait_result(const QString& id,
-                                           std::chrono::milliseconds timeout) {
+QJsonValue TaskStore::wait_result(const QString& id,
+                                  std::chrono::milliseconds timeout) {
     std::unique_lock<std::mutex> lk(m_mu);
     if (!m_cv.wait_for(lk, timeout, [&] {
             auto it = m_entries.find(id);
@@ -328,7 +328,7 @@ std::optional<QJsonValue> TaskStore::wait_result(const QString& id,
                    m_shutting_down.load(std::memory_order_acquire);
         })) {
         // Timed out without reaching terminal.
-        return std::nullopt;
+        return QJsonValue();
     }
     auto it = m_entries.find(id);
     if (it == m_entries.end()) {
@@ -340,8 +340,8 @@ std::optional<QJsonValue> TaskStore::wait_result(const QString& id,
     auto& e = *it->second;
     switch (e.task.status) {
     case TaskStatus::completed:
-        if (e.result.has_value())
-            return *e.result;
+        if (!e.result.isNull())
+            return e.result;
         // Shouldn't happen, but be defensive.
         throw Error{error_code::internal_error,
                     "task completed without a result payload"};
@@ -563,7 +563,7 @@ std::pair<QList<T>, QString> paginate(const QList<T>& items, std::size_t offset,
 Server& Server::tool(QString name, QJsonValue input_schema, ToolHandler handler,
                      QString title, QString description,
                      std::optional<ToolAnnotations> annotations,
-                     std::optional<QJsonValue> output_schema) {
+                     QJsonValue output_schema) {
     Tool t{
         .name = name,
         .title = std::move(title),
@@ -573,7 +573,7 @@ Server& Server::tool(QString name, QJsonValue input_schema, ToolHandler handler,
         .annotations = std::move(annotations),
         .icons = std::nullopt,
         .execution = std::nullopt,
-        .meta = std::nullopt,
+        .meta = {},
     };
     std::lock_guard<std::mutex> lk(m_tools_mu);
     m_tools[name] = ToolEntry{std::move(t), std::move(handler)};
@@ -587,7 +587,7 @@ Server& Server::tool(QString name, QJsonValue input_schema, ToolHandler handler,
         .title = {},
         .description = {},
         .input_schema = std::move(input_schema),
-        .output_schema = std::nullopt,
+        .output_schema = {},
         .annotations = std::nullopt,
         .icons = std::move(meta.icons),
         .execution = std::move(meta.execution),
@@ -846,7 +846,7 @@ QJsonValue Server::handle_list_tools(const QJsonValue& params) {
     return to_json(ListToolsResult{
         .tools = std::move(page),
         .next_cursor = std::move(next),
-        .meta = std::nullopt,
+        .meta = {},
     });
 }
 
@@ -876,7 +876,9 @@ QJsonValue Server::handle_call_tool(const QJsonValue& params) {
             tool_task_support = it.value().descriptor.execution->task_support;
         }
     }
-    const auto args = parsed.arguments.value_or(QJsonObject{});
+    const QJsonValue args = parsed.arguments.isNull()
+                                ? QJsonValue(QJsonObject{})
+                                : parsed.arguments;
 
     // 2025-11-25: per-tool execution policy gates task augmentation.
     // When the tool declares `execution.taskSupport == "required"`, a
@@ -973,7 +975,7 @@ QJsonValue Server::handle_list_resources(const QJsonValue& params) {
     return to_json(ListResourcesResult{
         .resources = std::move(page),
         .next_cursor = std::move(next),
-        .meta = std::nullopt,
+        .meta = {},
     });
 }
 
@@ -994,7 +996,7 @@ QJsonValue Server::handle_list_resource_templates(const QJsonValue& params) {
     return to_json(ListResourceTemplatesResult{
         .resource_templates = std::move(page),
         .next_cursor = std::move(next),
-        .meta = std::nullopt,
+        .meta = {},
     });
 }
 
@@ -1045,7 +1047,7 @@ QJsonValue Server::handle_list_prompts(const QJsonValue& params) {
     return to_json(ListPromptsResult{
         .prompts = std::move(page),
         .next_cursor = std::move(next),
-        .meta = std::nullopt,
+        .meta = {},
     });
 }
 
@@ -1161,7 +1163,7 @@ QJsonValue Server::handle_get_task_result(const QJsonValue& params) {
     // the work overruns. The spec lets clients re-poll as needed.
     constexpr auto wait_budget = std::chrono::milliseconds{25'000};
     auto value = m_tasks->wait_result(parsed.task_id, wait_budget);
-    if (!value.has_value()) {
+    if (value.isNull()) {
         // The task is still running and the long-poll budget expired.
         // We can't return a partial result on the wire (tasks/result's
         // shape is the underlying request's result), so surface a
@@ -1183,8 +1185,8 @@ QJsonValue Server::handle_get_task_result(const QJsonValue& params) {
     // (don't clobber); tolerate a non-object _meta by replacing it
     // with one (loud preservation of arbitrary prior shapes is
     // worse than the small loss of a wrongly-typed _meta value).
-    if (value->isObject()) {
-        QJsonObject obj = value->toObject();
+    if (value.isObject()) {
+        QJsonObject obj = value.toObject();
         QJsonObject meta = obj.value(QStringLiteral("_meta")).isObject()
                                ? obj.value(QStringLiteral("_meta")).toObject()
                                : QJsonObject{};
@@ -1192,9 +1194,9 @@ QJsonValue Server::handle_get_task_result(const QJsonValue& params) {
             tasks_related_task_meta_key,
             QJsonObject{{QStringLiteral("taskId"), to_json(parsed.task_id)}});
         obj.insert(QStringLiteral("_meta"), meta);
-        *value = obj;
+        value = obj;
     }
-    return *value;
+    return value;
 }
 
 QJsonValue Server::handle_list_tasks(const QJsonValue& params) {
@@ -1286,9 +1288,10 @@ void Server::run(std::unique_ptr<Transport> transport) {
     local->set_request_handler(
         QString{method_resources_list},
         [this](const QJsonValue& p) { return handle_list_resources(p); });
-    local->set_request_handler(
-        QString{method_resources_templates_list},
-        [this](const QJsonValue& p) { return handle_list_resource_templates(p); });
+    local->set_request_handler(QString{method_resources_templates_list},
+                               [this](const QJsonValue& p) {
+                                   return handle_list_resource_templates(p);
+                               });
     local->set_request_handler(
         QString{method_resources_read},
         [this](const QJsonValue& p) { return handle_read_resource(p); });
@@ -1299,7 +1302,8 @@ void Server::run(std::unique_ptr<Transport> transport) {
         QString{method_prompts_get},
         [this](const QJsonValue& p) { return handle_get_prompt(p); });
     local->set_request_handler(
-        QString{method_ping}, [this](const QJsonValue& p) { return handle_ping(p); });
+        QString{method_ping},
+        [this](const QJsonValue& p) { return handle_ping(p); });
     local->set_request_handler(
         QString{method_logging_set_level},
         [this](const QJsonValue& p) { return handle_set_level(p); });

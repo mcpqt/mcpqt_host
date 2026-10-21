@@ -52,7 +52,8 @@ public:
     /// The result's `isError` field is the right way to report
     /// in-protocol failures (LLM-visible). MCP errors are reserved for
     /// "I couldn't even find this tool" / out-of-band conditions.
-    using ToolHandler = std::function<CallToolResult(const QJsonValue& arguments)>;
+    using ToolHandler =
+        std::function<CallToolResult(const QJsonValue& arguments)>;
 
     /// Bag of optional per-tool metadata applied at registration. The
     /// 2025-11-25 spec lets every tool advertise icons, structured
@@ -61,7 +62,7 @@ public:
     struct ToolMetadata {
         std::optional<QList<Icon>> icons = {};
         std::optional<ToolExecution> execution = {};
-        std::optional<QJsonValue> meta = {};
+        QJsonValue meta;
     };
 
     /// Resource read handler. Receives the requested URI and returns
@@ -99,7 +100,7 @@ public:
     Server& tool(QString name, QJsonValue input_schema, ToolHandler handler,
                  QString title = {}, QString description = {},
                  std::optional<ToolAnnotations> annotations = std::nullopt,
-                 std::optional<QJsonValue> output_schema = std::nullopt);
+                 QJsonValue output_schema = {});
 
     /// Tool registration with the 2025-11-25 metadata bag. Use the
     /// long-form constructor when you need to declare icons, _meta,
@@ -138,7 +139,8 @@ public:
     /// if logging is not enabled or `level` is below the negotiated
     /// minimum. `data` is free-form JSON (typically a string or
     /// object). Returns `true` if the notification was sent.
-    [[nodiscard]] bool log(LoggingLevel level, QJsonValue data, QString logger = {});
+    [[nodiscard]] bool log(LoggingLevel level, QJsonValue data,
+                           QString logger = {});
 
     /// Emit a `notifications/progress` for the given progress token.
     /// `total` and `message` are optional per spec.

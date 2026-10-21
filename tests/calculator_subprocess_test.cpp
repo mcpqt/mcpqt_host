@@ -35,7 +35,6 @@ extern char** environ;
 
 namespace {
 
-using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 struct Subprocess {

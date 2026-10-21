@@ -97,7 +97,7 @@ void HttpEndToEnd::InitializeAndToolCall(void) {
                         QJsonObject{{"a", QJsonObject{{"type", "number"}}},
                                     {"b", QJsonObject{{"type", "number"}}}}},
                        {"required", QJsonArray{"a", "b"}}},
-                   [](const mcp::QJsonValue& args) -> mcp::CallToolResult {
+                   [](const QJsonValue& args) -> mcp::CallToolResult {
                        const QJsonObject o = args.toObject();
                        const double a = mcp::require<double>(o, "a");
                        const double b = mcp::require<double>(o, "b");
@@ -187,7 +187,7 @@ void HttpEndToEnd::ServerInitiatedSamplingThroughGetStream(void) {
                        {"type", "object"},
                        {"properties",
                         QJsonObject{{"q", QJsonObject{{"type", "string"}}}}}},
-                   [&s](const mcp::QJsonValue& args) -> mcp::CallToolResult {
+                   [&s](const QJsonValue& args) -> mcp::CallToolResult {
                        const QString q =
                            args.toObject().value("q").toString("?");
                        auto resp =
@@ -245,7 +245,7 @@ void HttpEndToEnd::SessionIdReusedAcrossCalls(void) {
         },
         [](mcp::Server& s) {
             s.tool("echo", QJsonObject{{"type", "object"}},
-                   [](const mcp::QJsonValue& args) -> mcp::CallToolResult {
+                   [](const QJsonValue& args) -> mcp::CallToolResult {
                        (void)args;
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
@@ -318,7 +318,7 @@ void HttpEndToEnd::ClientSendsDeleteOnGracefulClose(void) {
         },
         [](mcp::Server& s) {
             s.tool("noop", QJsonObject{{"type", "object"}},
-                   [](const mcp::QJsonValue&) -> mcp::CallToolResult {
+                   [](const QJsonValue&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         },

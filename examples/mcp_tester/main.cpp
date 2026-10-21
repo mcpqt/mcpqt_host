@@ -142,10 +142,9 @@ void print_result(const mcp::CallToolResult& result) {
         }
     }
     std::cout << "\n";
-    if (result.structured_content.has_value()) {
+    if (!result.structured_content.isNull()) {
         std::cout << "structured: "
-                  << mcp::dump(*result.structured_content).toStdString()
-                  << "\n";
+                  << mcp::dump(result.structured_content).toStdString() << "\n";
     }
 }
 

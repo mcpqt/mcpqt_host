@@ -55,8 +55,6 @@ struct ResourcesServerThread {
 
 }  // namespace
 
-using mcp::QJsonValue;
-
 // -------------------------------------------------------------------------
 // Round-trip tests for the new types
 // -------------------------------------------------------------------------

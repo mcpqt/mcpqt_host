@@ -39,6 +39,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace mcp {
@@ -50,19 +51,40 @@ namespace mcp {
 inline QJsonValue to_json(std::nullptr_t) {
     return QJsonValue(QJsonValue::Null);
 }
-inline QJsonValue to_json(const QJsonValue&  v) { return v; }
-inline QJsonValue to_json(const QJsonObject& v) { return v; }
-inline QJsonValue to_json(const QJsonArray&  v) { return v; }
-inline QJsonValue to_json(bool v) { return QJsonValue(v); }
-inline QJsonValue to_json(int v) { return QJsonValue(v); }
-inline QJsonValue to_json(std::int64_t v) { return QJsonValue(static_cast<qint64>(v)); }
-inline QJsonValue to_json(double v) { return QJsonValue(v); }
-inline QJsonValue to_json(const QString& v) { return QJsonValue(v); }
-inline QJsonValue to_json(QStringView v) { return QJsonValue(v.toString()); }
-inline QJsonValue to_json(const char* v) { return QJsonValue(QString::fromUtf8(v)); }
+inline QJsonValue to_json(const QJsonValue& v) {
+    return v;
+}
+inline QJsonValue to_json(const QJsonObject& v) {
+    return v;
+}
+inline QJsonValue to_json(const QJsonArray& v) {
+    return v;
+}
+inline QJsonValue to_json(bool v) {
+    return QJsonValue(v);
+}
+inline QJsonValue to_json(int v) {
+    return QJsonValue(v);
+}
+inline QJsonValue to_json(std::int64_t v) {
+    return QJsonValue(static_cast<qint64>(v));
+}
+inline QJsonValue to_json(double v) {
+    return QJsonValue(v);
+}
+inline QJsonValue to_json(const QString& v) {
+    return QJsonValue(v);
+}
+inline QJsonValue to_json(QStringView v) {
+    return QJsonValue(v.toString());
+}
+inline QJsonValue to_json(const char* v) {
+    return QJsonValue(QString::fromUtf8(v));
+}
 
 inline QJsonValue to_json(std::uint64_t v) {
-    // QJsonValue stores integers as qint64. Reject rather than silently misrepresent value.
+    // QJsonValue stores integers as qint64. Reject rather than silently
+    // misrepresent value.
     if (v > INT64_MAX) {
         throw Error(
             error_code::internal_error,
@@ -72,7 +94,9 @@ inline QJsonValue to_json(std::uint64_t v) {
 }
 
 template <class T> QJsonValue to_json(const std::optional<T>& v) {
-    if (!v.has_value()) { return QJsonValue(QJsonValue::Null); }
+    if (!v.has_value()) {
+        return QJsonValue(QJsonValue::Null);
+    }
     return to_json(*v);
 }
 
@@ -82,6 +106,18 @@ template <class T> QJsonValue to_json(const QList<T>& v) {
         arr.append(to_json(elem));
     }
     return arr;
+}
+
+/// Generic encoder: any class with `operator QJsonValue()`.
+template <class T> QJsonValue to_json(const T& v) {
+    return static_cast<QJsonValue>(v);
+}
+
+/// Enumerations use their integer value unless a specific overload (e.g. the
+/// string-encoded Role/LoggingLevel) matches better.
+template <class E, std::enable_if_t<std::is_enum_v<E>, int> = 0>
+QJsonValue to_json(E v) {
+    return QJsonValue(static_cast<qint64>(v));
 }
 
 // --------------------------------------------------------------------------
@@ -177,7 +213,7 @@ inline void from_json(const QJsonValue& v, QJsonArray& out) {
 }
 
 template <class T> void from_json(const QJsonValue& v, std::optional<T>& out) {
-    if (v.isNull() || v.isUndefined()) {
+    if (v.isNull() || v.isNull()) {
         out.reset();
         return;
     }
@@ -199,6 +235,18 @@ template <class T> void from_json(const QJsonValue& v, QList<T>& out) {
         from_json(elem, tmp);
         out.push_back(std::move(tmp));
     }
+}
+
+/// Generic decoder: any class with `operator=(const QJsonValue&)`.
+template <class T> void from_json(const QJsonValue& v, T& out) {
+    out = v;
+}
+
+/// Enumerations decode from their integer value unless a specific overload
+/// (e.g. the string-encoded Role/LoggingLevel) matches better.
+template <class E, std::enable_if_t<std::is_enum_v<E>, int> = 0>
+void from_json(const QJsonValue& v, E& out) {
+    out = static_cast<E>(v.toInteger());
 }
 
 template <class T> T from_json(const QJsonValue& v) {
@@ -263,6 +311,26 @@ inline void put_optional_string(QJsonObject& obj, const char* key,
     }
 }
 
+/// Decode an arbitrary JSON field. Absent produces an Null QJsonValue;
+/// an explicit JSON null is preserved as Null.
+inline void take_optional_json(const QJsonObject& obj, const char* key,
+                               QJsonValue& out) {
+    const auto it = obj.constFind(QString::fromUtf8(key));
+    if (it == obj.constEnd()) {
+        out = QJsonValue(QJsonValue::Null);
+        return;
+    }
+    out = *it;
+}
+
+/// Insert a JSON field unless it is Null (Null means "absent").
+inline void put_optional_json(QJsonObject& obj, const char* key,
+                              const QJsonValue& value) {
+    if (!value.isNull()) {
+        obj.insert(QString::fromUtf8(key), value);
+    }
+}
+
 /// Coerce a value that must be a JSON object.
 inline QJsonObject as_object(const QJsonValue& v) {
     if (!v.isObject()) {
@@ -315,7 +383,7 @@ inline QJsonArray as_array(const QJsonValue& v) {
         return QString::fromUtf8(
             QJsonDocument(v.toArray()).toJson(QJsonDocument::Compact));
     }
-    if (v.isNull() || v.isUndefined())
+    if (v.isNull() || v.isNull())
         return QStringLiteral("null");
     if (v.isBool())
         return v.toBool() ? QStringLiteral("true") : QStringLiteral("false");

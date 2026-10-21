@@ -20,11 +20,7 @@
 #include <string>
 #include <variant>
 
-namespace {
-
-using mcp::QJsonValue;
-
-}  // namespace
+namespace {}  // namespace
 
 // -------------------------------------------------------------------------
 // RequestId
@@ -163,9 +159,11 @@ void JsonRpc::ResponseRejectsBothResultAndError(void) {
 }
 
 void JsonRpc::ParseMessageDispatchesOnShape(void) {
-    QJsonValue req = QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "x"}};
+    QJsonValue req =
+        QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "x"}};
     QJsonValue note = QJsonObject{{"jsonrpc", "2.0"}, {"method", "x"}};
-    QJsonValue resp = QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"result", "y"}};
+    QJsonValue resp =
+        QJsonObject{{"jsonrpc", "2.0"}, {"id", 1}, {"result", "y"}};
 
     auto m1 = mcp::parse_message(req);
     auto m2 = mcp::parse_message(note);
@@ -251,7 +249,7 @@ void Capabilities::ServerLoggingPresenceOnly(void) {
     QJsonValue j = mcp::to_json(caps);
     QVERIFY(j["logging"].isObject());
     auto back = mcp::from_json<mcp::ServerCapabilities>(j);
-    QVERIFY(back.logging.has_value());
+    QVERIFY(!back.logging.isNull());
 }
 
 void Capabilities::ResourcesSubscribeAndListChanged(void) {
@@ -276,7 +274,7 @@ void Capabilities::ClientSamplingTools(void) {
     QVERIFY(j["sampling"]["tools"].isObject());
     auto back = mcp::from_json<mcp::ClientCapabilities>(j);
     QVERIFY(back.sampling.has_value());
-    QVERIFY(back.sampling->tools.has_value());
+    QVERIFY(!back.sampling->tools.isNull());
 }
 
 void Capabilities::EmptyServerCapsSerializeAsEmptyObject(void) {
@@ -637,8 +635,8 @@ void SpecAdditions::IconsAndMetaOnImplementation(void) {
     auto back = mcp::from_json<mcp::Implementation>(j);
     QVERIFY(back.icons.has_value());
     QCOMPARE(back.icons->front().src, QString{"https://example.com/icon.png"});
-    QVERIFY(back.meta.has_value());
-    QCOMPARE((*back.meta)["app.example/internal"], mcp::test::jv(42));
+    QVERIFY(!back.meta.isNull());
+    QCOMPARE(back.meta["app.example/internal"], mcp::test::jv(42));
 }
 
 void SpecAdditions::MetaOnInitializeResult(void) {
@@ -651,8 +649,8 @@ void SpecAdditions::MetaOnInitializeResult(void) {
     QJsonValue j = mcp::to_json(r);
     QCOMPARE(j["_meta"]["x"], mcp::test::jv(1));
     auto back = mcp::from_json<mcp::InitializeResult>(j);
-    QVERIFY(back.meta.has_value());
-    QCOMPARE((*back.meta)["x"], mcp::test::jv(1));
+    QVERIFY(!back.meta.isNull());
+    QCOMPARE(back.meta["x"], mcp::test::jv(1));
 }
 
 void SpecAdditions::ToolExecutionRoundTrip(void) {

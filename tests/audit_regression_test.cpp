@@ -32,7 +32,6 @@
 
 namespace {
 
-using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 struct ServerThread {
@@ -514,8 +513,8 @@ void AuditRegression::NonStringMethodIsDropped(void) {
     // code) and continue serving the next, well-formed frame.
     // Use the session's underlying notification path to send a
     // following well-formed frame. Reuse b_session's send_notification:
-    QVERIFY(
-        !b_session->send_notification("ping", QJsonValue(QJsonObject{{"k", "v"}})));
+    QVERIFY(!b_session->send_notification("ping",
+                                          QJsonValue(QJsonObject{{"k", "v"}})));
 
     QVERIFY(fut.wait_for(2s) == std::future_status::ready);
 

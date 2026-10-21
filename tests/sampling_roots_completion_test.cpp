@@ -25,7 +25,6 @@
 
 namespace {
 
-using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 struct ServerThread {
@@ -360,7 +359,7 @@ void CompletionIntegration::ServerProvidesCompletions(void) {
     mcp::Client client{mcp::Implementation{.name = "tester", .version = "0"}};
     client.connect(std::move(p.a));
     auto info = client.initialize().get();
-    QVERIFY(info.capabilities.completions.has_value());
+    QVERIFY(!info.capabilities.completions.isNull());
 
     auto out =
         client
