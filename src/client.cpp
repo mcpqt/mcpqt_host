@@ -163,10 +163,10 @@ std::future<ListToolsResult> Client::list_tools(QString cursor) {
     ListToolsRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListToolsResult>(
         QString{method_tools_list}, to_json(params),
-        [](Json j) { return from_json<ListToolsResult>(j); });
+        [](QJsonValue j) { return from_json<ListToolsResult>(j); });
 }
 
-std::future<CallToolResult> Client::call_tool(QString name, Json arguments) {
+std::future<CallToolResult> Client::call_tool(QString name, QJsonValue arguments) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
@@ -175,16 +175,16 @@ std::future<CallToolResult> Client::call_tool(QString name, Json arguments) {
         .name = std::move(name),
         .arguments = arguments.isNull()
                          ? std::nullopt
-                         : std::optional<Json>(std::move(arguments)),
+                         : std::optional<QJsonValue>(std::move(arguments)),
         .task = std::nullopt,
     };
     return session->send_request_for<CallToolResult>(
         QString{method_tools_call}, to_json(params),
-        [](Json j) { return from_json<CallToolResult>(j); });
+        [](QJsonValue j) { return from_json<CallToolResult>(j); });
 }
 
 std::future<CreateTaskResult>
-Client::call_tool_as_task(QString name, Json arguments,
+Client::call_tool_as_task(QString name, QJsonValue arguments,
                           std::optional<std::int64_t> ttl_ms) {
     auto session = acquire_session();
     if (!session) {
@@ -194,12 +194,12 @@ Client::call_tool_as_task(QString name, Json arguments,
         .name = std::move(name),
         .arguments = arguments.isNull()
                          ? std::nullopt
-                         : std::optional<Json>(std::move(arguments)),
+                         : std::optional<QJsonValue>(std::move(arguments)),
         .task = TaskAugmentation{.ttl = ttl_ms},
     };
     return session->send_request_for<CreateTaskResult>(
         QString{method_tools_call}, to_json(params),
-        [](Json j) { return from_json<CreateTaskResult>(j); });
+        [](QJsonValue j) { return from_json<CreateTaskResult>(j); });
 }
 
 std::future<Task> Client::task_get(QString task_id) {
@@ -210,10 +210,10 @@ std::future<Task> Client::task_get(QString task_id) {
     return session->send_request_for<Task>(
         QString{method_tasks_get},
         to_json(GetTaskRequestParams{.task_id = std::move(task_id)}),
-        [](Json j) { return from_json<Task>(j); });
+        [](QJsonValue j) { return from_json<Task>(j); });
 }
 
-std::future<Json> Client::task_result(QString task_id) {
+std::future<QJsonValue> Client::task_result(QString task_id) {
     auto session = acquire_session();
     if (!session) {
         throw Error{error_code::internal_error, "client not connected"};
@@ -233,7 +233,7 @@ std::future<ListTasksResult> Client::task_list(QString cursor) {
     ListTasksRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListTasksResult>(
         QString{method_tasks_list}, to_json(params),
-        [](Json j) { return from_json<ListTasksResult>(j); });
+        [](QJsonValue j) { return from_json<ListTasksResult>(j); });
 }
 
 std::future<Task> Client::task_cancel(QString task_id) {
@@ -244,7 +244,7 @@ std::future<Task> Client::task_cancel(QString task_id) {
     return session->send_request_for<Task>(
         QString{method_tasks_cancel},
         to_json(CancelTaskRequestParams{.task_id = std::move(task_id)}),
-        [](Json j) { return from_json<Task>(j); });
+        [](QJsonValue j) { return from_json<Task>(j); });
 }
 
 void Client::set_task_status_handler(TaskStatusHandler handler) {
@@ -258,7 +258,7 @@ void Client::set_task_status_handler(TaskStatusHandler handler) {
     const QString method{method_notifications_tasks_status};
     if (handler) {
         session->set_notification_handler(
-            method, [h = std::move(handler)](const Json& params) {
+            method, [h = std::move(handler)](const QJsonValue& params) {
                 if (params.isNull())
                     return;
                 Task projection;
@@ -287,7 +287,7 @@ std::future<ListResourcesResult> Client::list_resources(QString cursor) {
     ListResourcesRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListResourcesResult>(
         QString{method_resources_list}, to_json(params),
-        [](Json j) { return from_json<ListResourcesResult>(j); });
+        [](QJsonValue j) { return from_json<ListResourcesResult>(j); });
 }
 
 std::future<ListResourceTemplatesResult>
@@ -298,7 +298,7 @@ Client::list_resource_templates(QString cursor) {
     ListResourceTemplatesRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListResourceTemplatesResult>(
         QString{method_resources_templates_list}, to_json(params),
-        [](Json j) { return from_json<ListResourceTemplatesResult>(j); });
+        [](QJsonValue j) { return from_json<ListResourceTemplatesResult>(j); });
 }
 
 std::future<ReadResourceResult> Client::read_resource(QString uri) {
@@ -308,7 +308,7 @@ std::future<ReadResourceResult> Client::read_resource(QString uri) {
     ReadResourceRequestParams params{.uri = std::move(uri)};
     return session->send_request_for<ReadResourceResult>(
         QString{method_resources_read}, to_json(params),
-        [](Json j) { return from_json<ReadResourceResult>(j); });
+        [](QJsonValue j) { return from_json<ReadResourceResult>(j); });
 }
 
 std::future<void> Client::subscribe(QString uri) {
@@ -336,7 +336,7 @@ void Client::set_resource_updated_handler(ResourceUpdatedHandler handler) {
     const QString method{method_notifications_resources_updated};
     if (handler) {
         session->set_notification_handler(
-            method, [h = std::move(handler)](const Json& params) {
+            method, [h = std::move(handler)](const QJsonValue& params) {
                 if (params.isNull())
                     return;
                 h(from_json<ResourceUpdatedNotificationParams>(params));
@@ -353,7 +353,7 @@ void Client::set_resources_list_changed_handler(ListChangedHandler handler) {
     const QString method{method_notifications_resources_list_changed};
     if (handler) {
         session->set_notification_handler(
-            method, [h = std::move(handler)](const Json&) { h(); });
+            method, [h = std::move(handler)](const QJsonValue&) { h(); });
     } else {
         session->clear_notification_handler(method);
     }
@@ -370,7 +370,7 @@ std::future<ListPromptsResult> Client::list_prompts(QString cursor) {
     ListPromptsRequestParams params{.cursor = std::move(cursor)};
     return session->send_request_for<ListPromptsResult>(
         QString{method_prompts_list}, to_json(params),
-        [](Json j) { return from_json<ListPromptsResult>(j); });
+        [](QJsonValue j) { return from_json<ListPromptsResult>(j); });
 }
 
 std::future<GetPromptResult>
@@ -385,7 +385,7 @@ Client::get_prompt(QString name,
     };
     return session->send_request_for<GetPromptResult>(
         QString{method_prompts_get}, to_json(params),
-        [](Json j) { return from_json<GetPromptResult>(j); });
+        [](QJsonValue j) { return from_json<GetPromptResult>(j); });
 }
 
 void Client::set_prompts_list_changed_handler(ListChangedHandler handler) {
@@ -395,7 +395,7 @@ void Client::set_prompts_list_changed_handler(ListChangedHandler handler) {
     const QString method{method_notifications_prompts_list_changed};
     if (handler) {
         session->set_notification_handler(
-            method, [h = std::move(handler)](const Json&) { h(); });
+            method, [h = std::move(handler)](const QJsonValue&) { h(); });
     } else {
         session->clear_notification_handler(method);
     }
@@ -441,7 +441,7 @@ void Client::set_log_message_handler(LogMessageHandler handler) {
     const QString method{method_notifications_message};
     if (handler) {
         session->set_notification_handler(
-            method, [h = std::move(handler)](const Json& params) {
+            method, [h = std::move(handler)](const QJsonValue& params) {
                 if (params.isNull())
                     return;
                 h(from_json<LoggingMessageNotificationParams>(params));
@@ -458,7 +458,7 @@ void Client::set_progress_handler(ProgressHandler handler) {
     const QString method{method_notifications_progress};
     if (handler) {
         session->set_notification_handler(
-            method, [h = std::move(handler)](const Json& params) {
+            method, [h = std::move(handler)](const QJsonValue& params) {
                 if (params.isNull())
                     return;
                 h(from_json<ProgressNotificationParams>(params));
@@ -483,7 +483,7 @@ void Client::set_sampling_handler(SamplingHandler handler) {
     const QString method{method_sampling_create_message};
     if (handler) {
         session->set_request_handler(
-            method, [h = std::move(handler)](const Json& params) -> Json {
+            method, [h = std::move(handler)](const QJsonValue& params) -> QJsonValue {
                 if (params.isNull()) {
                     throw Error{error_code::invalid_params,
                                 "sampling/createMessage requires params"};
@@ -514,7 +514,7 @@ void Client::set_elicitation_handler(ElicitationHandler handler) {
     const QString method{method_elicitation_create};
     if (handler) {
         session->set_request_handler(
-            method, [h = std::move(handler)](const Json& params) -> Json {
+            method, [h = std::move(handler)](const QJsonValue& params) -> QJsonValue {
                 if (params.isNull()) {
                     throw Error{error_code::invalid_params,
                                 "elicitation/create requires params"};
@@ -548,7 +548,7 @@ void Client::set_elicitation_complete_handler(
     const QString method{method_notifications_elicitation_complete};
     if (handler) {
         session->set_notification_handler(method, [h = std::move(handler)](
-                                                      const Json& params) {
+                                                      const QJsonValue& params) {
             if (!params.isObject())
                 return;
             ElicitationCompleteNotificationParams parsed;
@@ -581,7 +581,7 @@ void Client::set_roots_list_handler(RootsListHandler handler) {
     const QString method{method_roots_list};
     if (handler) {
         session->set_request_handler(
-            method, [h = std::move(handler)](const Json&) -> Json {
+            method, [h = std::move(handler)](const QJsonValue&) -> QJsonValue {
                 return to_json(h());
             });
     } else {
@@ -602,7 +602,7 @@ Client::complete(CompletionReference reference, CompleteArgument argument,
     };
     return session->send_request_for<CompleteResult>(
         QString{method_completion_complete}, to_json(params),
-        [](Json j) { return from_json<CompleteResult>(j); });
+        [](QJsonValue j) { return from_json<CompleteResult>(j); });
 }
 
 void Client::set_client_capabilities(ClientCapabilities caps) {

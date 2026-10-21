@@ -38,7 +38,7 @@ extern char** environ;
 namespace {
 
 namespace fs = std::filesystem;
-using mcp::Json;
+using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 struct Subprocess {

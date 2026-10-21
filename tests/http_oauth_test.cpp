@@ -180,7 +180,7 @@ void HttpOAuth::ValidBearerEndToEnd(void) {
         },
         [](mcp::Server& s) {
             s.tool("ping", QJsonObject{{"type", "object"}},
-                   [](const mcp::Json&) -> mcp::CallToolResult {
+                   [](const mcp::QJsonValue&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "pong"}}};
                    });
         },
@@ -280,7 +280,7 @@ void HttpOAuth::ResourceMetadataDocumentIsServed(void) {
             host.port(), "GET", "/.well-known/oauth-protected-resource", {});
         QVERIFY(res.connected);
         QCOMPARE(res.status, 200);
-        const mcp::Json body = mcp::parse_json(res.body);
+        const mcp::QJsonValue body = mcp::parse_json(res.body);
         QCOMPARE(body.toObject().value("resource").toString(),
                  QStringLiteral("https://example.com/mcp"));
         QCOMPARE(body.toObject()
@@ -565,7 +565,7 @@ void HttpOAuth::ClientSetAccessTokenRotates(void) {
         },
         [](mcp::Server& s) {
             s.tool("noop", QJsonObject{{"type", "object"}},
-                   [](const mcp::Json&) -> mcp::CallToolResult {
+                   [](const mcp::QJsonValue&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         },
@@ -707,7 +707,7 @@ void HttpOAuth::NoValidatorMeansNoAuth(void) {
         },
         [](mcp::Server& s) {
             s.tool("noop", QJsonObject{{"type", "object"}},
-                   [](const mcp::Json&) -> mcp::CallToolResult {
+                   [](const mcp::QJsonValue&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         },

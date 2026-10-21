@@ -43,7 +43,7 @@ void ErrorException::CarriesCodeMessageAndData(void) {
     mcp::Error err{mcp::error_code::invalid_params, "bad arg", extra};
     QCOMPARE(err.code(), mcp::error_code::invalid_params);
     QCOMPARE(err.message(), QString{"bad arg"});
-    QCOMPARE(err.data(), mcp::Json{extra});
+    QCOMPARE(err.data(), mcp::QJsonValue{extra});
     QCOMPARE(QString::fromUtf8(err.what()), QStringLiteral("bad arg"));
 }
 

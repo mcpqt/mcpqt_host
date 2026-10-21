@@ -139,7 +139,7 @@ public:
         /// metadata endpoint includes `Access-Control-Allow-Origin: *`
         /// because RFC 9728 expects discovery to be publicly readable
         /// cross-origin.
-        std::optional<Json> resource_metadata = {};
+        std::optional<QJsonValue> resource_metadata = {};
 
         /// Public URL of the resource metadata document, embedded in
         /// the WWW-Authenticate challenge so the client can discover

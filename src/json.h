@@ -43,10 +43,6 @@
 
 namespace mcp {
 
-using Json = QJsonValue;
-using JsonObject = QJsonObject;
-using JsonArray = QJsonArray;
-
 // --------------------------------------------------------------------------
 // Encoding
 // --------------------------------------------------------------------------
@@ -54,41 +50,20 @@ using JsonArray = QJsonArray;
 inline QJsonValue to_json(std::nullptr_t) {
     return QJsonValue(QJsonValue::Null);
 }
-inline QJsonValue to_json(const QJsonValue& v) {
-    return v;
-}
-inline QJsonValue to_json(const QJsonObject& v) {
-    return v;
-}
-inline QJsonValue to_json(const QJsonArray& v) {
-    return v;
-}
-inline QJsonValue to_json(bool v) {
-    return QJsonValue(v);
-}
-inline QJsonValue to_json(int v) {
-    return QJsonValue(v);
-}
-inline QJsonValue to_json(std::int64_t v) {
-    return QJsonValue(static_cast<qint64>(v));
-}
-inline QJsonValue to_json(double v) {
-    return QJsonValue(v);
-}
-inline QJsonValue to_json(const QString& v) {
-    return QJsonValue(v);
-}
-inline QJsonValue to_json(QStringView v) {
-    return QJsonValue(v.toString());
-}
-inline QJsonValue to_json(const char* v) {
-    return QJsonValue(QString::fromUtf8(v));
-}
+inline QJsonValue to_json(const QJsonValue&  v) { return v; }
+inline QJsonValue to_json(const QJsonObject& v) { return v; }
+inline QJsonValue to_json(const QJsonArray&  v) { return v; }
+inline QJsonValue to_json(bool v) { return QJsonValue(v); }
+inline QJsonValue to_json(int v) { return QJsonValue(v); }
+inline QJsonValue to_json(std::int64_t v) { return QJsonValue(static_cast<qint64>(v)); }
+inline QJsonValue to_json(double v) { return QJsonValue(v); }
+inline QJsonValue to_json(const QString& v) { return QJsonValue(v); }
+inline QJsonValue to_json(QStringView v) { return QJsonValue(v.toString()); }
+inline QJsonValue to_json(const char* v) { return QJsonValue(QString::fromUtf8(v)); }
 
 inline QJsonValue to_json(std::uint64_t v) {
-    // QJsonValue stores integers as qint64; values beyond 2^53 cannot be
-    // represented exactly. Reject rather than silently lose precision.
-    if (v > UINT64_C(9007199254740992)) {
+    // QJsonValue stores integers as qint64. Reject rather than silently misrepresent value.
+    if (v > INT64_MAX) {
         throw Error(
             error_code::internal_error,
             QStringLiteral("integer value too large for a JSON number"));
@@ -97,9 +72,7 @@ inline QJsonValue to_json(std::uint64_t v) {
 }
 
 template <class T> QJsonValue to_json(const std::optional<T>& v) {
-    if (!v.has_value()) {
-        return QJsonValue(QJsonValue::Null);
-    }
+    if (!v.has_value()) { return QJsonValue(QJsonValue::Null); }
     return to_json(*v);
 }
 

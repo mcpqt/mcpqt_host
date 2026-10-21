@@ -90,7 +90,7 @@ public:
 
     /// Mark a task as completed and stash its result payload. Wakes
     /// any tasks/result waiter and notifies the StatusListener.
-    void complete(const QString& id, Json result);
+    void complete(const QString& id, QJsonValue result);
 
     /// Mark a task as failed with the given message.
     void fail(const QString& id, QString message);
@@ -108,7 +108,7 @@ public:
     /// elapses. Returns the final result payload on completed, throws
     /// Error on failed/cancelled, or returns std::nullopt if the task
     /// wasn't terminal in time.
-    std::optional<Json> wait_result(const QString& id,
+    std::optional<QJsonValue> wait_result(const QString& id,
                                     std::chrono::milliseconds timeout);
 
     /// Paginated listing in creation order.
@@ -147,7 +147,7 @@ public:
 private:
     struct Entry {
         Task task;
-        std::optional<Json> result;
+        std::optional<QJsonValue> result;
         QString error;
         std::atomic<bool> cancelled{false};
         std::chrono::steady_clock::time_point created_steady;
@@ -206,7 +206,7 @@ Task TaskStore::create(std::optional<std::int64_t> ttl_ms) {
     return projection;
 }
 
-void TaskStore::complete(const QString& id, Json result) {
+void TaskStore::complete(const QString& id, QJsonValue result) {
     Task projection;
     StatusListener listener_copy;
     bool fire_notify = false;
@@ -317,7 +317,7 @@ bool TaskStore::is_cancelled(const QString& id) const {
     return it->second->cancelled.load(std::memory_order_acquire);
 }
 
-std::optional<Json> TaskStore::wait_result(const QString& id,
+std::optional<QJsonValue> TaskStore::wait_result(const QString& id,
                                            std::chrono::milliseconds timeout) {
     std::unique_lock<std::mutex> lk(m_mu);
     if (!m_cv.wait_for(lk, timeout, [&] {
@@ -560,10 +560,10 @@ std::pair<QList<T>, QString> paginate(const QList<T>& items, std::size_t offset,
 }
 }  // namespace
 
-Server& Server::tool(QString name, Json input_schema, ToolHandler handler,
+Server& Server::tool(QString name, QJsonValue input_schema, ToolHandler handler,
                      QString title, QString description,
                      std::optional<ToolAnnotations> annotations,
-                     std::optional<Json> output_schema) {
+                     std::optional<QJsonValue> output_schema) {
     Tool t{
         .name = name,
         .title = std::move(title),
@@ -580,7 +580,7 @@ Server& Server::tool(QString name, Json input_schema, ToolHandler handler,
     return *this;
 }
 
-Server& Server::tool(QString name, Json input_schema, ToolHandler handler,
+Server& Server::tool(QString name, QJsonValue input_schema, ToolHandler handler,
                      ToolMetadata meta) {
     Tool t{
         .name = name,
@@ -630,7 +630,7 @@ Server& Server::enable_logging(LoggingLevel initial_level) {
     return *this;
 }
 
-bool Server::log(LoggingLevel level, Json data, QString logger) {
+bool Server::log(LoggingLevel level, QJsonValue data, QString logger) {
     if (!m_logging_enabled.load(std::memory_order_acquire))
         return false;
     if (static_cast<int>(level) <
@@ -673,7 +673,7 @@ Server::sample(CreateMessageRequestParams params) {
     }
     return session->send_request_for<CreateMessageResult>(
         QString{method_sampling_create_message}, to_json(params),
-        [](Json j) { return from_json<CreateMessageResult>(j); });
+        [](QJsonValue j) { return from_json<CreateMessageResult>(j); });
 }
 
 std::future<ListRootsResult> Server::list_roots(void) {
@@ -684,7 +684,7 @@ std::future<ListRootsResult> Server::list_roots(void) {
     }
     return session->send_request_for<ListRootsResult>(
         QString{method_roots_list}, {},
-        [](Json j) { return from_json<ListRootsResult>(j); });
+        [](QJsonValue j) { return from_json<ListRootsResult>(j); });
 }
 
 std::future<ElicitResult> Server::elicit(ElicitRequestParams params) {
@@ -702,7 +702,7 @@ std::future<ElicitResult> Server::elicit(ElicitRequestParams params,
     // human-in-the-loop flows callers should pass a larger value.
     return session->send_request_for<ElicitResult>(
         QString{method_elicitation_create}, to_json(params),
-        [](Json j) { return from_json<ElicitResult>(j); }, timeout);
+        [](QJsonValue j) { return from_json<ElicitResult>(j); }, timeout);
 }
 
 void Server::set_elicitation_complete_handler(
@@ -751,7 +751,7 @@ Server& Server::enable_tasks(std::optional<std::int64_t> default_ttl_ms,
 // Handlers
 // =====================================================================
 
-Json Server::handle_initialize(const Json& params) {
+QJsonValue Server::handle_initialize(const QJsonValue& params) {
     InitializeRequestParams parsed;
     try {
         parsed = from_json<InitializeRequestParams>(params);
@@ -820,7 +820,7 @@ Json Server::handle_initialize(const Json& params) {
         tc.list = QJsonObject{};
         tc.cancel = QJsonObject{};
         TasksRequestsCapability rc;
-        rc.tools = Json{{"call", QJsonObject{}}};
+        rc.tools = QJsonValue{{"call", QJsonObject{}}};
         tc.requests = std::move(rc);
         result.capabilities.tasks = std::move(tc);
     }
@@ -828,7 +828,7 @@ Json Server::handle_initialize(const Json& params) {
     return to_json(result);
 }
 
-Json Server::handle_list_tools(const Json& params) {
+QJsonValue Server::handle_list_tools(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -850,7 +850,7 @@ Json Server::handle_list_tools(const Json& params) {
     });
 }
 
-Json Server::handle_call_tool(const Json& params) {
+QJsonValue Server::handle_call_tool(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -953,7 +953,7 @@ Json Server::handle_call_tool(const Json& params) {
     return to_json(h(args));
 }
 
-Json Server::handle_list_resources(const Json& params) {
+QJsonValue Server::handle_list_resources(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -977,7 +977,7 @@ Json Server::handle_list_resources(const Json& params) {
     });
 }
 
-Json Server::handle_list_resource_templates(const Json& params) {
+QJsonValue Server::handle_list_resource_templates(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -998,7 +998,7 @@ Json Server::handle_list_resource_templates(const Json& params) {
     });
 }
 
-Json Server::handle_read_resource(const Json& params) {
+QJsonValue Server::handle_read_resource(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -1027,7 +1027,7 @@ Json Server::handle_read_resource(const Json& params) {
     return to_json(h(parsed.uri));
 }
 
-Json Server::handle_list_prompts(const Json& params) {
+QJsonValue Server::handle_list_prompts(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -1049,7 +1049,7 @@ Json Server::handle_list_prompts(const Json& params) {
     });
 }
 
-Json Server::handle_get_prompt(const Json& params) {
+QJsonValue Server::handle_get_prompt(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -1072,15 +1072,14 @@ Json Server::handle_get_prompt(const Json& params) {
         throw Error{error_code::method_not_found,
                     "prompt not found: " + parsed.name};
     }
-    const auto args = parsed.arguments.value_or(QHash<QString, QString>{});
-    return to_json(h(args));
+    return to_json(h(parsed.arguments.value_or(QHash<QString, QString>{})));
 }
 
-Json Server::handle_ping(const Json& /*params*/) {
+QJsonValue Server::handle_ping(const QJsonValue& /*params*/) {
     return QJsonObject{};
 }
 
-Json Server::handle_set_level(const Json& params) {
+QJsonValue Server::handle_set_level(const QJsonValue& params) {
     if (!m_logging_enabled.load(std::memory_order_acquire)) {
         throw Error{error_code::method_not_found,
                     "logging capability is not enabled"};
@@ -1096,7 +1095,7 @@ Json Server::handle_set_level(const Json& params) {
     return QJsonObject{};
 }
 
-Json Server::handle_complete(const Json& params) {
+QJsonValue Server::handle_complete(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -1119,7 +1118,7 @@ Json Server::handle_complete(const Json& params) {
     return to_json(CompleteResult{.completion = h(parsed)});
 }
 
-Json Server::handle_get_task(const Json& params) {
+QJsonValue Server::handle_get_task(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -1142,7 +1141,7 @@ Json Server::handle_get_task(const Json& params) {
     return to_json(*t);
 }
 
-Json Server::handle_get_task_result(const Json& params) {
+QJsonValue Server::handle_get_task_result(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -1198,7 +1197,7 @@ Json Server::handle_get_task_result(const Json& params) {
     return *value;
 }
 
-Json Server::handle_list_tasks(const Json& params) {
+QJsonValue Server::handle_list_tasks(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -1218,7 +1217,7 @@ Json Server::handle_list_tasks(const Json& params) {
     return to_json(m_tasks->list(parsed.cursor, m_page_size));
 }
 
-Json Server::handle_cancel_task(const Json& params) {
+QJsonValue Server::handle_cancel_task(const QJsonValue& params) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         throw Error{error_code::invalid_request, "not initialized"};
     }
@@ -1241,7 +1240,7 @@ Json Server::handle_cancel_task(const Json& params) {
     return to_json(*t);
 }
 
-void Server::handle_cancelled(const Json& params) {
+void Server::handle_cancelled(const QJsonValue& params) {
     // The Server cannot abort an in-flight handler in Phase 2; we log
     // the cancellation so users know it arrived. Phase 3 will plumb a
     // cancellation token through to ToolHandler etc.
@@ -1277,50 +1276,50 @@ void Server::run(std::unique_ptr<Transport> transport) {
 
     local->set_request_handler(
         QString{method_initialize},
-        [this](const Json& p) { return handle_initialize(p); });
+        [this](const QJsonValue& p) { return handle_initialize(p); });
     local->set_request_handler(
         QString{method_tools_list},
-        [this](const Json& p) { return handle_list_tools(p); });
+        [this](const QJsonValue& p) { return handle_list_tools(p); });
     local->set_request_handler(
         QString{method_tools_call},
-        [this](const Json& p) { return handle_call_tool(p); });
+        [this](const QJsonValue& p) { return handle_call_tool(p); });
     local->set_request_handler(
         QString{method_resources_list},
-        [this](const Json& p) { return handle_list_resources(p); });
+        [this](const QJsonValue& p) { return handle_list_resources(p); });
     local->set_request_handler(
         QString{method_resources_templates_list},
-        [this](const Json& p) { return handle_list_resource_templates(p); });
+        [this](const QJsonValue& p) { return handle_list_resource_templates(p); });
     local->set_request_handler(
         QString{method_resources_read},
-        [this](const Json& p) { return handle_read_resource(p); });
+        [this](const QJsonValue& p) { return handle_read_resource(p); });
     local->set_request_handler(
         QString{method_prompts_list},
-        [this](const Json& p) { return handle_list_prompts(p); });
+        [this](const QJsonValue& p) { return handle_list_prompts(p); });
     local->set_request_handler(
         QString{method_prompts_get},
-        [this](const Json& p) { return handle_get_prompt(p); });
+        [this](const QJsonValue& p) { return handle_get_prompt(p); });
     local->set_request_handler(
-        QString{method_ping}, [this](const Json& p) { return handle_ping(p); });
+        QString{method_ping}, [this](const QJsonValue& p) { return handle_ping(p); });
     local->set_request_handler(
         QString{method_logging_set_level},
-        [this](const Json& p) { return handle_set_level(p); });
+        [this](const QJsonValue& p) { return handle_set_level(p); });
     local->set_request_handler(
         QString{method_completion_complete},
-        [this](const Json& p) { return handle_complete(p); });
+        [this](const QJsonValue& p) { return handle_complete(p); });
 
     if (m_tasks) {
         local->set_request_handler(
             QString{method_tasks_get},
-            [this](const Json& p) { return handle_get_task(p); });
+            [this](const QJsonValue& p) { return handle_get_task(p); });
         local->set_request_handler(
             QString{method_tasks_result},
-            [this](const Json& p) { return handle_get_task_result(p); });
+            [this](const QJsonValue& p) { return handle_get_task_result(p); });
         local->set_request_handler(
             QString{method_tasks_list},
-            [this](const Json& p) { return handle_list_tasks(p); });
+            [this](const QJsonValue& p) { return handle_list_tasks(p); });
         local->set_request_handler(
             QString{method_tasks_cancel},
-            [this](const Json& p) { return handle_cancel_task(p); });
+            [this](const QJsonValue& p) { return handle_cancel_task(p); });
 
         // Push status updates to the client over notifications/tasks/status.
         // The listener fires while TaskStore holds its mutex... no — actually
@@ -1342,7 +1341,7 @@ void Server::run(std::unique_ptr<Transport> transport) {
     // under m_completion_mu on each fire.
     local->set_notification_handler(
         QString{method_notifications_elicitation_complete},
-        [this](const Json& params) {
+        [this](const QJsonValue& params) {
             ElicitationCompleteHandler h;
             {
                 std::lock_guard<std::mutex> lk(m_completion_mu);
@@ -1375,10 +1374,10 @@ void Server::run(std::unique_ptr<Transport> transport) {
 
     local->set_notification_handler(
         QString{method_notifications_cancelled},
-        [this](const Json& p) { handle_cancelled(p); });
+        [this](const QJsonValue& p) { handle_cancelled(p); });
 
     local->set_notification_handler(
-        QString{method_notifications_initialized}, [](const Json&) {
+        QString{method_notifications_initialized}, [](const QJsonValue&) {
             // Per the spec, this notification just confirms the client is
             // ready for normal operation. We simply log it.
             MCP_LOG_DEBUG("client sent notifications/initialized");

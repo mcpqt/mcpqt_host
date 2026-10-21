@@ -26,7 +26,7 @@
 
 namespace {
 
-using mcp::Json;
+using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 // Helper that builds two Sessions back-to-back via in-memory pair.
@@ -71,7 +71,7 @@ private slots:
 
 void Session::RequestRoundTripThroughHandler(void) {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("echo", [](const Json& params) -> Json {
+    sp.b->set_request_handler("echo", [](const QJsonValue& params) -> QJsonValue {
         return QJsonObject{{"echoed", params}};
     });
 
@@ -86,11 +86,11 @@ void Session::RequestRoundTripThroughHandler(void) {
 void Session::NotificationDeliveredToHandler(void) {
     auto sp = make_session_pair();
 
-    std::promise<Json> got;
+    std::promise<QJsonValue> got;
     auto fut = got.get_future();
 
     sp.b->set_notification_handler(
-        "ping", [&](const Json& params) { got.set_value(params); });
+        "ping", [&](const QJsonValue& params) { got.set_value(params); });
 
     QVERIFY(!sp.a->send_notification("ping", QJsonObject{{"k", "v"}}));
 
@@ -103,7 +103,7 @@ void Session::NotificationDeliveredToHandler(void) {
 
 void Session::MissingHandlerYieldsMethodNotFound(void) {
     auto sp = make_session_pair();
-    auto fut = sp.a->send_request("nope", Json{}, 2s);
+    auto fut = sp.a->send_request("nope", QJsonValue{}, 2s);
     QVERIFY_EXCEPTION_THROWN(
         ([&] {
             try {
@@ -121,12 +121,12 @@ void Session::MissingHandlerYieldsMethodNotFound(void) {
 
 void Session::HandlerThrowingMcpErrorPropagates(void) {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("explode", [](const Json&) -> Json {
+    sp.b->set_request_handler("explode", [](const QJsonValue&) -> QJsonValue {
         throw mcp::Error{mcp::error_code::invalid_params, "bad",
                          QJsonObject{{"why", "missing"}}};
     });
 
-    auto fut = sp.a->send_request("explode", Json{}, 2s);
+    auto fut = sp.a->send_request("explode", QJsonValue{}, 2s);
     try {
         (void)fut.get();
         QFAIL("expected Error");
@@ -142,11 +142,11 @@ void Session::HandlerThrowingMcpErrorPropagates(void) {
 
 void Session::HandlerThrowingStdExceptionMapsToInternal(void) {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("explode", [](const Json&) -> Json {
+    sp.b->set_request_handler("explode", [](const QJsonValue&) -> QJsonValue {
         throw std::runtime_error{"boom"};
     });
 
-    auto fut = sp.a->send_request("explode", Json{}, 2s);
+    auto fut = sp.a->send_request("explode", QJsonValue{}, 2s);
     try {
         (void)fut.get();
         QFAIL("expected Error");
@@ -160,11 +160,11 @@ void Session::HandlerThrowingStdExceptionMapsToInternal(void) {
 
 void Session::FallbackHandlerCatchesUnknownMethods(void) {
     auto sp = make_session_pair();
-    sp.b->set_fallback_request_handler([](const Json&) -> Json {
+    sp.b->set_fallback_request_handler([](const QJsonValue&) -> QJsonValue {
         return QJsonObject{{"caught_by", "fallback"}};
     });
 
-    auto fut = sp.a->send_request("anything", Json{}, 2s);
+    auto fut = sp.a->send_request("anything", QJsonValue{}, 2s);
     auto r = fut.get();
     QCOMPARE(r["caught_by"], mcp::test::jv("fallback"));
 
@@ -174,12 +174,12 @@ void Session::FallbackHandlerCatchesUnknownMethods(void) {
 
 void Session::ManyConcurrentRequestsAllResolveCorrectly(void) {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("double", [](const Json& p) -> Json {
+    sp.b->set_request_handler("double", [](const QJsonValue& p) -> QJsonValue {
         return QJsonObject{{"r", mcp::from_json<int>(p["x"]) * 2}};
     });
 
     constexpr int N = 200;
-    std::vector<std::future<Json>> futs;
+    std::vector<std::future<QJsonValue>> futs;
     futs.reserve(N);
     for (int i = 0; i < N; ++i) {
         futs.push_back(sp.a->send_request("double", QJsonObject{{"x", i}}, 5s));
@@ -195,12 +195,12 @@ void Session::ManyConcurrentRequestsAllResolveCorrectly(void) {
 
 void Session::RequestTimeoutFiresErrorOnFuture(void) {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("slow", [](const Json&) -> Json {
+    sp.b->set_request_handler("slow", [](const QJsonValue&) -> QJsonValue {
         std::this_thread::sleep_for(2s);
         return {};
     });
 
-    auto fut = sp.a->send_request("slow", Json{}, 100ms);
+    auto fut = sp.a->send_request("slow", QJsonValue{}, 100ms);
     try {
         (void)fut.get();
         QFAIL("expected timeout error");
@@ -215,12 +215,12 @@ void Session::RequestTimeoutFiresErrorOnFuture(void) {
 
 void Session::ClosingCancelsPendingRequests(void) {
     auto sp = make_session_pair();
-    sp.b->set_request_handler("hang", [](const Json&) -> Json {
+    sp.b->set_request_handler("hang", [](const QJsonValue&) -> QJsonValue {
         std::this_thread::sleep_for(300ms);
         return {};
     });
 
-    auto fut = sp.a->send_request("hang", Json{}, 30s);
+    auto fut = sp.a->send_request("hang", QJsonValue{}, 30s);
     sp.a->close();
     try {
         (void)fut.get();
@@ -239,7 +239,7 @@ void Session::IdsForDifferentRequestsAreDistinct(void) {
     // thread-safe.
     std::mutex ids_mu;
     QList<QString> ids;
-    sp.b->set_request_handler("tag", [&](const Json& p) -> Json {
+    sp.b->set_request_handler("tag", [&](const QJsonValue& p) -> QJsonValue {
         std::lock_guard<std::mutex> lk(ids_mu);
         ids.push_back(mcp::from_json<QString>(p["id"]));
         return {};
@@ -305,10 +305,10 @@ void Session::MalformedFrameIsDropped(void) {
     QVERIFY(!b_transport.send(invalid));
 
     // Subsequent valid frames still get through.
-    std::promise<Json> got;
+    std::promise<QJsonValue> got;
     auto f = got.get_future();
     a->set_notification_handler(
-        "hi", [&](const Json& params) { got.set_value(params); });
+        "hi", [&](const QJsonValue& params) { got.set_value(params); });
     QVERIFY(!b_transport.send(
         R"({"jsonrpc":"2.0","method":"hi","params":{"k":1}})"));
     QCOMPARE(f.get()["k"], mcp::test::jv(1));

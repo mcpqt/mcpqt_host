@@ -896,7 +896,7 @@ std::size_t PluginManager::register_tools(Server& server) const {
             const QList<QByteArray> parameter_names = method.parameterNames();
 
             auto handler = [this, &server, signature, method, parameter_names](
-                               const Json& args) -> CallToolResult {
+                               const QJsonValue& args) -> CallToolResult {
                 const QJsonObject object =
                     args.isObject() ? args.toObject() : QJsonObject{};
 

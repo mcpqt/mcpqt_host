@@ -55,7 +55,7 @@ struct ResourcesServerThread {
 
 }  // namespace
 
-using mcp::Json;
+using mcp::QJsonValue;
 
 // -------------------------------------------------------------------------
 // Round-trip tests for the new types
@@ -79,7 +79,7 @@ void Resources::TextContentsRoundTrip(void) {
         .mime_type = "text/plain",
         .text = "hi",
     };
-    Json j = mcp::to_json(c);
+    QJsonValue j = mcp::to_json(c);
     QCOMPARE(j["uri"], mcp::test::jv("file:///hi.txt"));
     QCOMPARE(j["mimeType"], mcp::test::jv("text/plain"));
     QCOMPARE(j["text"], mcp::test::jv("hi"));
@@ -94,7 +94,7 @@ void Resources::BlobContentsRoundTrip(void) {
         .mime_type = "application/octet-stream",
         .blob = "Zm9v",
     };
-    Json j = mcp::to_json(c);
+    QJsonValue j = mcp::to_json(c);
     QCOMPARE(j["blob"], mcp::test::jv("Zm9v"));
     auto back = mcp::from_json<mcp::BlobResourceContents>(j);
     QCOMPARE(back.blob, c.blob);
@@ -122,7 +122,7 @@ void Resources::ResourceRoundTrip(void) {
         .mime_type = "text/plain",
         .size = 10,
     };
-    Json j = mcp::to_json(r);
+    QJsonValue j = mcp::to_json(r);
     QCOMPARE(j["uri"], mcp::test::jv("file:///hi"));
     QCOMPARE(j["mimeType"], mcp::test::jv("text/plain"));
     QCOMPARE(j["size"], mcp::test::jv(10));
@@ -136,7 +136,7 @@ void Resources::ResourceTemplateRoundTrip(void) {
         .uri_template = "file:///{name}.txt",
         .name = "files",
     };
-    Json j = mcp::to_json(r);
+    QJsonValue j = mcp::to_json(r);
     QCOMPARE(j["uriTemplate"], mcp::test::jv("file:///{name}.txt"));
     auto back = mcp::from_json<mcp::ResourceTemplate>(j);
     QCOMPARE(back.uri_template, r.uri_template);
@@ -147,7 +147,7 @@ void Resources::ResourceLinkContentBlock(void) {
         .uri = "file:///doc",
         .name = "Doc",
     };
-    Json j = mcp::to_json(mcp::ContentBlock{rl});
+    QJsonValue j = mcp::to_json(mcp::ContentBlock{rl});
     QCOMPARE(j["type"], mcp::test::jv("resource_link"));
     QCOMPARE(j["uri"], mcp::test::jv("file:///doc"));
 
@@ -165,7 +165,7 @@ void Resources::EmbeddedResourceContentBlock(void) {
                 .text = "embedded",
             },
     };
-    Json j = mcp::to_json(mcp::ContentBlock{er});
+    QJsonValue j = mcp::to_json(mcp::ContentBlock{er});
     QCOMPARE(j["type"], mcp::test::jv("resource"));
     QCOMPARE(j["resource"]["text"], mcp::test::jv("embedded"));
 

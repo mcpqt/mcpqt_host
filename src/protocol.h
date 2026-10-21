@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+﻿// SPDX-License-Identifier: AGPL-3.0-only
 //
 // Wire types for the Model Context Protocol, revision 2025-11-25.
 //
@@ -91,7 +91,7 @@ void from_json(const QJsonValue& j, RequestId& id);
 struct JsonRpcRequest {
     RequestId id;
     QString method;
-    std::optional<Json> params = {};
+    std::optional<QJsonValue> params = {};
 };
 
 [[nodiscard]] QJsonValue to_json(const JsonRpcRequest& r);
@@ -100,7 +100,7 @@ void from_json(const QJsonValue& j, JsonRpcRequest& r);
 /// A JSON-RPC 2.0 notification. Has no id; sender expects no response.
 struct JsonRpcNotification {
     QString method;
-    std::optional<Json> params = {};
+    std::optional<QJsonValue> params = {};
 };
 
 [[nodiscard]] QJsonValue to_json(const JsonRpcNotification& n);
@@ -112,7 +112,7 @@ void from_json(const QJsonValue& j, JsonRpcNotification& n);
 /// `std::optional<RequestId>`.
 struct JsonRpcResponse {
     std::optional<RequestId> id = {};
-    std::variant<Json /*result*/, ErrorObject /*error*/> outcome;
+    std::variant<QJsonValue /*result*/, ErrorObject /*error*/> outcome;
 
     [[nodiscard]] bool is_error(void) const noexcept {
         return outcome.index() == 1;
@@ -121,7 +121,7 @@ struct JsonRpcResponse {
         return outcome.index() == 0;
     }
 
-    [[nodiscard]] const Json& result(void) const {
+    [[nodiscard]] const QJsonValue& result(void) const {
         return std::get<0>(outcome);
     }
     [[nodiscard]] const ErrorObject& error(void) const {
@@ -145,10 +145,10 @@ using JsonRpcMessage =
 /// Parse a single JSON-RPC frame. Returns the variant; throws
 /// `mcp::Error(parse_error)` on parse error or envelope-shape errors that
 /// prevent classification.
-[[nodiscard]] JsonRpcMessage parse_message(const Json& j);
+[[nodiscard]] JsonRpcMessage parse_message(const QJsonValue& j);
 
 /// Serialize a JSON-RPC frame.
-[[nodiscard]] Json serialize_message(const JsonRpcMessage& m);
+[[nodiscard]] QJsonValue serialize_message(const JsonRpcMessage& m);
 
 // --------------------------------------------------------------------------
 // Implementation metadata
@@ -181,7 +181,7 @@ struct Implementation {
     /// Top-level `_meta` envelope for protocol-level metadata.
     /// Round-trips opaquely; spec reserves keys with the
     /// `io.modelcontextprotocol/` prefix.
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 
 [[nodiscard]] QJsonValue to_json(const Implementation& i);
@@ -206,16 +206,16 @@ struct TasksRequestsCapability {
     /// `sampling.createMessage`, `elicitation.create`. Held as raw
     /// json so a future spec extension (a new method) round-trips
     /// without an SDK release.
-    std::optional<Json> tools = {};
-    std::optional<Json> sampling = {};
-    std::optional<Json> elicitation = {};
+    std::optional<QJsonValue> tools = {};
+    std::optional<QJsonValue> sampling = {};
+    std::optional<QJsonValue> elicitation = {};
 };
 [[nodiscard]] QJsonValue to_json(const TasksRequestsCapability& c);
 void from_json(const QJsonValue& j, TasksRequestsCapability& c);
 
 struct TasksCapability {
-    std::optional<Json> list = {};
-    std::optional<Json> cancel = {};
+    std::optional<QJsonValue> list = {};
+    std::optional<QJsonValue> cancel = {};
     std::optional<TasksRequestsCapability> requests = {};
 };
 [[nodiscard]] QJsonValue to_json(const TasksCapability& c);
@@ -234,21 +234,21 @@ void from_json(const QJsonValue& j, RootsCapability& c);
 struct SamplingCapability {
     // Per spec: `context?: object`, `tools?: object`. Presence-only flags;
     // we capture the raw object so future fields round-trip.
-    std::optional<Json> context = {};
-    std::optional<Json> tools = {};
+    std::optional<QJsonValue> context = {};
+    std::optional<QJsonValue> tools = {};
 };
 [[nodiscard]] QJsonValue to_json(const SamplingCapability& c);
 void from_json(const QJsonValue& j, SamplingCapability& c);
 
 struct ElicitationCapability {
-    std::optional<Json> form = {};  // form-based elicitation
-    std::optional<Json> url = {};   // URL-based elicitation
+    std::optional<QJsonValue> form = {};  // form-based elicitation
+    std::optional<QJsonValue> url = {};   // URL-based elicitation
 };
 [[nodiscard]] QJsonValue to_json(const ElicitationCapability& c);
 void from_json(const QJsonValue& j, ElicitationCapability& c);
 
 struct ClientCapabilities {
-    std::optional<Json> experimental = {};
+    std::optional<QJsonValue> experimental = {};
     std::optional<RootsCapability> roots = {};
     std::optional<SamplingCapability> sampling = {};
     std::optional<ElicitationCapability> elicitation = {};
@@ -279,9 +279,9 @@ struct ToolsCapability {
 void from_json(const QJsonValue& j, ToolsCapability& c);
 
 struct ServerCapabilities {
-    std::optional<Json> experimental = {};
-    std::optional<Json> logging = {};      // presence-only
-    std::optional<Json> completions = {};  // presence-only
+    std::optional<QJsonValue> experimental = {};
+    std::optional<QJsonValue> logging = {};      // presence-only
+    std::optional<QJsonValue> completions = {};  // presence-only
     std::optional<PromptsCapability> prompts = {};
     std::optional<ResourcesCapability> resources = {};
     std::optional<ToolsCapability> tools = {};
@@ -309,7 +309,7 @@ struct InitializeResult {
     ServerCapabilities capabilities;
     Implementation server_info;
     QString instructions = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const InitializeResult& r);
 void from_json(const QJsonValue& j, InitializeResult& r);
@@ -397,7 +397,7 @@ struct Resource {
     std::optional<std::int64_t> size = {};  // bytes
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const Resource& r);
 void from_json(const QJsonValue& j, Resource& r);
@@ -411,7 +411,7 @@ struct ResourceTemplate {
     std::optional<Annotations> annotations = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const ResourceTemplate& r);
 void from_json(const QJsonValue& j, ResourceTemplate& r);
@@ -426,7 +426,7 @@ struct ResourceLink {
     std::optional<std::int64_t> size = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const ResourceLink& r);
 void from_json(const QJsonValue& j, ResourceLink& r);
@@ -450,7 +450,7 @@ struct ToolUseContent {
     QString name;
     /// Arguments to the tool. JSON object matching the tool's
     /// `inputSchema`.
-    Json input;
+    QJsonValue input;
     std::optional<Annotations> annotations = {};
 };
 [[nodiscard]] QJsonValue to_json(const ToolUseContent& c);
@@ -527,13 +527,13 @@ struct Tool {
     QString name;
     QString title = {};
     QString description = {};
-    Json input_schema;                       // JSON Schema; type:"object"
-    std::optional<Json> output_schema = {};  // optional JSON Schema
+    QJsonValue input_schema;                       // JSON Schema; type:"object"
+    std::optional<QJsonValue> output_schema = {};  // optional JSON Schema
     std::optional<ToolAnnotations> annotations = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
     std::optional<ToolExecution> execution = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const Tool& t);
 void from_json(const QJsonValue& j, Tool& t);
@@ -547,14 +547,14 @@ void from_json(const QJsonValue& j, ListToolsRequestParams& p);
 struct ListToolsResult {
     QList<Tool> tools;
     QString next_cursor = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const ListToolsResult& r);
 void from_json(const QJsonValue& j, ListToolsResult& r);
 
 struct CallToolRequestParams {
     QString name;
-    std::optional<Json> arguments = {};  // JSON object
+    std::optional<QJsonValue> arguments = {};  // JSON object
     /// When set, the request is task-augmented: the receiver should
     /// return a CreateTaskResult envelope and run the call async. The
     /// final CallToolResult is fetched via `tasks/result`.
@@ -565,9 +565,9 @@ void from_json(const QJsonValue& j, CallToolRequestParams& p);
 
 struct CallToolResult {
     QList<ContentBlock> content;
-    std::optional<Json> structured_content = {};  // matches outputSchema
+    std::optional<QJsonValue> structured_content = {};  // matches outputSchema
     std::optional<bool> is_error = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const CallToolResult& r);
 void from_json(const QJsonValue& j, CallToolResult& r);
@@ -588,7 +588,7 @@ void from_json(const QJsonValue& j, ListResourcesRequestParams& p);
 struct ListResourcesResult {
     QList<Resource> resources;
     QString next_cursor = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const ListResourcesResult& r);
 void from_json(const QJsonValue& j, ListResourcesResult& r);
@@ -602,7 +602,7 @@ void from_json(const QJsonValue& j, ListResourceTemplatesRequestParams& p);
 struct ListResourceTemplatesResult {
     QList<ResourceTemplate> resource_templates;
     QString next_cursor = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const ListResourceTemplatesResult& r);
 void from_json(const QJsonValue& j, ListResourceTemplatesResult& r);
@@ -615,7 +615,7 @@ void from_json(const QJsonValue& j, ReadResourceRequestParams& p);
 
 struct ReadResourceResult {
     QList<ResourceContents> contents;
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const ReadResourceResult& r);
 void from_json(const QJsonValue& j, ReadResourceResult& r);
@@ -669,7 +669,7 @@ struct Prompt {
     std::optional<QList<PromptArgument>> arguments = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const Prompt& p);
 void from_json(const QJsonValue& j, Prompt& p);
@@ -690,7 +690,7 @@ void from_json(const QJsonValue& j, ListPromptsRequestParams& p);
 struct ListPromptsResult {
     QList<Prompt> prompts;
     QString next_cursor = {};
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const ListPromptsResult& r);
 void from_json(const QJsonValue& j, ListPromptsResult& r);
@@ -705,7 +705,7 @@ void from_json(const QJsonValue& j, GetPromptRequestParams& p);
 struct GetPromptResult {
     QString description = {};
     QList<PromptMessage> messages;
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const GetPromptResult& r);
 void from_json(const QJsonValue& j, GetPromptResult& r);
@@ -812,7 +812,7 @@ void from_json(const QJsonValue& j, SetLevelRequestParams& p);
 struct LoggingMessageNotificationParams {
     LoggingLevel level;
     QString logger = {};  // optional name of the logger source
-    Json data;            // free-form payload (string/object/...)
+    QJsonValue data;            // free-form payload (string/object/...)
 };
 [[nodiscard]] QJsonValue to_json(const LoggingMessageNotificationParams& p);
 void from_json(const QJsonValue& j, LoggingMessageNotificationParams& p);
@@ -898,7 +898,7 @@ struct CreateMessageRequestParams {
     std::optional<double> temperature = {};
     std::int64_t max_tokens{};  // required by spec
     std::optional<QList<QString>> stop_sequences = {};
-    std::optional<Json> metadata = {};
+    std::optional<QJsonValue> metadata = {};
     /// 2025-11-25: tools the assistant may call during this
     /// sampling. Server side is expected to translate to the
     /// underlying LLM's tool-calling shape; `Tool::input_schema`
@@ -916,7 +916,7 @@ struct CreateMessageResult {
     QString model;
     QString stop_reason = {};
     /// Top-level _meta envelope for protocol-level metadata.
-    std::optional<Json> meta = {};
+    std::optional<QJsonValue> meta = {};
 };
 [[nodiscard]] QJsonValue to_json(const CreateMessageResult& r);
 void from_json(const QJsonValue& j, CreateMessageResult& r);
@@ -1016,7 +1016,7 @@ struct ElicitFormRequestParams {
     /// to a flat object of primitive properties; we don't enforce that
     /// here so applications can negotiate richer shapes when both sides
     /// agree, but the basic SDK sticks to the spec.
-    Json requested_schema;
+    QJsonValue requested_schema;
 };
 [[nodiscard]] QJsonValue to_json(const ElicitFormRequestParams& p);
 void from_json(const QJsonValue& j, ElicitFormRequestParams& p);
@@ -1046,7 +1046,7 @@ struct ElicitResult {
     /// Form-mode only: the user's submission, conforming to the
     /// server-supplied schema. Absent for decline/cancel and for URL
     /// mode.
-    std::optional<Json> content = {};
+    std::optional<QJsonValue> content = {};
 };
 [[nodiscard]] QJsonValue to_json(const ElicitResult& r);
 void from_json(const QJsonValue& j, ElicitResult& r);

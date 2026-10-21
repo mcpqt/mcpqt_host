@@ -25,7 +25,7 @@
 
 namespace {
 
-using mcp::Json;
+using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 struct UtilServerThread {
@@ -104,7 +104,7 @@ void Cancelled::RoundTrip(void) {
         .request_id = mcp::RequestId{42},
         .reason = "user requested",
     };
-    Json j = mcp::to_json(p);
+    QJsonValue j = mcp::to_json(p);
     QCOMPARE(j["requestId"], mcp::test::jv(42));
     QCOMPARE(j["reason"], mcp::test::jv("user requested"));
     auto back = mcp::from_json<mcp::CancelledNotificationParams>(j);
@@ -119,7 +119,7 @@ void Progress::RoundTrip(void) {
         .total = 1.0,
         .message = "halfway",
     };
-    Json j = mcp::to_json(p);
+    QJsonValue j = mcp::to_json(p);
     QCOMPARE(j["progressToken"], mcp::test::jv("tok"));
     QCOMPARE(j["progress"], mcp::test::jv(0.5));
     auto back = mcp::from_json<mcp::ProgressNotificationParams>(j);
@@ -130,7 +130,7 @@ void Progress::RoundTrip(void) {
 void Logging::LevelStrings(void) {
     QCOMPARE(mcp::to_string(mcp::LoggingLevel::debug), "debug");
     QCOMPARE(mcp::to_string(mcp::LoggingLevel::emergency), "emergency");
-    Json j = mcp::to_json(mcp::LoggingLevel::warning);
+    QJsonValue j = mcp::to_json(mcp::LoggingLevel::warning);
     QCOMPARE(j, mcp::test::jv("warning"));
     auto back = mcp::from_json<mcp::LoggingLevel>(j);
     QCOMPARE(back, mcp::LoggingLevel::warning);
@@ -142,7 +142,7 @@ void Logging::MessageNotificationRoundTrip(void) {
         .logger = "scheduler",
         .data = QJsonObject{{"event", "tick"}},
     };
-    Json j = mcp::to_json(p);
+    QJsonValue j = mcp::to_json(p);
     QCOMPARE(j["level"], mcp::test::jv("info"));
     QCOMPARE(j["logger"], mcp::test::jv("scheduler"));
     QCOMPARE(j["data"]["event"], mcp::test::jv("tick"));
@@ -180,7 +180,7 @@ void LoggingIntegration::ServerLogReachesClient(void) {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.enable_logging(mcp::LoggingLevel::debug);
-        s.tool("emit_log", QJsonObject{{"type", "object"}}, [&s](const Json&) {
+        s.tool("emit_log", QJsonObject{{"type", "object"}}, [&s](const QJsonValue&) {
             (void)s.log(mcp::LoggingLevel::warning, QJsonObject{{"msg", "hi"}},
                         "logger-1");
             return mcp::CallToolResult{
@@ -220,7 +220,7 @@ void LoggingIntegration::SetLevelFiltersServerEmissions(void) {
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.enable_logging(mcp::LoggingLevel::debug);
         s.tool("emit_debug", QJsonObject{{"type", "object"}},
-               [&s](const Json&) {
+               [&s](const QJsonValue&) {
                    (void)s.log(mcp::LoggingLevel::debug, "should-be-filtered");
                    return mcp::CallToolResult{
                        .content = {mcp::TextContent{.text = "ok"}},
@@ -260,7 +260,7 @@ void LoggingIntegration::SetLevelFiltersServerEmissions(void) {
 void ProgressIntegration::ServerProgressReachesClient(void) {
     auto p = mcp::test::make_in_memory_pair();
     UtilServerThread srv(std::move(p.b), [](mcp::Server& s) {
-        s.tool("loud_op", QJsonObject{{"type", "object"}}, [&s](const Json&) {
+        s.tool("loud_op", QJsonObject{{"type", "object"}}, [&s](const QJsonValue&) {
             s.report_progress(mcp::ProgressToken{"job-1"}, 0.25);
             s.report_progress(mcp::ProgressToken{"job-1"}, 0.75, 1.0, "almost");
             return mcp::CallToolResult{
@@ -300,7 +300,7 @@ void CancellationIntegration::ClientCanSendCancelledNotification(void) {
     auto client_session = std::make_unique<mcp::Session>(std::move(pair.a));
     auto server_session = std::make_unique<mcp::Session>(std::move(pair.b));
     server_session->set_notification_handler(
-        QString{mcp::method_notifications_cancelled}, [&](const Json& params) {
+        QString{mcp::method_notifications_cancelled}, [&](const QJsonValue& params) {
             try {
                 got.set_value(
                     mcp::from_json<mcp::CancelledNotificationParams>(params));

@@ -60,7 +60,7 @@ public:
 
     /// `tools/call` with the given name and JSON-shaped arguments.
     [[nodiscard]] std::future<CallToolResult> call_tool(QString name,
-                                                        Json arguments = {});
+                                                        QJsonValue arguments = {});
 
     /// `tools/call` with a `task` augmentation. The server returns a
     /// `CreateTaskResult` envelope right away; the actual
@@ -69,7 +69,7 @@ public:
     /// `ttl_ms` is the per-call retention override; nullopt uses the
     /// server's default.
     [[nodiscard]] std::future<CreateTaskResult>
-    call_tool_as_task(QString name, Json arguments = {},
+    call_tool_as_task(QString name, QJsonValue arguments = {},
                       std::optional<std::int64_t> ttl_ms = std::nullopt);
 
     /// `tasks/get` — fetch the current envelope for a task.
@@ -79,7 +79,7 @@ public:
     /// terminal, then return the underlying request's result as raw
     /// JSON. Decode it as the appropriate result type (e.g.
     /// `CallToolResult`) by calling `mcp::from_json<T>(...)`.
-    [[nodiscard]] std::future<Json> task_result(QString task_id);
+    [[nodiscard]] std::future<QJsonValue> task_result(QString task_id);
 
     /// `tasks/list` — paginated enumeration of all tasks the server
     /// currently knows about.

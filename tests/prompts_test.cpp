@@ -55,7 +55,7 @@ struct PromptsServerThread {
 
 }  // namespace
 
-using mcp::Json;
+using mcp::QJsonValue;
 
 // -------------------------------------------------------------------------
 // Round-trip type tests
@@ -78,7 +78,7 @@ void Prompts::PromptArgumentRoundTrip(void) {
         .description = "What to write about",
         .required = true,
     };
-    Json j = mcp::to_json(a);
+    QJsonValue j = mcp::to_json(a);
     QCOMPARE(j["name"], mcp::test::jv("topic"));
     QCOMPARE(j["required"], mcp::test::jv(true));
     auto back = mcp::from_json<mcp::PromptArgument>(j);
@@ -96,7 +96,7 @@ void Prompts::PromptRoundTripWithArguments(void) {
                 {.name = "max_words"},
             },
     };
-    Json j = mcp::to_json(p);
+    QJsonValue j = mcp::to_json(p);
     QVERIFY(j.toObject().contains(QString::fromUtf8("arguments")));
     QCOMPARE(j["arguments"].toArray().size(), qsizetype{2});
     auto back = mcp::from_json<mcp::Prompt>(j);
@@ -110,7 +110,7 @@ void Prompts::PromptMessageRoundTrip(void) {
         .role = mcp::Role::user,
         .content = mcp::TextContent{.text = "hello"},
     };
-    Json j = mcp::to_json(m);
+    QJsonValue j = mcp::to_json(m);
     QCOMPARE(j["role"], mcp::test::jv("user"));
     QCOMPARE(j["content"]["type"], mcp::test::jv("text"));
     auto back = mcp::from_json<mcp::PromptMessage>(j);
@@ -130,7 +130,7 @@ void Prompts::GetPromptResultRoundTrip(void) {
                                    .content = mcp::TextContent{.text = "OK."}},
             },
     };
-    Json j = mcp::to_json(r);
+    QJsonValue j = mcp::to_json(r);
     QCOMPARE(j["description"], mcp::test::jv("A summary prompt"));
     QCOMPARE(j["messages"].toArray().size(), qsizetype{2});
     auto back = mcp::from_json<mcp::GetPromptResult>(j);
@@ -147,7 +147,7 @@ void Prompts::GetPromptParamsArgumentsAreStringMap(void) {
                 {"b", "two"},
             },
     };
-    Json j = mcp::to_json(p);
+    QJsonValue j = mcp::to_json(p);
     QCOMPARE(j["name"], mcp::test::jv("x"));
     QCOMPARE(j["arguments"]["a"], mcp::test::jv("1"));
     QCOMPARE(j["arguments"]["b"], mcp::test::jv("two"));

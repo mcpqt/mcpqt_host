@@ -11,7 +11,7 @@
 //   }};
 //   server.tool("add",
 //       /*input_schema=*/{{"type", "object"}, ...},
-//       [](const Json& args) -> mcp::CallToolResult {
+//       [](const QJsonValue& args) -> mcp::CallToolResult {
 //           return { .content = { mcp::TextContent{.text = "..."} } };
 //       });
 //   server.run(std::make_unique<mcp::StdioTransport>());
@@ -52,7 +52,7 @@ public:
     /// The result's `isError` field is the right way to report
     /// in-protocol failures (LLM-visible). MCP errors are reserved for
     /// "I couldn't even find this tool" / out-of-band conditions.
-    using ToolHandler = std::function<CallToolResult(const Json& arguments)>;
+    using ToolHandler = std::function<CallToolResult(const QJsonValue& arguments)>;
 
     /// Bag of optional per-tool metadata applied at registration. The
     /// 2025-11-25 spec lets every tool advertise icons, structured
@@ -61,7 +61,7 @@ public:
     struct ToolMetadata {
         std::optional<QList<Icon>> icons = {};
         std::optional<ToolExecution> execution = {};
-        std::optional<Json> meta = {};
+        std::optional<QJsonValue> meta = {};
     };
 
     /// Resource read handler. Receives the requested URI and returns
@@ -96,15 +96,15 @@ public:
 
     /// Register a tool with the given name. Replaces any prior handler.
     /// `input_schema` MUST be a JSON Schema object with "type": "object".
-    Server& tool(QString name, Json input_schema, ToolHandler handler,
+    Server& tool(QString name, QJsonValue input_schema, ToolHandler handler,
                  QString title = {}, QString description = {},
                  std::optional<ToolAnnotations> annotations = std::nullopt,
-                 std::optional<Json> output_schema = std::nullopt);
+                 std::optional<QJsonValue> output_schema = std::nullopt);
 
     /// Tool registration with the 2025-11-25 metadata bag. Use the
     /// long-form constructor when you need to declare icons, _meta,
     /// or an execution policy that gates task augmentation.
-    Server& tool(QString name, Json input_schema, ToolHandler handler,
+    Server& tool(QString name, QJsonValue input_schema, ToolHandler handler,
                  ToolMetadata meta);
 
     /// Register a resource the server exposes. The handler is invoked
@@ -138,7 +138,7 @@ public:
     /// if logging is not enabled or `level` is below the negotiated
     /// minimum. `data` is free-form JSON (typically a string or
     /// object). Returns `true` if the notification was sent.
-    [[nodiscard]] bool log(LoggingLevel level, Json data, QString logger = {});
+    [[nodiscard]] bool log(LoggingLevel level, QJsonValue data, QString logger = {});
 
     /// Emit a `notifications/progress` for the given progress token.
     /// `total` and `message` are optional per spec.
@@ -248,23 +248,23 @@ public:
 private:
     void on_initialize(const InitializeRequestParams& params,
                        JsonRpcResponse& resp);
-    Json handle_initialize(const Json& params);
-    Json handle_list_tools(const Json& params);
-    Json handle_call_tool(const Json& params);
-    Json handle_list_resources(const Json& params);
-    Json handle_list_resource_templates(const Json& params);
-    Json handle_read_resource(const Json& params);
-    Json handle_list_prompts(const Json& params);
-    Json handle_get_prompt(const Json& params);
-    Json handle_ping(const Json& params);
-    Json handle_set_level(const Json& params);
-    void handle_cancelled(const Json& params);
-    Json handle_complete(const Json& params);
+    QJsonValue handle_initialize(const QJsonValue& params);
+    QJsonValue handle_list_tools(const QJsonValue& params);
+    QJsonValue handle_call_tool(const QJsonValue& params);
+    QJsonValue handle_list_resources(const QJsonValue& params);
+    QJsonValue handle_list_resource_templates(const QJsonValue& params);
+    QJsonValue handle_read_resource(const QJsonValue& params);
+    QJsonValue handle_list_prompts(const QJsonValue& params);
+    QJsonValue handle_get_prompt(const QJsonValue& params);
+    QJsonValue handle_ping(const QJsonValue& params);
+    QJsonValue handle_set_level(const QJsonValue& params);
+    void handle_cancelled(const QJsonValue& params);
+    QJsonValue handle_complete(const QJsonValue& params);
 
-    Json handle_get_task(const Json& params);
-    Json handle_get_task_result(const Json& params);
-    Json handle_list_tasks(const Json& params);
-    Json handle_cancel_task(const Json& params);
+    QJsonValue handle_get_task(const QJsonValue& params);
+    QJsonValue handle_get_task_result(const QJsonValue& params);
+    QJsonValue handle_list_tasks(const QJsonValue& params);
+    QJsonValue handle_cancel_task(const QJsonValue& params);
 
     struct ToolEntry {
         Tool descriptor;

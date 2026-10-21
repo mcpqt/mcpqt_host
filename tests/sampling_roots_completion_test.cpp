@@ -25,7 +25,7 @@
 
 namespace {
 
-using mcp::Json;
+using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 struct ServerThread {
@@ -76,7 +76,7 @@ void Sampling::CreateMessageRoundTrip(void) {
             },
         .max_tokens = 256,
     };
-    Json j = mcp::to_json(p);
+    QJsonValue j = mcp::to_json(p);
     QCOMPARE(j["maxTokens"], mcp::test::jv(256));
     QCOMPARE(j["modelPreferences"]["hints"][0]["name"],
              mcp::test::jv("claude-3-5-sonnet"));
@@ -94,7 +94,7 @@ void Sampling::IncludeContextRoundTrip(void) {
         .include_context = mcp::IncludeContext::all_servers,
         .max_tokens = 1,
     };
-    Json j = mcp::to_json(p);
+    QJsonValue j = mcp::to_json(p);
     QCOMPARE(j["includeContext"], mcp::test::jv("allServers"));
     auto back = mcp::from_json<mcp::CreateMessageRequestParams>(j);
     QCOMPARE(back.include_context, mcp::IncludeContext::all_servers);
@@ -107,7 +107,7 @@ void Sampling::CreateMessageResultRoundTrip(void) {
         .model = "claude-3-5-sonnet-20241022",
         .stop_reason = "endTurn",
     };
-    Json j = mcp::to_json(r);
+    QJsonValue j = mcp::to_json(r);
     QCOMPARE(j["role"], mcp::test::jv("assistant"));
     QCOMPARE(j["model"], mcp::test::jv("claude-3-5-sonnet-20241022"));
     QCOMPARE(j["stopReason"], mcp::test::jv("endTurn"));
@@ -129,7 +129,7 @@ void Roots::RoundTrip(void) {
                 mcp::Root{.uri = "https://example.com/data"},
             },
     };
-    Json j = mcp::to_json(r);
+    QJsonValue j = mcp::to_json(r);
     QCOMPARE(j["roots"][0]["name"], mcp::test::jv("workspace"));
     auto back = mcp::from_json<mcp::ListRootsResult>(j);
     QCOMPARE(back.roots.size(), std::size_t{2});
@@ -144,7 +144,7 @@ private slots:
 
 void Completion::ReferenceVariantRoundTrip(void) {
     mcp::CompletionReference ref = mcp::PromptReference{.name = "p1"};
-    Json j = mcp::to_json(ref);
+    QJsonValue j = mcp::to_json(ref);
     QCOMPARE(j["type"], mcp::test::jv("ref/prompt"));
     auto back = mcp::from_json<mcp::CompletionReference>(j);
     QVERIFY(std::holds_alternative<mcp::PromptReference>(back));
@@ -165,7 +165,7 @@ void Completion::RequestRoundTrip(void) {
                 {"locale", "en-US"},
             },
     };
-    Json j = mcp::to_json(p);
+    QJsonValue j = mcp::to_json(p);
     QCOMPARE(j["argument"]["name"], mcp::test::jv("name"));
     QCOMPARE(j["argument"]["value"], mcp::test::jv("Al"));
     QCOMPARE(j["context"]["arguments"]["locale"], mcp::test::jv("en-US"));
@@ -194,7 +194,7 @@ void SamplingIntegration::ToolHandlerCanRoundTripThroughClient(void) {
             QJsonObject{{"type", "object"},
                         {"properties",
                          QJsonObject{{"q", QJsonObject{{"type", "string"}}}}}},
-            [&s](const Json& args) -> mcp::CallToolResult {
+            [&s](const QJsonValue& args) -> mcp::CallToolResult {
                 const QJsonObject ao = args.toObject();
                 const QJsonValue qv = ao.value(QStringLiteral("q"));
                 const QString q = qv.isString() ? qv.toString() : QString{"?"};
@@ -246,7 +246,7 @@ void SamplingIntegration::MissingHandlerYieldsError(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         s.tool(
             "ask", QJsonObject{{"type", "object"}},
-            [&s](const Json&) -> mcp::CallToolResult {
+            [&s](const QJsonValue&) -> mcp::CallToolResult {
                 try {
                     (void)s
                         .sample(mcp::CreateMessageRequestParams{
@@ -297,7 +297,7 @@ void RootsIntegration::ServerCanQueryClientRoots(void) {
 
     ServerThread srv(std::move(p.b), [&](mcp::Server& s) {
         s.tool("read_roots", QJsonObject{{"type", "object"}},
-               [&s, &roots_received](const Json&) -> mcp::CallToolResult {
+               [&s, &roots_received](const QJsonValue&) -> mcp::CallToolResult {
                    auto roots = s.list_roots().get();
                    try {
                        roots_received.set_value(roots);

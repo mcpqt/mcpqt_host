@@ -22,7 +22,7 @@
 
 namespace {
 
-using mcp::Json;
+using mcp::QJsonValue;
 
 struct ServerThread {
     std::shared_ptr<mcp::Server> server;
@@ -62,7 +62,7 @@ void Pagination::ToolsListReturnsPagesWithCursor(void) {
         s.set_page_size(3);
         for (int i = 0; i < 7; ++i) {
             s.tool("t" + QString::number(i), QJsonObject{{"type", "object"}},
-                   [](const Json&) -> mcp::CallToolResult {
+                   [](const QJsonValue&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         }
@@ -95,7 +95,7 @@ void Pagination::NoPaginationByDefault(void) {
     ServerThread srv(std::move(p.b), [](mcp::Server& s) {
         for (int i = 0; i < 5; ++i) {
             s.tool("t" + QString::number(i), QJsonObject{{"type", "object"}},
-                   [](const Json&) -> mcp::CallToolResult {
+                   [](const QJsonValue&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         }
@@ -155,7 +155,7 @@ void Pagination::MalformedCursorRejected(void) {
         s.set_page_size(2);
         for (int i = 0; i < 5; ++i) {
             s.tool("t" + QString::number(i), QJsonObject{{"type", "object"}},
-                   [](const Json&) -> mcp::CallToolResult {
+                   [](const QJsonValue&) -> mcp::CallToolResult {
                        return {.content = {mcp::TextContent{.text = "ok"}}};
                    });
         }

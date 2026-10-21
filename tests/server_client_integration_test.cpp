@@ -27,7 +27,7 @@
 
 namespace {
 
-using mcp::Json;
+using mcp::QJsonValue;
 using namespace std::chrono_literals;
 
 // Run a Server in a background thread with the supplied transport, and
@@ -71,7 +71,7 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
                         QJsonObject{{"a", QJsonObject{{"type", "number"}}},
                                     {"b", QJsonObject{{"type", "number"}}}}},
                        {"required", QJsonArray{"a", "b"}}},
-                   [](const Json& args) -> mcp::CallToolResult {
+                   [](const QJsonValue& args) -> mcp::CallToolResult {
                        const double a = args["a"].toDouble();
                        const double b = args["b"].toDouble();
                        return mcp::CallToolResult{
@@ -87,7 +87,7 @@ calc_server(std::unique_ptr<mcp::Transport> transport) {
                         QJsonObject{{"a", QJsonObject{{"type", "number"}}},
                                     {"b", QJsonObject{{"type", "number"}}}}},
                        {"required", QJsonArray{"a", "b"}}},
-                   [](const Json& args) -> mcp::CallToolResult {
+                   [](const QJsonValue& args) -> mcp::CallToolResult {
                        const double b = args["b"].toDouble();
                        if (b == 0.0) {
                            // Reportable error: visible to the LLM via isError.

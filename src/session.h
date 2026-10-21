@@ -6,7 +6,7 @@
 // Responsibilities:
 //   - Parse inbound raw frames into JsonRpcMessage and route them.
 //   - Correlate outbound requests with inbound responses by id, returning
-//     a std::future<Json> that resolves with the result or
+//     a std::future<QJsonValue> that resolves with the result or
 //     throws mcp::Error on failure.
 //   - Generate fresh, monotonically-increasing request ids.
 //   - Apply per-request timeouts; an expired request raises Error with
@@ -55,11 +55,11 @@ public:
     /// Returns the result JSON (which is wrapped into a JSON-RPC response).
     /// Throwing `mcp::Error` reports back to the peer as a JSON-RPC error.
     /// Throwing anything else is reported as InternalError.
-    using RequestHandler = std::function<Json(const Json& params)>;
+    using RequestHandler = std::function<QJsonValue(const QJsonValue& params)>;
 
     /// Handler invoked when a peer sends a notification with `method`.
     /// Exceptions are caught and logged.
-    using NotificationHandler = std::function<void(const Json& params)>;
+    using NotificationHandler = std::function<void(const QJsonValue& params)>;
 
     struct Options {
         std::chrono::milliseconds default_request_timeout{30 * 1000};  // 30s
@@ -114,8 +114,8 @@ public:
 
     /// Send a JSON-RPC request and return a future for its result.
     /// `timeout` of zero means use `Options::default_request_timeout`.
-    [[nodiscard]] std::future<Json> send_request(
-        QString method, Json params = {},
+    [[nodiscard]] std::future<QJsonValue> send_request(
+        QString method, QJsonValue params = {},
         std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
 
     /// Send a JSON-RPC request and return a future for a *typed* result.
@@ -128,12 +128,12 @@ public:
     /// background).
     template <class T>
     [[nodiscard]] std::future<T> send_request_for(
-        QString method, Json params, std::function<T(Json)> convert,
+        QString method, QJsonValue params, std::function<T(QJsonValue)> convert,
         std::chrono::milliseconds timeout = std::chrono::milliseconds{0}) {
         auto pr = std::make_shared<std::promise<T>>();
         auto fut = pr->get_future();
         Pending pending;
-        pending.resolve = [pr, convert = std::move(convert)](Json j) {
+        pending.resolve = [pr, convert = std::move(convert)](QJsonValue j) {
             try {
                 pr->set_value(convert(std::move(j)));
             } catch (...) {
@@ -150,11 +150,11 @@ public:
     /// payload the caller cares about (`ping`, `subscribe`, ...). The
     /// future resolves to void on success and throws on error.
     [[nodiscard]] std::future<void> send_request_void(
-        QString method, Json params = {},
+        QString method, QJsonValue params = {},
         std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
 
     /// Send a JSON-RPC notification (fire-and-forget).
-    std::error_code send_notification(QString method, Json params = {});
+    std::error_code send_notification(QString method, QJsonValue params = {});
 
     [[nodiscard]] bool is_open(void) const noexcept {
         return m_started.load(std::memory_order_acquire) &&
@@ -178,7 +178,7 @@ private:
     /// `resolve` / `reject` is invoked, always *outside* `m_pending_mu`
     /// (resolving a future can wake a waiter that re-enters the Session).
     struct Pending {
-        std::function<void(Json)> resolve;
+        std::function<void(QJsonValue)> resolve;
         std::function<void(std::exception_ptr)> reject;
         std::chrono::steady_clock::time_point deadline;
     };
@@ -186,7 +186,7 @@ private:
     /// Allocate an id, park `pending`, and send the request frame. On a
     /// closed session, duplicate id, or transport failure it invokes
     /// `pending.reject` (after releasing the lock) instead.
-    void register_pending(QString method, Json params, Pending pending,
+    void register_pending(QString method, QJsonValue params, Pending pending,
                           std::chrono::milliseconds timeout);
 
     std::unique_ptr<Transport> m_transport;

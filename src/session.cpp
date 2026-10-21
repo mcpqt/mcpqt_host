@@ -173,27 +173,27 @@ RequestId Session::next_id(void) noexcept {
     return RequestId{m_next_id.fetch_add(1, std::memory_order_relaxed)};
 }
 
-std::future<Json> Session::send_request(QString method, Json params,
+std::future<QJsonValue> Session::send_request(QString method, QJsonValue params,
                                         std::chrono::milliseconds timeout) {
-    return send_request_for<Json>(
-        std::move(method), std::move(params), [](Json j) { return j; },
+    return send_request_for<QJsonValue>(
+        std::move(method), std::move(params), [](QJsonValue j) { return j; },
         timeout);
 }
 
 std::future<void>
-Session::send_request_void(QString method, Json params,
+Session::send_request_void(QString method, QJsonValue params,
                            std::chrono::milliseconds timeout) {
     auto pr = std::make_shared<std::promise<void>>();
     auto fut = pr->get_future();
     Pending pending;
-    pending.resolve = [pr](Json) { pr->set_value(); };
+    pending.resolve = [pr](QJsonValue) { pr->set_value(); };
     pending.reject = [pr](std::exception_ptr e) { pr->set_exception(e); };
     register_pending(std::move(method), std::move(params), std::move(pending),
                      timeout);
     return fut;
 }
 
-void Session::register_pending(QString method, Json params, Pending pending,
+void Session::register_pending(QString method, QJsonValue params, Pending pending,
                                std::chrono::milliseconds timeout) {
     auto id = next_id();
 
@@ -270,7 +270,7 @@ void Session::register_pending(QString method, Json params, Pending pending,
     }
 }
 
-std::error_code Session::send_notification(QString method, Json params) {
+std::error_code Session::send_notification(QString method, QJsonValue params) {
     JsonRpcNotification note;
     note.method = std::move(method);
     if (!params.isNull())
@@ -300,7 +300,7 @@ void Session::send_message(const JsonRpcMessage& msg) {
 // =====================================================================
 
 void Session::handle_frame(QByteArray raw) {
-    Json j;
+    QJsonValue j;
     try {
         j = parse_json(raw);
     } catch (const Error& e) {
@@ -383,8 +383,8 @@ void Session::handle_request(JsonRpcRequest req) {
         };
     } else {
         try {
-            static const Json kNull{QJsonValue::Null};
-            const Json& params_in =
+            static const QJsonValue kNull{QJsonValue::Null};
+            const QJsonValue& params_in =
                 req.params.has_value() ? *req.params : kNull;
             resp.outcome = handler(params_in);
         } catch (const Error& e) {
@@ -435,7 +435,7 @@ void Session::handle_notification(JsonRpcNotification note) {
     if (!handler)
         return;
     try {
-        static const Json kNull{QJsonValue::Null};
+        static const QJsonValue kNull{QJsonValue::Null};
         handler(note.params.has_value() ? *note.params : kNull);
     } catch (const std::exception& e) {
         MCP_LOG_ERROR(QString{"notification handler threw: "} + e.what());
