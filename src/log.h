@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #pragma once
 
-// Internal logging for the mcp-cpp library itself. This is *not* the MCP
+// Internal logging for the mcpqt library itself. This is *not* the MCP
 // protocol-level logging that servers use to emit log messages to clients
 // (see `notifications/message` in the spec). This module is for diagnostic
 // output from the SDK to stderr — never to stdout, because stdout is owned by

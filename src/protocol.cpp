@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "protocol.h"
 
+#include <QMetaEnum>
+
 #include "error.h"
 #include "json.h"
 
@@ -470,35 +472,7 @@ InitializeResult& InitializeResult::operator=(const QJsonValue& j) {
 // Content blocks
 // =====================================================================
 
-QString to_string(Role r) noexcept {
-    switch (r) {
-    case Role::user:
-        return "user";
-    case Role::assistant:
-        return "assistant";
-    }
-    return "?";
-}
-
-namespace {
-
-Role role_from_string(QString s) {
-    if (s == "user")
-        return Role::user;
-    if (s == "assistant")
-        return Role::assistant;
-    throw Error(error_code::parse_error,
-                QString{"unknown role: "} + QString{s});
-}
-
-}  // namespace
-
-QJsonValue to_json(Role r) {
-    return to_json(to_string(r));
-}
-void from_json(const QJsonValue& j, Role& r) {
-    r = role_from_string(from_json<QString>(j));
-}
+namespace {}  // namespace
 
 Annotations::operator QJsonValue() const {
     QJsonObject o;
@@ -873,30 +847,6 @@ ToolAnnotations& ToolAnnotations::operator=(const QJsonValue& j) {
     take_optional(o, "openWorldHint", open_world_hint);
 
     return *this;
-}
-
-QJsonValue to_json(TaskSupport t) {
-    switch (t) {
-    case TaskSupport::forbidden:
-        return to_json("forbidden");
-    case TaskSupport::optional:
-        return to_json("optional");
-    case TaskSupport::required:
-        return to_json("required");
-    }
-    return to_json("optional");  // unreachable; defensive default
-}
-void from_json(const QJsonValue& j, TaskSupport& t) {
-    const auto v = from_json<QString>(j);
-    if (v == "forbidden")
-        t = TaskSupport::forbidden;
-    else if (v == "optional")
-        t = TaskSupport::optional;
-    else if (v == "required")
-        t = TaskSupport::required;
-    else
-        throw Error(error_code::invalid_params,
-                    "tool execution: unknown taskSupport \"" + v + "\"");
 }
 
 ToolExecution::operator QJsonValue() const {
@@ -1376,57 +1326,7 @@ ProgressNotificationParams::operator=(const QJsonValue& j) {
 // Logging (protocol-level)
 // =====================================================================
 
-QString to_string(LoggingLevel l) noexcept {
-    switch (l) {
-    case LoggingLevel::debug:
-        return "debug";
-    case LoggingLevel::info:
-        return "info";
-    case LoggingLevel::notice:
-        return "notice";
-    case LoggingLevel::warning:
-        return "warning";
-    case LoggingLevel::error:
-        return "error";
-    case LoggingLevel::critical:
-        return "critical";
-    case LoggingLevel::alert:
-        return "alert";
-    case LoggingLevel::emergency:
-        return "emergency";
-    }
-    return "?";
-}
-
-namespace {
-LoggingLevel logging_level_from_string(QString s) {
-    if (s == "debug")
-        return LoggingLevel::debug;
-    if (s == "info")
-        return LoggingLevel::info;
-    if (s == "notice")
-        return LoggingLevel::notice;
-    if (s == "warning")
-        return LoggingLevel::warning;
-    if (s == "error")
-        return LoggingLevel::error;
-    if (s == "critical")
-        return LoggingLevel::critical;
-    if (s == "alert")
-        return LoggingLevel::alert;
-    if (s == "emergency")
-        return LoggingLevel::emergency;
-    throw Error(error_code::parse_error,
-                QString{"unknown logging level: "} + QString{s});
-}
-}  // namespace
-
-QJsonValue to_json(LoggingLevel l) {
-    return to_json(to_string(l));
-}
-void from_json(const QJsonValue& j, LoggingLevel& l) {
-    l = logging_level_from_string(from_json<QString>(j));
-}
+namespace {}  // namespace
 
 SetLevelRequestParams::operator QJsonValue() const {
     QJsonObject o;
@@ -1499,65 +1399,38 @@ ModelPreferences& ModelPreferences::operator=(const QJsonValue& j) {
     return *this;
 }
 
-QString to_string(IncludeContext c) noexcept {
-    switch (c) {
-    case IncludeContext::none:
-        return "none";
-    case IncludeContext::this_server:
-        return "thisServer";
-    case IncludeContext::all_servers:
-        return "allServers";
-    }
-    return "?";
-}
-QJsonValue to_json(IncludeContext c) {
-    return to_json(to_string(c));
-}
-void from_json(const QJsonValue& j, IncludeContext& c) {
-    const auto s = from_json<QString>(j);
-    if (s == "none")
-        c = IncludeContext::none;
-    else if (s == "thisServer")
-        c = IncludeContext::this_server;
-    else if (s == "allServers")
-        c = IncludeContext::all_servers;
-    else
-        throw Error(error_code::parse_error, "unknown includeContext: " + s);
-}
-
-QString to_string(ToolChoiceMode m) noexcept {
-    switch (m) {
-    case ToolChoiceMode::m_auto:
-        return "auto";
-    case ToolChoiceMode::any:
-        return "any";
-    case ToolChoiceMode::none:
-        return "none";
-    case ToolChoiceMode::tool:
-        return "tool";
-    }
-    return "?";
-}
-QJsonValue to_json(ToolChoiceMode m) {
-    return to_json(to_string(m));
-}
-void from_json(const QJsonValue& j, ToolChoiceMode& m) {
-    const auto s = from_json<QString>(j);
-    if (s == "auto")
-        m = ToolChoiceMode::m_auto;
-    else if (s == "any")
-        m = ToolChoiceMode::any;
-    else if (s == "none")
-        m = ToolChoiceMode::none;
-    else if (s == "tool")
-        m = ToolChoiceMode::tool;
-    else
-        throw Error(error_code::parse_error, "unknown toolChoice mode: " + s);
-}
-
 // Tagged-by-shape: when `mode == tool` we MUST emit the object form
 // `{ type: "tool", name: "..." }`. Other modes serialise as a bare
 // string on the wire. Symmetrically, from_json accepts either form.
+
+QString to_string(ToolChoiceMode m) noexcept {
+    if (m == ToolChoiceMode::m_auto) {
+        return QStringLiteral("auto");
+    }
+    return QMetaEnum::fromType<ToolChoiceMode>().valueToKey(
+        static_cast<int>(m));
+}
+
+QJsonValue to_json(ToolChoiceMode m) {
+    return QJsonValue(to_string(m));
+}
+
+void from_json(const QJsonValue& j, ToolChoiceMode& m) {
+    const QString s = from_json<QString>(j);
+    if (s == QStringLiteral("auto")) {
+        m = ToolChoiceMode::m_auto;
+        return;
+    }
+    bool ok = false;
+    const int v = QMetaEnum::fromType<ToolChoiceMode>().keyToValue(
+        s.toUtf8().constData(), &ok);
+    if (!ok) {
+        throw Error(error_code::parse_error,
+                    QStringLiteral("unknown toolChoice mode: ") + s);
+    }
+    m = static_cast<ToolChoiceMode>(v);
+}
+
 ToolChoice::operator QJsonValue() const {
     if (mode.has_value() && *mode == ToolChoiceMode::tool) {
         QJsonObject o;
@@ -1952,30 +1825,6 @@ void from_json(const QJsonValue& j, ElicitRequestParams& p) {
     }
 }
 
-QJsonValue to_json(ElicitAction a) {
-    switch (a) {
-    case ElicitAction::accept:
-        return to_json("accept");
-    case ElicitAction::decline:
-        return to_json("decline");
-    case ElicitAction::cancel:
-        return to_json("cancel");
-    }
-    return to_json("cancel");  // unreachable; defensive default
-}
-void from_json(const QJsonValue& j, ElicitAction& a) {
-    const auto s = from_json<QString>(j);
-    if (s == "accept")
-        a = ElicitAction::accept;
-    else if (s == "decline")
-        a = ElicitAction::decline;
-    else if (s == "cancel")
-        a = ElicitAction::cancel;
-    else
-        throw Error(error_code::invalid_params,
-                    "elicitation result: unknown action \"" + s + "\"");
-}
-
 ElicitResult::operator QJsonValue() const {
     QJsonObject o;
     o.insert(QStringLiteral("action"), to_json(action));
@@ -2022,38 +1871,6 @@ UrlElicitationRequiredErrorData::operator=(const QJsonValue& j) {
 // =====================================================================
 // Tasks
 // =====================================================================
-
-QJsonValue to_json(TaskStatus s) {
-    switch (s) {
-    case TaskStatus::working:
-        return to_json("working");
-    case TaskStatus::input_required:
-        return to_json("input_required");
-    case TaskStatus::completed:
-        return to_json("completed");
-    case TaskStatus::failed:
-        return to_json("failed");
-    case TaskStatus::cancelled:
-        return to_json("cancelled");
-    }
-    return to_json("failed");  // unreachable; defensive default
-}
-void from_json(const QJsonValue& j, TaskStatus& s) {
-    const auto v = from_json<QString>(j);
-    if (v == "working")
-        s = TaskStatus::working;
-    else if (v == "input_required")
-        s = TaskStatus::input_required;
-    else if (v == "completed")
-        s = TaskStatus::completed;
-    else if (v == "failed")
-        s = TaskStatus::failed;
-    else if (v == "cancelled")
-        s = TaskStatus::cancelled;
-    else
-        throw Error(error_code::invalid_params,
-                    "task: unknown status \"" + v + "\"");
-}
 
 Task::operator QJsonValue() const {
     QJsonObject o;

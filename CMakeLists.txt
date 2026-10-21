@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(mcp-cpp
+project(mcpqt_host
     VERSION 0.1.0
-    DESCRIPTION "C++20 MCP server built from plugins"
-    HOMEPAGE_URL "https://github.com/Neumann-Labs/mcp-cpp"
+    DESCRIPTION "Qt Plugin-based MCP server"
+    HOMEPAGE_URL "https://github.com/mcpqt/mcpqt_host"
     LANGUAGES CXX
 )
 
@@ -23,8 +23,8 @@ else()
     set(MCP_IS_TOP_LEVEL OFF)
 endif()
 
-option(MCP_BUILD_TESTS    "Build the mcp-cpp test suite"     ${MCP_IS_TOP_LEVEL})
-option(MCP_BUILD_EXAMPLES "Build the mcp-cpp examples"        ${MCP_IS_TOP_LEVEL})
+option(MCP_BUILD_TESTS    "Build the mcpqt_host test suite"     ${MCP_IS_TOP_LEVEL})
+option(MCP_BUILD_EXAMPLES "Build the mcpqt_host examples"        ${MCP_IS_TOP_LEVEL})
 option(MCP_WARNINGS_AS_ERRORS "Treat warnings as errors"      ${MCP_IS_TOP_LEVEL})
 option(MCP_ENABLE_HTTP    "Build the Streamable HTTP transport (depends on Qt Network + HttpServer)" ON)
 option(MCP_ENABLE_ASAN    "Build with AddressSanitizer + UBSan" OFF)

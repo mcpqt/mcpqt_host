@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (plugin-first server)
 
+- **Wire enums via Qt reflection.** `namespace mcp` is now a `Q_NAMESPACE`
+  and every wire enum is registered with `Q_ENUM_NS`. String encoding/decoding
+  uses `QMetaEnum::valueToKey()` / `keyToValue()` through generic enum
+  adapters, replacing the per-enum `to_json`/`from_json`/`to_string` switch
+  tables. `IncludeContext` enumerators are renamed to `thisServer`/`allServers`
+  to match the wire spelling; `ToolChoiceMode::m_auto` keeps an explicit
+  `"auto"` alias because `auto` is a C++ keyword.
 - **Operator-based JSON conversion.** Wire structs/classes now provide
   `operator QJsonValue() const` and `operator=(const QJsonValue&)`; the
   per-type free `to_json`/`from_json` overloads were removed. Enums (string-

@@ -90,13 +90,13 @@ void Sampling::IncludeContextRoundTrip(void) {
             .role = mcp::Role::user,
             .content = {mcp::TextContent{.text = "x"}},
         }},
-        .include_context = mcp::IncludeContext::all_servers,
+        .include_context = mcp::IncludeContext::allServers,
         .max_tokens = 1,
     };
     QJsonValue j = mcp::to_json(p);
     QCOMPARE(j["includeContext"], mcp::test::jv("allServers"));
     auto back = mcp::from_json<mcp::CreateMessageRequestParams>(j);
-    QCOMPARE(back.include_context, mcp::IncludeContext::all_servers);
+    QCOMPARE(back.include_context, mcp::IncludeContext::allServers);
 }
 
 void Sampling::CreateMessageResultRoundTrip(void) {

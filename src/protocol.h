@@ -33,6 +33,8 @@
 
 namespace mcp {
 
+Q_NAMESPACE
+
 // --------------------------------------------------------------------------
 // Constants
 // --------------------------------------------------------------------------
@@ -335,9 +337,7 @@ inline const QString method_notifications_initialized =
 // --------------------------------------------------------------------------
 
 enum class Role : int { user, assistant };
-[[nodiscard]] QString to_string(Role r) noexcept;
-[[nodiscard]] QJsonValue to_json(Role r);
-void from_json(const QJsonValue& j, Role& r);
+Q_ENUM_NS(Role)
 
 struct Annotations {
     std::optional<QList<Role>> audience = {};
@@ -537,8 +537,7 @@ struct ToolAnnotations {
 /// whether a tool supports being task-augmented at all, optionally,
 /// or requires it.
 enum class TaskSupport { forbidden, optional, required };
-[[nodiscard]] QJsonValue to_json(TaskSupport t);
-void from_json(const QJsonValue& j, TaskSupport& t);
+Q_ENUM_NS(TaskSupport)
 
 struct ToolExecution {
     /// "forbidden" / "optional" / "required". Default is
@@ -849,9 +848,7 @@ enum class LoggingLevel {
     alert,
     emergency,
 };
-[[nodiscard]] QString to_string(LoggingLevel l) noexcept;
-[[nodiscard]] QJsonValue to_json(LoggingLevel l);
-void from_json(const QJsonValue& j, LoggingLevel& l);
+Q_ENUM_NS(LoggingLevel)
 
 struct SetLevelRequestParams {
     LoggingLevel level;
@@ -899,10 +896,8 @@ struct ModelPreferences {
     ModelPreferences& operator=(const QJsonValue&);
 };
 
-enum class IncludeContext { none, this_server, all_servers };
-[[nodiscard]] QString to_string(IncludeContext c) noexcept;
-[[nodiscard]] QJsonValue to_json(IncludeContext c);
-void from_json(const QJsonValue& j, IncludeContext& c);
+enum class IncludeContext { none, thisServer, allServers };
+Q_ENUM_NS(IncludeContext)
 
 /// Sampling tool-choice mode (2025-11-25). The spec lets the
 /// requester force / forbid / pin tool use:
@@ -911,6 +906,7 @@ void from_json(const QJsonValue& j, IncludeContext& c);
 ///   - "none"   — model MUST NOT call tools
 ///   - "tool"   — model MUST call the specific tool named
 enum class ToolChoiceMode { m_auto, any, none, tool };
+Q_ENUM_NS(ToolChoiceMode)
 [[nodiscard]] QString to_string(ToolChoiceMode m) noexcept;
 [[nodiscard]] QJsonValue to_json(ToolChoiceMode m);
 void from_json(const QJsonValue& j, ToolChoiceMode& m);
@@ -1106,8 +1102,7 @@ using ElicitRequestParams =
 void from_json(const QJsonValue& j, ElicitRequestParams& p);
 
 enum class ElicitAction { accept, decline, cancel };
-[[nodiscard]] QJsonValue to_json(ElicitAction a);
-void from_json(const QJsonValue& j, ElicitAction& a);
+Q_ENUM_NS(ElicitAction)
 
 struct ElicitResult {
     ElicitAction action;
@@ -1169,8 +1164,7 @@ enum class TaskStatus {
     failed,
     cancelled,
 };
-[[nodiscard]] QJsonValue to_json(TaskStatus s);
-void from_json(const QJsonValue& j, TaskStatus& s);
+Q_ENUM_NS(TaskStatus)
 
 struct Task {
     /// Receiver-generated, unique. The string need not be a UUID; we

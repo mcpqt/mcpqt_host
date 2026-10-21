@@ -34,6 +34,7 @@
 #include <QJsonParseError>
 #include <QJsonValue>
 #include <QList>
+#include <QMetaEnum>
 #include <QString>
 #include <QStringView>
 
@@ -108,16 +109,35 @@ template <class T> QJsonValue to_json(const QList<T>& v) {
     return arr;
 }
 
-/// Generic encoder: any class with `operator QJsonValue()`.
-template <class T> QJsonValue to_json(const T& v) {
+/// Generic encoder: any non-enum class with `operator QJsonValue()`.
+template <class T, std::enable_if_t<!std::is_enum_v<T>, int> = 0>
+QJsonValue to_json(const T& v) {
     return static_cast<QJsonValue>(v);
 }
 
-/// Enumerations use their integer value unless a specific overload (e.g. the
-/// string-encoded Role/LoggingLevel) matches better.
+/// Enum -> wire string via Qt's meta-object enumeration reflection.
+/// Enums must be registered with Q_ENUM_NS (or Q_ENUM) for this to work.
+template <class E, std::enable_if_t<std::is_enum_v<E>, int> = 0>
+QString to_string(E v) {
+    return QMetaEnum::fromType<E>().valueToKey(static_cast<int>(v));
+}
+
+/// Wire string -> enum via QMetaEnum. Throws on an unknown key.
+template <class E, std::enable_if_t<std::is_enum_v<E>, int> = 0>
+E enum_from_string(const QString& s) {
+    bool ok = false;
+    const int v =
+        QMetaEnum::fromType<E>().keyToValue(s.toUtf8().constData(), &ok);
+    if (!ok) {
+        throw Error(error_code::parse_error,
+                    QStringLiteral("unknown enum value: ") + s);
+    }
+    return static_cast<E>(v);
+}
+
 template <class E, std::enable_if_t<std::is_enum_v<E>, int> = 0>
 QJsonValue to_json(E v) {
-    return QJsonValue(static_cast<qint64>(v));
+    return QJsonValue(to_string(v));
 }
 
 // --------------------------------------------------------------------------
@@ -237,16 +257,17 @@ template <class T> void from_json(const QJsonValue& v, QList<T>& out) {
     }
 }
 
-/// Generic decoder: any class with `operator=(const QJsonValue&)`.
-template <class T> void from_json(const QJsonValue& v, T& out) {
+/// Generic decoder: any non-enum class with `operator=(const QJsonValue&)`.
+template <class T, std::enable_if_t<!std::is_enum_v<T>, int> = 0>
+void from_json(const QJsonValue& v, T& out) {
     out = v;
 }
 
-/// Enumerations decode from their integer value unless a specific overload
-/// (e.g. the string-encoded Role/LoggingLevel) matches better.
 template <class E, std::enable_if_t<std::is_enum_v<E>, int> = 0>
 void from_json(const QJsonValue& v, E& out) {
-    out = static_cast<E>(v.toInteger());
+    QString s;
+    from_json(v, s);
+    out = enum_from_string<E>(s);
 }
 
 template <class T> T from_json(const QJsonValue& v) {
