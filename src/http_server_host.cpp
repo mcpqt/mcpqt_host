@@ -595,7 +595,7 @@ namespace mcp
     // (RFC 7235 §2.1).
     inline bool starts_with_bearer_ci(const QString& s) noexcept
     {
-      return s.startsWith(QStringLiteral("Bearer "), Qt::CaseInsensitive);
+      return s.startsWith("Bearer ", Qt::CaseInsensitive);
     }
 
     // Trim leading/trailing OWS from a token68 candidate.
@@ -915,9 +915,7 @@ namespace mcp
     if(m_opts.path.isEmpty() || m_opts.path.front() != '/')
     {
       m_started.store(false, std::memory_order_release);
-      throw std::invalid_argument(
-          QStringLiteral("HttpServerHost: path must begin with '/'")
-              .toStdString());
+      throw std::invalid_argument("HttpServerHost: path must begin with '/'");
     }
 
     // Bearer auth over plain HTTP from a non-loopback address ships
@@ -931,22 +929,18 @@ namespace mcp
     {
       m_started.store(false, std::memory_order_release);
       throw std::invalid_argument(
-          (QStringLiteral("HttpServerHost: bearer authentication is "
-                          "configured but the host is binding to a "
-                          "non-loopback address (\"")
-           + m_opts.host
-           + QStringLiteral(
-               "\") and the server is on plain HTTP. Set "
-               "Options::allow_insecure_http=true to acknowledge "
-               "that TLS termination happens elsewhere (typically "
-               "a reverse proxy), or bind to 127.0.0.1/::1 for "
-               "development."))
-              .toStdString());
+          QStringLiteral("HttpServerHost: bearer authentication is "
+                         "configured but the host is binding to a "
+                         "non-loopback address (\"%1\") and the server is "
+                         "on plain HTTP. Set Options::allow_insecure_http=true "
+                         "to acknowledge that TLS termination happens elsewhere "
+                         "(typically a reverse proxy), or bind to 127.0.0.1/::1 "
+                         "for development.").arg(m_opts.host).toStdString());
     }
 
     m_impl->http = new QHttpServer();
     m_impl->thread = new QThread();
-    m_impl->thread->setObjectName(QStringLiteral("mcp-http-server"));
+    m_impl->thread->setObjectName("mcp-http-server");
 
     auto* http = m_impl->http;
 
@@ -1358,7 +1352,7 @@ namespace mcp
                     QByteArrayLiteral("public, max-age=3600"));
         return r;
       };
-      http->route(QStringLiteral("/.well-known/oauth-protected-resource"),
+      http->route("/.well-known/oauth-protected-resource",
                   QHttpServerRequest::Method::Get, handler);
       if(m_opts.path.size() > 1)
       {
@@ -1404,9 +1398,8 @@ namespace mcp
       delete m_impl->thread;
       m_impl->thread = nullptr;
       throw std::runtime_error(
-          (QStringLiteral("HttpServerHost: bind failed for ") + m_opts.host
-           + QLatin1Char(':') + QString::number(m_opts.port))
-              .toStdString());
+          QStringLiteral("HttpServerHost: bind failed for %1:%2")
+              .arg(m_opts.host).arg(m_opts.port).toStdString());
     }
   }
 

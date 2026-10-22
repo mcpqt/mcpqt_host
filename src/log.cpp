@@ -69,20 +69,14 @@ namespace mcp
   {
     switch(l)
     {
-    case LogLevel::trace:
-      return QStringLiteral("TRACE");
-    case LogLevel::debug:
-      return QStringLiteral("DEBUG");
-    case LogLevel::info:
-      return QStringLiteral("INFO");
-    case LogLevel::warn:
-      return QStringLiteral("WARN");
-    case LogLevel::error:
-      return QStringLiteral("ERROR");
-    case LogLevel::off:
-      return QStringLiteral("OFF");
+    case LogLevel::trace: return "TRACE";
+    case LogLevel::debug: return "DEBUG";
+    case LogLevel::info:  return "INFO";
+    case LogLevel::warn:  return "WARN";
+    case LogLevel::error: return "ERROR";
+    case LogLevel::off:   return "OFF";
     }
-    return QStringLiteral("?");
+    return "?";
   }
 
   bool set_log_sink(LogSink sink)

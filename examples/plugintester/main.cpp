@@ -124,7 +124,7 @@ namespace
       return;
     }
     std::cout << "loaded plugins: "
-              << ids.join(QStringLiteral(", ")).toStdString() << "\n";
+              << ids.join(", ").toStdString() << "\n";
     std::cout << "functions:\n";
     for(const QString& signature : plugins.functions())
     {

@@ -69,17 +69,17 @@ namespace mcp
         const qsizetype n = buf.size();
         for(qsizetype i = 0; i + 1 < n; ++i)
         {
-          if(buf.at(i) == QLatin1Char('\n')
-             && buf.at(i + 1) == QLatin1Char('\n'))
+          if(buf.at(i) == '\n'
+             && buf.at(i + 1) == '\n')
           {
             end = i;
             marker = 2;
             break;
           }
-          if(i + 3 < n && buf.at(i) == QLatin1Char('\r')
-             && buf.at(i + 1) == QLatin1Char('\n')
-             && buf.at(i + 2) == QLatin1Char('\r')
-             && buf.at(i + 3) == QLatin1Char('\n'))
+          if(i + 3 < n && buf.at(i) == '\r'
+             && buf.at(i + 1) == '\n'
+             && buf.at(i + 2) == '\r'
+             && buf.at(i + 3) == '\n')
           {
             end = i;
             marker = 4;
@@ -108,7 +108,7 @@ namespace mcp
           if(field == QStringLiteral("data"))
           {
             if(!se.data.isEmpty())
-              se.data += QLatin1Char('\n');
+              se.data += '\n';
             se.data += value.toString();
           }
           else if(field == QStringLiteral("id"))

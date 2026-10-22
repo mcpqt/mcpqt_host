@@ -86,7 +86,7 @@ namespace mcp
   {
     RequestId id;
     QString method;
-    QJsonValue params;
+    QJsonValue params = {};
 
     [[nodiscard]] operator QJsonValue() const;
     JsonRpcRequest& operator=(const QJsonValue&);
@@ -96,7 +96,7 @@ namespace mcp
   struct JsonRpcNotification
   {
     QString method;
-    QJsonValue params;
+    QJsonValue params = {};
 
     [[nodiscard]] operator QJsonValue() const;
     JsonRpcNotification& operator=(const QJsonValue&);
@@ -183,7 +183,7 @@ namespace mcp
     /// Top-level `_meta` envelope for protocol-level metadata.
     /// Round-trips opaquely; spec reserves keys with the
     /// `io.modelcontextprotocol/` prefix.
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     Implementation& operator=(const QJsonValue&);
@@ -245,7 +245,7 @@ namespace mcp
   {
     // Per spec: `context?: object`, `tools?: object`. Presence-only flags;
     // we capture the raw object so future fields round-trip.
-    QJsonValue context;
+    QJsonValue context = {};
     QJsonValue tools;
 
     [[nodiscard]] operator QJsonValue() const;
@@ -336,7 +336,7 @@ namespace mcp
     ServerCapabilities capabilities;
     Implementation server_info;
     QString instructions = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     InitializeResult& operator=(const QJsonValue&);
@@ -432,11 +432,11 @@ namespace mcp
 
     [[nodiscard]] bool is_text(void) const
     {
-      return toObject().contains(QStringLiteral("text"));
+      return toObject().contains("text");
     }
     [[nodiscard]] bool is_blob(void) const
     {
-      return toObject().contains(QStringLiteral("blob"));
+      return toObject().contains("blob");
     }
 
     [[nodiscard]] operator TextResourceContents(void) const
@@ -451,13 +451,13 @@ namespace mcp
     ResourceContents& operator=(const QJsonValue& j)
     {
       const QJsonObject o = as_object(j);
-      if(o.contains(QStringLiteral("text")))
+      if(o.contains("text"))
       {
         const TextResourceContents decoded
             = from_json<TextResourceContents>(j);
         QJsonValue::operator=(decoded);
       }
-      else if(o.contains(QStringLiteral("blob")))
+      else if(o.contains("blob"))
       {
         const BlobResourceContents decoded
             = from_json<BlobResourceContents>(j);
@@ -484,7 +484,7 @@ namespace mcp
     std::optional<std::int64_t> size = {}; // bytes
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     Resource& operator=(const QJsonValue&);
@@ -500,7 +500,7 @@ namespace mcp
     std::optional<Annotations> annotations = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     ResourceTemplate& operator=(const QJsonValue&);
@@ -517,7 +517,7 @@ namespace mcp
     std::optional<std::int64_t> size = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     ResourceLink& operator=(const QJsonValue&);
@@ -636,12 +636,12 @@ namespace mcp
     QString title = {};
     QString description = {};
     QJsonValue input_schema;  // JSON Schema; type:"object"
-    QJsonValue output_schema; // optional JSON Schema
+    QJsonValue output_schema = {}; // optional JSON Schema
     std::optional<ToolAnnotations> annotations = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
     std::optional<ToolExecution> execution = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     Tool& operator=(const QJsonValue&);
@@ -659,7 +659,7 @@ namespace mcp
   {
     QList<Tool> tools;
     QString next_cursor = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     ListToolsResult& operator=(const QJsonValue&);
@@ -681,9 +681,9 @@ namespace mcp
   struct CallToolResult
   {
     QList<ContentBlock> content;
-    QJsonValue structured_content; // matches outputSchema
+    QJsonValue structured_content = {}; // matches outputSchema
     std::optional<bool> is_error = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     CallToolResult& operator=(const QJsonValue&);
@@ -708,7 +708,7 @@ namespace mcp
   {
     QList<Resource> resources;
     QString next_cursor = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     ListResourcesResult& operator=(const QJsonValue&);
@@ -726,7 +726,7 @@ namespace mcp
   {
     QList<ResourceTemplate> resource_templates;
     QString next_cursor = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     ListResourceTemplatesResult& operator=(const QJsonValue&);
@@ -743,7 +743,7 @@ namespace mcp
   struct ReadResourceResult
   {
     QList<ResourceContents> contents;
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     ReadResourceResult& operator=(const QJsonValue&);
@@ -773,16 +773,13 @@ namespace mcp
     ResourceUpdatedNotificationParams& operator=(const QJsonValue&);
   };
 
-  inline const QString method_resources_list = "resources/list";
-  inline const QString method_resources_templates_list
-      = "resources/templates/list";
-  inline const QString method_resources_read = "resources/read";
-  inline const QString method_resources_subscribe = "resources/subscribe";
-  inline const QString method_resources_unsubscribe = "resources/unsubscribe";
-  inline const QString method_notifications_resources_list_changed
-      = "notifications/resources/list_changed";
-  inline const QString method_notifications_resources_updated
-      = "notifications/resources/updated";
+  inline const QString method_resources_list                        = "resources/list";
+  inline const QString method_resources_templates_list              = "resources/templates/list";
+  inline const QString method_resources_read                        = "resources/read";
+  inline const QString method_resources_subscribe                   = "resources/subscribe";
+  inline const QString method_resources_unsubscribe                 = "resources/unsubscribe";
+  inline const QString method_notifications_resources_list_changed  = "notifications/resources/list_changed";
+  inline const QString method_notifications_resources_updated       = "notifications/resources/updated";
 
   // --------------------------------------------------------------------------
   // Prompts
@@ -807,7 +804,7 @@ namespace mcp
     std::optional<QList<PromptArgument>> arguments = {};
     /// 2025-11-25 additions:
     std::optional<QList<Icon>> icons = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     Prompt& operator=(const QJsonValue&);
@@ -834,7 +831,7 @@ namespace mcp
   {
     QList<Prompt> prompts;
     QString next_cursor = {};
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     ListPromptsResult& operator=(const QJsonValue&);
@@ -853,7 +850,7 @@ namespace mcp
   {
     QString description = {};
     QList<PromptMessage> messages;
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     GetPromptResult& operator=(const QJsonValue&);
@@ -1065,7 +1062,7 @@ namespace mcp
     std::optional<double> temperature = {};
     std::int64_t max_tokens{}; // required by spec
     std::optional<QList<QString>> stop_sequences = {};
-    QJsonValue metadata;
+    QJsonValue metadata = {};
     /// 2025-11-25: tools the assistant may call during this
     /// sampling. Server side is expected to translate to the
     /// underlying LLM's tool-calling shape; `Tool::input_schema`
@@ -1085,7 +1082,7 @@ namespace mcp
     QString model;
     QString stop_reason = {};
     /// Top-level _meta envelope for protocol-level metadata.
-    QJsonValue meta;
+    QJsonValue meta = {};
 
     [[nodiscard]] operator QJsonValue() const;
     CreateMessageResult& operator=(const QJsonValue&);
@@ -1149,13 +1146,11 @@ namespace mcp
 
     [[nodiscard]] bool is_resource_template(void) const
     {
-      return toObject().value(QStringLiteral("type")).toString()
-             == QStringLiteral("ref/resource");
+      return toObject().value("type").toString() == "ref/resource";
     }
     [[nodiscard]] bool is_prompt(void) const
     {
-      return toObject().value(QStringLiteral("type")).toString()
-             == QStringLiteral("ref/prompt");
+      return toObject().value("type").toString() == "ref/prompt";
     }
 
     [[nodiscard]] operator ResourceTemplateReference(void) const
@@ -1290,14 +1285,13 @@ namespace mcp
     [[nodiscard]] bool is_form(void) const
     {
       const auto o = toObject();
-      if(auto it = o.constFind(QStringLiteral("mode")); it != o.constEnd())
-        return it->toString() == QStringLiteral("form");
+      if(auto it = o.constFind("mode"); it != o.constEnd())
+        return it->toString() == "form";
       return true;
     }
     [[nodiscard]] bool is_url(void) const
     {
-      return toObject().value(QStringLiteral("mode")).toString()
-             == QStringLiteral("url");
+      return toObject().value("mode").toString() == "url";
     }
 
     [[nodiscard]] operator ElicitFormRequestParams(void) const
@@ -1312,13 +1306,12 @@ namespace mcp
     ElicitRequestParams& operator=(const QJsonValue& j)
     {
       const QJsonObject o = as_object(j);
-      QString mode = QStringLiteral("form");
-      if(auto it = o.constFind(QStringLiteral("mode")); it != o.constEnd())
+      QString mode = "form";
+      if(auto it = o.constFind("mode"); it != o.constEnd())
       {
         if(!it->isString())
         {
-          throw Error(error_code::invalid_params,
-                      "elicitation/create: `mode` must be a string");
+          throw Error(error_code::invalid_params, "elicitation/create: `mode` must be a string");
         }
         mode = it->toString();
       }
@@ -1368,7 +1361,7 @@ namespace mcp
     /// Form-mode only: the user's submission, conforming to the
     /// server-supplied schema. Absent for decline/cancel and for URL
     /// mode.
-    QJsonValue content;
+    QJsonValue content = {};
 
     [[nodiscard]] operator QJsonValue() const;
     ElicitResult& operator=(const QJsonValue&);

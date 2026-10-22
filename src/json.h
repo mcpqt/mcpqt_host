@@ -77,8 +77,7 @@ namespace mcp
     // misrepresent value.
     if(v > INT64_MAX)
     {
-      throw Error(error_code::internal_error,
-                  QStringLiteral("integer value too large for a JSON number"));
+      throw Error(error_code::internal_error, "integer value too large for a JSON number");
     }
     return QJsonValue(static_cast<qint64>(v));
   }
@@ -154,8 +153,7 @@ namespace mcp
   {
     if(!v.isBool())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a boolean"));
+      throw Error(error_code::parse_error, "expected a boolean");
     }
     out = v.toBool();
   }
@@ -164,15 +162,13 @@ namespace mcp
   {
     if(!v.isDouble())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected an integer"));
+      throw Error(error_code::parse_error, "expected an integer");
     }
     const double d = v.toDouble();
     const qint64 i = v.toInteger();
     if(static_cast<double>(i) != d)
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected an integer"));
+      throw Error(error_code::parse_error, "expected an integer");
     }
     out = static_cast<std::int64_t>(i);
   }
@@ -183,8 +179,7 @@ namespace mcp
     from_json(v, wide);
     if(wide < INT32_MIN || wide > INT32_MAX)
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("integer out of range"));
+      throw Error(error_code::parse_error, "integer out of range");
     }
     out = static_cast<int>(wide);
   }
@@ -193,15 +188,13 @@ namespace mcp
   {
     if(!v.isDouble())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected an integer"));
+      throw Error(error_code::parse_error, "expected an integer");
     }
     const double d = v.toDouble();
     const qint64 i = v.toInteger();
     if(i < 0 || static_cast<double>(i) != d)
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a non-negative integer"));
+      throw Error(error_code::parse_error, "expected a non-negative integer");
     }
     out = static_cast<std::uint64_t>(i);
   }
@@ -210,8 +203,7 @@ namespace mcp
   {
     if(!v.isDouble())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a number"));
+      throw Error(error_code::parse_error, "expected a number");
     }
     out = v.toDouble();
   }
@@ -220,8 +212,7 @@ namespace mcp
   {
     if(!v.isString())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a string"));
+      throw Error(error_code::parse_error, "expected a string");
     }
     out = v.toString();
   }
@@ -230,8 +221,7 @@ namespace mcp
   {
     if(!v.isObject())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a JSON object"));
+      throw Error(error_code::parse_error, "expected a JSON object");
     }
     out = v.toObject();
   }
@@ -240,8 +230,7 @@ namespace mcp
   {
     if(!v.isArray())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a JSON array"));
+      throw Error(error_code::parse_error, "expected a JSON array");
     }
     out = v.toArray();
   }
@@ -262,8 +251,7 @@ namespace mcp
   {
     if(!v.isArray())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a JSON array"));
+      throw Error(error_code::parse_error, "expected a JSON array");
     }
     out.clear();
     const QJsonArray arr = v.toArray();
@@ -310,8 +298,7 @@ namespace mcp
     if(it == obj.constEnd())
     {
       throw Error(error_code::parse_error,
-                  QStringLiteral("missing required field '")
-                      + QString::fromUtf8(key) + QLatin1Char('\''));
+                  QStringLiteral("missing required field '%1'").arg(key));
     }
     return from_json<T>(*it);
   }
@@ -394,8 +381,7 @@ namespace mcp
   {
     if(!v.isObject())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a JSON object"));
+      throw Error(error_code::parse_error, "expected a JSON object");
     }
     return v.toObject();
   }
@@ -405,8 +391,7 @@ namespace mcp
   {
     if(!v.isArray())
     {
-      throw Error(error_code::parse_error,
-                  QStringLiteral("expected a JSON array"));
+      throw Error(error_code::parse_error, "expected a JSON array");
     }
     return v.toArray();
   }
@@ -433,9 +418,7 @@ namespace mcp
       return doc.object();
     if(doc.isArray())
       return doc.array();
-    throw Error(
-        error_code::parse_error,
-        QStringLiteral("top-level JSON value must be an object or array"));
+    throw Error(error_code::parse_error, "top-level JSON value must be an object or array");
   }
 
   [[nodiscard]] inline QString dump(const QJsonValue& v)
@@ -451,9 +434,9 @@ namespace mcp
           QJsonDocument(v.toArray()).toJson(QJsonDocument::Compact));
     }
     if(v.isNull() || v.isNull())
-      return QStringLiteral("null");
+      return "null";
     if(v.isBool())
-      return v.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+      return v.toBool() ? "true" : "false";
     if(v.isDouble())
     {
       const qint64 i = v.toInteger();
@@ -469,7 +452,7 @@ namespace mcp
           = QJsonDocument(QJsonArray{ v }).toJson(QJsonDocument::Compact);
       return QString::fromUtf8(encoded.mid(1, encoded.size() - 2));
     }
-    return QStringLiteral("null");
+    return "null";
   }
 
 } // namespace mcp

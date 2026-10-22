@@ -15,6 +15,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QMetaClassInfo>
 #include <QMetaMethod>
 #include <QMetaObject>
 #include <QMetaType>
@@ -30,31 +31,6 @@
 
 namespace mcp
 {
-
-  struct PluginManager::Instance
-  {
-    QPluginLoader* loader = nullptr;
-    PluginInterface* iface = nullptr;
-    QObject* object = nullptr; // iface as QObject (same address)
-    QString path;
-    QString id;
-    QStringList signatures; // fully-qualified signatures this plugin published
-    QStringList dependencies;   // declared plugin ids / function signatures
-    QHash<QString, Tool> tools; // validated metadata "Tools" entries
-    QHash<QString, PluginResource> resources; // validated "Resources" entries
-    /// True once this plugin owns the process-wide log sink. Pinned plugins
-    /// are never unloaded: the sink executes code inside the plugin's library.
-    bool pinned = false;
-  };
-
-  /// One published function: the reflective method on the owning plugin.
-  struct PluginManager::FunctionEntry
-  {
-    std::weak_ptr<Instance> owner;
-    QMetaMethod method;
-    HostFunction host_function; // set for host services
-  };
-
   namespace
   {
 
@@ -78,6 +54,21 @@ namespace mcp
     private:
       Server* m_previous;
     };
+
+    QString class_info(const QMetaObject* meta_object, const char* key)
+    {
+      if(meta_object == nullptr || key == nullptr)
+      {
+        return {};
+      }
+      for(int i = 0; i < meta_object->classInfoCount(); ++i)
+      {
+        const QMetaClassInfo info = meta_object->classInfo(i);
+        if(!qstrcmp(info.name(), key))
+          return QString::fromLatin1(info.value());
+      }
+      return {};
+    }
 
     Server* current_server(void) { return t_current_server; }
 
@@ -116,17 +107,122 @@ namespace mcp
 
   } // namespace
 
-  PluginManager::PluginManager(void) { install_host_functions(); }
 
-  PluginManager::~PluginManager() { unload_all(); }
-
-  QStringList PluginManager::host_get_funcs(void) const { return functions(); }
-
-  QVariant PluginManager::host_call_func(const QString& signature,
-                                         const QVariantList& args) const
+  struct PluginManager::Instance
   {
-    return dispatch(signature, args);
+    QPluginLoader* loader = nullptr;
+    PluginInterface* iface = nullptr;
+    QObject* object = nullptr; // iface as QObject (same address)
+    QString path;
+    QString id;
+    QStringList signatures; // fully-qualified signatures this plugin published
+    QStringList dependencies;   // declared plugin ids / function signatures
+    QHash<QString, Tool> tools; // validated metadata "Tools" entries
+    QHash<QString, PluginResource> resources; // validated "Resources" entries
+    /// True once this plugin owns the process-wide log sink. Pinned plugins
+    /// are never unloaded: the sink executes code inside the plugin's library.
+    bool pinned = false;
+  };
+
+  /// One published function: the reflective method on the owning plugin.
+  struct PluginManager::FunctionEntry
+  {
+    std::weak_ptr<Instance> owner;
+    QMetaMethod method;
+    HostFunction host_function; // set for host services
+  };
+
+  QVariant PluginManager::registerLogger(const QVariantList& args)
+  {
+    if(args.size() != 1)
+    {
+      throw Error{ error_code::invalid_params,
+                   "registerLogger expects the sink function signature" };
+    }
+    const QString sink_signature = args[0].toString();
+    const auto it = m_registry.constFind(sink_signature);
+    if(it == m_registry.constEnd() || it->host_function)
+    {
+      throw Error{ error_code::invalid_params,
+                   "registerLogger: '" + sink_signature
+                       + "' is not a plugin function" };
+    }
+    const auto owner = it->owner.lock();
+    if(!owner)
+    {
+      throw Error{ error_code::internal_error,
+                   "registerLogger: the sink's plugin is not loaded" };
+    }
+    const QMetaMethod method = it->method;
+    if(method.parameterCount() != 2
+       || method.parameterMetaType(0) != QMetaType::fromType<int>()
+       || method.parameterMetaType(1) != QMetaType::fromType<QString>()
+       || method.returnMetaType() != QMetaType::fromType<void>())
+    {
+      throw Error{ error_code::invalid_params,
+                   "registerLogger: sink must be "
+                   "'void <Class>::log(int, QString)'" };
+    }
+
+    QObject* const object = owner->object;
+    const LogSink sink = [object, method](LogLevel level,
+                                          const QString& msg)
+    {
+      static thread_local bool in_sink = false;
+      if(!in_sink)
+      {
+        in_sink = true;
+        try
+        {
+          (void)invoke_method(object, method,
+                              { QVariant(static_cast<int>(level)), msg });
+        } catch(...) {}
+        in_sink = false;
+      }
+    };
+
+    if(!claim_log_sink(sink))
+    {
+      return false;
+    }
+    owner->pinned = true;
+    return true;
   }
+
+  QVariant PluginManager::elicitPrompt(const QVariantList& args)
+  {
+    if(args.size() != 1)
+    {
+      throw Error{ error_code::invalid_params,
+                  "elicit expects a JSON ElicitRequestParams" };
+    }
+    const ElicitRequestParams params
+        = from_json<ElicitRequestParams>(args[0].value<QJsonValue>());
+    Server* server = current_server();
+    if(server == nullptr)
+    {
+      throw Error{ error_code::internal_error,
+                  "elicit is only available while a server is "
+                  "dispatching a plugin call" };
+    }
+    return QVariant::fromValue(to_json(server->elicit(params).get()));
+  }
+
+
+  PluginManager::PluginManager(void)
+  {
+    register_host_function("bool Host::registerLogger(QString)",
+                           [this](const QVariantList& args) -> QVariant { return registerLogger(args); });
+
+    register_host_function("QVariant Host::elicitPrompt(QVariant)",
+                           [](const QVariantList& args) -> QVariant { return PluginManager::elicitPrompt(args); });
+  }
+
+  PluginManager::~PluginManager(void)
+  {
+    unload_all();
+  }
+
 
   void PluginManager::register_host_function(const QString& signature,
                                              HostFunction fn)
@@ -136,110 +232,17 @@ namespace mcp
     m_registry.insert(signature, std::move(entry));
   }
 
-  void PluginManager::install_host_functions(void)
-  {
-    // Claim the process-wide diagnostic sink. The argument is the canonical
-    // signature of a published void <Class>::log(int, QString) function; the
-    // host pins the plugin that owns it and invokes it for every log event.
-    register_host_function(
-        QStringLiteral("bool mcp::Host::claimLogging(QString)"),
-        [this](const QVariantList& args) -> QVariant {
-          if(args.size() != 1)
-          {
-            throw Error{ error_code::invalid_params,
-                         "claimLogging expects the sink function signature" };
-          }
-          const QString sink_signature = args[0].toString();
-          const auto it = m_registry.constFind(sink_signature);
-          if(it == m_registry.constEnd() || it->host_function)
-          {
-            throw Error{ error_code::invalid_params,
-                         "claimLogging: '" + sink_signature
-                             + "' is not a plugin function" };
-          }
-          const auto owner = it->owner.lock();
-          if(!owner)
-          {
-            throw Error{ error_code::internal_error,
-                         "claimLogging: the sink's plugin is not loaded" };
-          }
-          const QMetaMethod method = it->method;
-          if(method.parameterCount() != 2
-             || method.parameterMetaType(0) != QMetaType::fromType<int>()
-             || method.parameterMetaType(1) != QMetaType::fromType<QString>()
-             || method.returnMetaType() != QMetaType::fromType<void>())
-          {
-            throw Error{ error_code::invalid_params,
-                         "claimLogging: sink must be "
-                         "'void <Class>::log(int, QString)'" };
-          }
-
-          QObject* const object = owner->object;
-          const LogSink sink = [object, method](LogLevel level,
-                                                const QString& msg) {
-            static thread_local bool in_sink = false;
-            if(in_sink)
-            {
-              return; // never recurse into the sink
-            }
-            in_sink = true;
-            try
-            {
-              (void)invoke_method(object, method,
-                                  { QVariant(static_cast<int>(level)), msg });
-            }
-            catch(...)
-            {
-              // Logging must never throw.
-            }
-            in_sink = false;
-          };
-
-          if(!claim_log_sink(sink))
-          {
-            return false;
-          }
-          owner->pinned = true;
-          return true;
-        });
-
-    // Elicit through the session currently dispatching a plugin call. The
-    // request and result are exchanged as JSON (ElicitRequestParams /
-    // ElicitResult) so no custom metatypes cross the plugin boundary.
-    register_host_function(
-        QStringLiteral("QVariant mcp::Host::elicit(QVariant)"),
-        [](const QVariantList& args) -> QVariant {
-          if(args.size() != 1)
-          {
-            throw Error{ error_code::invalid_params,
-                         "elicit expects a JSON ElicitRequestParams" };
-          }
-          const ElicitRequestParams params
-              = from_json<ElicitRequestParams>(args[0].value<QJsonValue>());
-          Server* server = current_server();
-          if(server == nullptr)
-          {
-            throw Error{ error_code::internal_error,
-                         "elicit is only available while a server is "
-                         "dispatching a plugin call" };
-          }
-          const ElicitResult result = server->elicit(params).get();
-          return QVariant::fromValue(to_json(result));
-        });
-  }
-
-  QStringList
-  PluginManager::plugin_dependencies(const QPluginLoader* loader) const
+  QStringList PluginManager::plugin_dependencies(const QPluginLoader* loader) const
   {
     QStringList dependencies;
     const QJsonValue meta
-        = loader->metaData().value(QLatin1String("MetaData"));
+        = loader->metaData().value("MetaData");
     if(!meta.isObject())
     {
       return dependencies;
     }
     const QJsonValue deps
-        = meta.toObject().value(QLatin1String("dependencies"));
+        = meta.toObject().value("dependencies");
     if(!deps.isArray())
     {
       return dependencies;
@@ -255,8 +258,7 @@ namespace mcp
     return dependencies;
   }
 
-  bool
-  PluginManager::dependencies_satisfied(const QStringList& dependencies) const
+  bool PluginManager::dependencies_satisfied(const QStringList& dependencies) const
   {
     const QStringList loaded_ids = plugin_ids();
     const QStringList funcs = functions();
@@ -272,7 +274,7 @@ namespace mcp
         // Match a fully-qualified signature exactly, or as a signature
         // without its parameter list ("QString HelloPlugin::greet" →
         // "QString HelloPlugin::greet(QString)").
-        if(sig == dep || sig.startsWith(dep + QLatin1Char('(')))
+        if(sig == dep || sig.startsWith(dep + '('))
         {
           found = true;
           break;
@@ -321,9 +323,18 @@ namespace mcp
     const QMetaType return_type = method.returnMetaType();
     if(return_type == QMetaType::fromType<void>())
     {
-      const bool ok = method.invoke(object, Qt::DirectConnection, gen[0],
-                                    gen[1], gen[2], gen[3], gen[4], gen[5],
-                                    gen[6], gen[7], gen[8], gen[9]);
+      const bool ok = method.invoke(object,
+                                    Qt::DirectConnection,
+                                    gen[0],
+                                    gen[1],
+                                    gen[2],
+                                    gen[3],
+                                    gen[4],
+                                    gen[5],
+                                    gen[6],
+                                    gen[7],
+                                    gen[8],
+                                    gen[9]);
       if(!ok)
       {
         throw Error{ error_code::internal_error,
@@ -333,61 +344,52 @@ namespace mcp
       }
       return {};
     }
-
-    // A QVariant return is already the value we want to hand back — wrapping
-    // it in another QVariant would double-wrap it. Let invoke write it
-    // directly.
-    if(return_type == QMetaType::fromType<QVariant>())
+    else
     {
-      QVariant result;
-      const bool ok = method.invoke(object, Qt::DirectConnection,
-                                    Q_RETURN_ARG(QVariant, result), gen[0],
-                                    gen[1], gen[2], gen[3], gen[4], gen[5],
-                                    gen[6], gen[7], gen[8], gen[9]);
+
+      // Any other registered QMetaType is a valid return type: allocate storage
+      // for it, hand QGenericReturnArgument that storage, then wrap the result
+      // in a QVariant for the caller.
+      void* storage = return_type.create();
+      if(storage == nullptr)
+      {
+        throw Error{ error_code::internal_error,
+                     "cannot allocate return value of type "
+                         + QString(return_type.name()) + " for '"
+                         + QString::fromLatin1(method.methodSignature()) + "'" };
+      }
+      QGenericReturnArgument return_arg(return_type.name(), storage);
+      const bool ok = method.invoke(object,
+                                    Qt::DirectConnection,
+                                    return_arg,
+                                    gen[0],
+                                    gen[1],
+                                    gen[2],
+                                    gen[3],
+                                    gen[4],
+                                    gen[5],
+                                    gen[6],
+                                    gen[7],
+                                    gen[8],
+                                    gen[9]);
+      QVariant result(return_type, storage);
+      if(return_type == QMetaType::fromType<QVariant>())
+        result = std::move(*static_cast<QVariant*>(storage)); // move directly into result to avoid wrapping QVariant type
+      else
+        return_type.destroy(storage);
+
       if(!ok)
       {
         throw Error{ error_code::internal_error,
                      "failed to invoke '"
-                         + QString::fromLatin1(method.methodSignature())
-                         + "'" };
+                         + QString::fromLatin1(method.methodSignature()) + "'" };
       }
       return result;
     }
-
-    // Any other registered QMetaType is a valid return type: allocate storage
-    // for it, hand QGenericReturnArgument that storage, then wrap the result
-    // in a QVariant for the caller.
-    void* storage = return_type.create();
-    if(storage == nullptr)
-    {
-      throw Error{ error_code::internal_error,
-                   "cannot allocate return value of type "
-                       + QString(return_type.name()) + " for '"
-                       + QString::fromLatin1(method.methodSignature()) + "'" };
-    }
-    QGenericReturnArgument return_arg(return_type.name(), storage);
-    const bool ok = method.invoke(object, Qt::DirectConnection, return_arg,
-                                  gen[0], gen[1], gen[2], gen[3], gen[4],
-                                  gen[5], gen[6], gen[7], gen[8], gen[9]);
-    QVariant result(return_type, storage);
-    return_type.destroy(storage);
-    if(!ok)
-    {
-      throw Error{ error_code::internal_error,
-                   "failed to invoke '"
-                       + QString::fromLatin1(method.methodSignature()) + "'" };
-    }
-    return result;
   }
 
   QVariant PluginManager::call_function(const QString& signature,
                                         const QVariantList& args) const
-  {
-    return dispatch(signature, args);
-  }
-
-  QVariant PluginManager::dispatch(const QString& signature,
-                                   const QVariantList& args) const
   {
     const auto it = m_registry.constFind(signature);
     if(it == m_registry.constEnd())
@@ -399,15 +401,12 @@ namespace mcp
     try
     {
       if(it->host_function)
-      {
         return it->host_function(args);
-      }
+
       const auto owner = it->owner.lock();
       if(!owner)
-      {
         throw Error{ error_code::internal_error,
                      "function's plugin is no longer loaded: " + signature };
-      }
       return invoke_method(owner->object, it->method, args);
     }
     catch(const Error&)
@@ -429,10 +428,10 @@ namespace mcp
     // The part after the last "::" before the parameter list is the method
     // signature moc knows; the full string is re-derived below to validate the
     // return type and class name.
-    const qsizetype open = signature.indexOf(QLatin1Char('('));
+    const qsizetype open = signature.indexOf('(');
     const qsizetype sep
         = open < 0 ? qsizetype{ -1 }
-                   : signature.lastIndexOf(QLatin1String("::"), open);
+                   : signature.lastIndexOf("::", open);
     if(open < 0 || sep < 0)
     {
       MCP_LOG_WARN("PluginManager: plugin '" + inst->id
@@ -468,9 +467,8 @@ namespace mcp
     // Require the canonical signature: exact return type, class name, method
     // name, and parameter types in declaration order.
     const QString expected
-        = QString::fromLatin1(method.typeName()) + QLatin1Char(' ')
-          + QString::fromLatin1(mo->className()) + QStringLiteral("::")
-          + QString::fromLatin1(method.methodSignature());
+        = QString::fromLatin1(method.typeName()) + ' '
+          + mo->className() + "::" + method.methodSignature();
     if(signature != expected)
     {
       MCP_LOG_WARN("PluginManager: plugin '" + inst->id
@@ -573,13 +571,13 @@ namespace mcp
     QHash<QString, PluginResource> declared_resources;
     {
       const QJsonValue meta
-          = loader->metaData().value(QLatin1String("MetaData"));
+          = loader->metaData().value("MetaData");
       if(meta.isObject())
       {
         const QJsonObject meta_object = meta.toObject();
 
         const QJsonValue tools_value
-            = meta_object.value(QLatin1String("Tools"));
+            = meta_object.value("Tools");
         if(tools_value.isObject())
         {
           const QJsonObject tools_object = tools_value.toObject();
@@ -599,7 +597,7 @@ namespace mcp
         }
 
         const QJsonValue resources_value
-            = meta_object.value(QLatin1String("Resources"));
+            = meta_object.value("Resources");
         if(resources_value.isObject())
         {
           const QJsonObject resources_object = resources_value.toObject();
@@ -678,7 +676,7 @@ namespace mcp
       return LoadOutcome::Failed;
     }
 
-    const QString id_q = plugin_class_info(obj->metaObject(), "id");
+    const QString id_q = class_info(obj->metaObject(), "id");
     if(id_q.isEmpty())
     {
       MCP_LOG_WARN("PluginManager: '" + file
@@ -710,9 +708,9 @@ namespace mcp
     inst->dependencies = deps;
 
     HostInterface host;
-    host.getFuncs = [this] { return host_get_funcs(); };
+    host.getFuncs = [this] { return functions(); };
     host.callFunc = [this](const QString& sig, const QVariantList& args) {
-      return host_call_func(sig, args);
+      return call_function(sig, args);
     };
     host.regFunc = [this, inst](const QString& sig) {
       return host_reg_func(inst, sig);
@@ -875,7 +873,7 @@ namespace mcp
         {
           for(const QString& sig : target->signatures)
           {
-            if(sig == dep || sig.startsWith(dep + QLatin1Char('(')))
+            if(sig == dep || sig.startsWith(dep + '('))
             {
               conflict = true;
               break;

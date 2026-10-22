@@ -49,9 +49,7 @@ namespace
     QString greet(QString name)
     {
       if(name.isEmpty())
-      {
-        name = QStringLiteral("world");
-      }
+        name = "world";
       return QStringLiteral("Hello, %1!").arg(name);
     }
 

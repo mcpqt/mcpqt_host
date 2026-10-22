@@ -218,7 +218,7 @@ void ElicitationIntegration::FormModeRoundTripThroughClient(void)
                };
              }
              const QJsonObject co = er.content.toObject();
-             const QJsonValue nv = co.value(QStringLiteral("name"));
+             const QJsonValue nv = co.value("name");
              const QString nm
                  = nv.isString() ? nv.toString() : QString{ "<none>" };
              return mcp::CallToolResult{

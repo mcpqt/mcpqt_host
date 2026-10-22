@@ -68,17 +68,9 @@ namespace mcp
 
 } // namespace mcp
 
-// clang-format off
-#define MCP_LOG(level, msg)                                                    \
-    do {                                                                       \
-        if (::mcp::log_level() <= (level)) {                                   \
-            ::mcp::log_message((level), (msg));                                \
-        }                                                                      \
-    } while (0)
-
-#define MCP_LOG_TRACE(msg) MCP_LOG(::mcp::LogLevel::trace, msg)
-#define MCP_LOG_DEBUG(msg) MCP_LOG(::mcp::LogLevel::debug, msg)
-#define MCP_LOG_INFO(msg)  MCP_LOG(::mcp::LogLevel::info,  msg)
-#define MCP_LOG_WARN(msg)  MCP_LOG(::mcp::LogLevel::warn,  msg)
-#define MCP_LOG_ERROR(msg) MCP_LOG(::mcp::LogLevel::error, msg)
+#define MCP_LOG_TRACE(msg) ::mcp::log_message(::mcp::LogLevel::trace, msg, std::source_location::current())
+#define MCP_LOG_DEBUG(msg) ::mcp::log_message(::mcp::LogLevel::debug, msg, std::source_location::current())
+#define MCP_LOG_INFO(msg)  ::mcp::log_message(::mcp::LogLevel::info,  msg, std::source_location::current())
+#define MCP_LOG_WARN(msg)  ::mcp::log_message(::mcp::LogLevel::warn,  msg, std::source_location::current())
+#define MCP_LOG_ERROR(msg) ::mcp::log_message(::mcp::LogLevel::error, msg, std::source_location::current())
 // clang-format on

@@ -133,7 +133,7 @@ namespace
       cv.notify_all();
     }
 
-    bool wait_for_messages(std::size_t want, std::chrono::milliseconds t = 2s)
+    bool wait_for_messages(qsizetype want, std::chrono::milliseconds t = 2s)
     {
       std::unique_lock<std::mutex> lk(mu);
       return cv.wait_for(lk, t, [&] { return messages.size() >= want; });

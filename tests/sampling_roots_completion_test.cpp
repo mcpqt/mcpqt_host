@@ -211,7 +211,7 @@ void SamplingIntegration::ToolHandlerCanRoundTripThroughClient(void)
               QJsonObject{ { "q", QJsonObject{ { "type", "string" } } } } } },
         [&s](const QJsonValue& args) -> mcp::CallToolResult {
           const QJsonObject ao = args.toObject();
-          const QJsonValue qv = ao.value(QStringLiteral("q"));
+          const QJsonValue qv = ao.value("q");
           const QString q = qv.isString() ? qv.toString() : QString{ "?" };
           mcp::CreateMessageRequestParams params{
             .messages = { mcp::SamplingMessage{

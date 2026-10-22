@@ -13,6 +13,8 @@
 
 #include "plugin.h"
 
+#include "log.h"
+
 #include <QByteArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -28,18 +30,18 @@
 namespace
 {
 
-  class LogPlugin : public mcp::PluginInterface
+  class TrivialLogger : public mcp::PluginInterface
   {
     Q_OBJECT
-    Q_CLASSINFO("id", "logging")
+    Q_CLASSINFO("id", "trivial_logger")
     Q_CLASSINFO("version", "1.0.0")
     Q_CLASSINFO("description",
-                "Owns SDK diagnostic logging; renders events as JSON lines.")
-    Q_PLUGIN_METADATA(IID "ai.mcp.qt.mcp-plugin/2.0" FILE "log_plugin.json")
+                "Trivial diagnostic event logging; renders events as JSON lines to file defined by environment variable \"MCP_LOG_FILE\".")
+    Q_PLUGIN_METADATA(IID MCP_PLUGIN_IID FILE "trivial_logger.json")
     Q_INTERFACES(mcp::PluginInterface)
 
   public:
-    explicit LogPlugin(QObject* parent = nullptr)
+    explicit TrivialLogger(QObject* parent = nullptr)
         : mcp::PluginInterface(parent)
     {
     }
@@ -60,7 +62,7 @@ namespace
       // once; the host pins the plugin that owns the sink.
       registerPublicSlots();
       const QVariant ok = m_host.callFunc(
-          QStringLiteral("bool mcp::Host::claimLogging(QString)"),
+          "bool mcp::Host::registerLogger(QString)",
           { QStringLiteral("void LogPlugin::log(int,QString)") });
       if(!ok.toBool())
       {
@@ -87,7 +89,7 @@ namespace
     }
 
   public slots:
-    // The host invokes this for every diagnostic log event after claimLogging.
+    // The host invokes this for every diagnostic log event after registerLogger.
     // Signature must be exactly "void <Class>::log(int, QString)".
     void log(int level, QString message)
     {
@@ -97,9 +99,10 @@ namespace
   private:
     void write(mcp::LogLevel level, const QString& msg)
     {
-      const QJsonObject record{
-        { QStringLiteral("level"), mcp::to_string(level) },
-        { QStringLiteral("msg"), msg },
+      const QJsonObject record
+      {
+        { "level", mcp::to_string(level) },
+        { "msg", msg },
       };
       const QByteArray line
           = QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n';
@@ -117,4 +120,4 @@ namespace
 
 } // namespace
 
-#include "log_plugin.moc"
+#include "trivial_logger.moc"

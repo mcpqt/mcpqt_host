@@ -10,6 +10,7 @@
 #include "test_binary_paths.h"
 
 #include "error.h"
+#include "log.h"
 #include "plugin_manager.h"
 
 #include <QCoreApplication>
@@ -76,7 +77,7 @@ void PluginManagerTest::LoadRegistersTypedFunctions(void)
   QCOMPARE(funcs.size(), 9);
   // The host's own services are part of the function list.
   QVERIFY(plugins.has_function(
-      QStringLiteral("bool mcp::Host::claimLogging(QString)")));
+      QStringLiteral("bool mcp::Host::registerLogger(QString)")));
   QVERIFY(plugins.has_function(
       QStringLiteral("QVariant mcp::Host::elicit(QVariant)")));
 }
@@ -97,13 +98,13 @@ void PluginManagerTest::ToolsMetadataExposed(void)
   QCOMPARE(tools[0].tool.description,
            QStringLiteral("Echo back the message."));
   const QJsonObject schema = tools[0].tool.input_schema.toObject();
-  QCOMPARE(schema.value(QStringLiteral("type")).toString(),
+  QCOMPARE(schema.value("type").toString(),
            QStringLiteral("object"));
-  QCOMPARE(schema.value(QStringLiteral("properties"))
+  QCOMPARE(schema.value("properties")
                .toObject()
-               .value(QStringLiteral("message"))
+               .value("message")
                .toObject()
-               .value(QStringLiteral("type"))
+               .value("type")
                .toString(),
            QStringLiteral("string"));
 
@@ -201,12 +202,12 @@ void PluginManagerTest::VoidAndThrowingFunctions(void)
 
   // void reset() → invalid QVariant, no error.
   const QVariant result
-      = plugins.call_function(QStringLiteral("void TestPlugin::reset()"), {});
+      = plugins.call_function("void TestPlugin::reset()", {});
   QVERIFY(!result.isValid());
 
   // void boom() throws; the host surfaces it as mcp::Error.
   QVERIFY_EXCEPTION_THROWN(
-      plugins.call_function(QStringLiteral("void TestPlugin::boom()"), {}),
+      plugins.call_function("void TestPlugin::boom()", {}),
       mcp::Error);
 }
 
@@ -217,7 +218,7 @@ void PluginManagerTest::InvalidCallsThrow(void)
 
   // Unknown function.
   QVERIFY_EXCEPTION_THROWN(
-      plugins.call_function(QStringLiteral("void TestPlugin::nope()"), {}),
+      plugins.call_function("void TestPlugin::nope()", {}),
       mcp::Error);
 
   // Wrong arity.
@@ -255,9 +256,9 @@ void PluginManagerTest::CrossPluginForwarding(void)
   // TestPluginPair::forward calls TestPlugin::echo through the host and
   // surfaces the other plugin's returned value in its own result.
   const QVariant forwarded = plugins.call_function(
-      QStringLiteral("QString TestPluginPair::forward(QString)"),
+      "QString TestPluginPair::forward(QString)",
       { QStringLiteral("cross") });
-  QCOMPARE(forwarded.toString(), QStringLiteral("test-pair received: cross"));
+  QCOMPARE(forwarded.toString(), "test-pair received: cross");
 }
 
 void PluginManagerTest::UnloadHonorsReverseDependencies(void)
@@ -290,24 +291,24 @@ void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced(void)
   QVERIFY(plugins.plugin_object("test-logger") != nullptr);
   QVERIFY(
       plugins
-          .call_function(QStringLiteral("bool TestLogPlugin::claimed()"), {})
+          .call_function("bool TestLogPlugin::claimed()", {})
           .toBool());
 
   const int before
-      = plugins.call_function(QStringLiteral("int TestLogPlugin::count()"), {})
+      = plugins.call_function("int TestLogPlugin::count()", {})
             .toInt();
 
   // A core log event must reach the plugin's sink (the plugin decides how to
   // handle it; here it counts/stashes it).
   MCP_LOG_WARN("logging-plugin-probe-line");
   const int after
-      = plugins.call_function(QStringLiteral("int TestLogPlugin::count()"), {})
+      = plugins.call_function("int TestLogPlugin::count()", {})
             .toInt();
   QVERIFY2(after >= before + 1,
            "logging plugin did not receive the log event");
   QVERIFY(
       plugins
-          .call_function(QStringLiteral("QString TestLogPlugin::last()"), {})
+          .call_function("QString TestLogPlugin::last()", {})
           .toString()
           .contains("logging-plugin-probe-line"));
 

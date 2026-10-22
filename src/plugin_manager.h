@@ -25,7 +25,7 @@
 // Loading/unloading must not race with in-flight calls.
 //
 // Logging: a plugin claims the process-wide diagnostic sink through the host
-// function "bool mcp::Host::claimLogging(QString)" (listed by getFuncs()),
+// function "bool mcp::Host::registerLogger(QString)" (listed by getFuncs()),
 // passing the canonical signature of its own void log(int, QString) slot. The
 // first claim wins; afterwards the core rejects replacement, and the claiming
 // plugin is pinned — unload_all() leaves it loaded (its sink runs code in the
@@ -35,6 +35,7 @@
 #pragma once
 
 #include "plugin.h"
+#include "protocol.h"
 
 #include <QHash>
 #include <QString>
@@ -107,7 +108,7 @@ namespace mcp
   {
   public:
     PluginManager(void);
-    ~PluginManager();
+    ~PluginManager(void);
 
     PluginManager(const PluginManager&) = delete;
     PluginManager& operator=(const PluginManager&) = delete;
@@ -192,6 +193,8 @@ namespace mcp
                                          const QVariantList& args = {}) const;
 
   private:
+    QVariant registerLogger(const QVariantList& args);
+    static QVariant elicitPrompt(const QVariantList& args);
     struct Instance;
     struct FunctionEntry;
 
@@ -217,21 +220,13 @@ namespace mcp
                                                 const QMetaMethod& method,
                                                 const QVariantList& args);
 
-    /// A host-provided function (e.g. claimLogging/elicit) in the registry.
+    /// A host-provided function (e.g. registerLogger/elicit) in the registry.
     using HostFunction = std::function<QVariant(const QVariantList& args)>;
 
-    /// Register the built-in host services (claimLogging, elicit).
+    /// Register the built-in host services (registerLogger, elicit).
     void install_host_functions(void);
     void register_host_function(const QString& signature, HostFunction fn);
 
-    /// Dispatch to a plugin slot or a host function by signature.
-    [[nodiscard]] QVariant dispatch(const QString& signature,
-                                    const QVariantList& args) const;
-
-    // Host-side callbacks bound into the HostInterface handed to plugins.
-    QStringList host_get_funcs(void) const;
-    QVariant host_call_func(const QString& signature,
-                            const QVariantList& args) const;
     bool host_reg_func(const std::shared_ptr<Instance>& inst,
                        const QString& signature);
     void host_unload_self(const std::shared_ptr<Instance>& inst,

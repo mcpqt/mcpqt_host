@@ -44,7 +44,7 @@ namespace
       const QStringList funcs = m_host.getFuncs();
       for(const QString& sig : funcs)
       {
-        if(sig.startsWith(QStringLiteral("QString HelloPlugin::greet(")))
+        if(sig.startsWith("QString HelloPlugin::greet("))
         {
           m_target_greet = sig;
           break;
@@ -61,9 +61,7 @@ namespace
     QString greet_via_host(QString name)
     {
       if(m_target_greet.isEmpty())
-      {
-        return QStringLiteral("hello plugin's greet() is not loaded");
-      }
+        return "hello plugin's greet() is not loaded";
       return m_host.callFunc(m_target_greet, { name }).toString();
     }
 

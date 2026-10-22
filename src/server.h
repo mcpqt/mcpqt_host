@@ -66,7 +66,7 @@ namespace mcp
     {
       std::optional<QList<Icon>> icons = {};
       std::optional<ToolExecution> execution = {};
-      QJsonValue meta;
+      QJsonValue meta = {};
     };
 
     /// Resource read handler. Receives the requested URI and returns

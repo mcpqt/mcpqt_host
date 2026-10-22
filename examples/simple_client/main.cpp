@@ -3,8 +3,8 @@
 // Minimal MCP client. Spawns a server (with any server arguments) as a child
 // process, drives an end-to-end conversation, and prints results:
 //
-//     ./examples/simple_client/simple_client \
-//         ./build/server/mcp_stdio_server \
+//     ./examples/simple_client/simple_client
+//         ./build/server/mcp_stdio_server
 //         ./build/plugins/calculator/calculator_plugin.so
 
 #include "mcp.h"

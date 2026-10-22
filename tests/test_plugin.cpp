@@ -50,7 +50,7 @@ public slots:
   void boom(void) { throw std::runtime_error("boom from plugin"); }
 
   // Natural QString return.
-  QString dup(void) { return QStringLiteral("dup"); }
+  QString dup(void) { return "dup"; }
 
   // Non-QVariant return types (carried via QGenericReturnArgument).
   int meaning(void) { return 42; }

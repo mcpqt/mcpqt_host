@@ -374,9 +374,8 @@ namespace mcp
                      "task completed without a result payload" };
       case TaskStatus::failed:
         throw Error{ error_code::internal_error,
-                     QStringLiteral("task failed: ")
-                         + (e.error.isNull() ? QStringLiteral("<no message>")
-                                             : e.error) };
+                    QStringLiteral("task failed: %1")
+                        .arg(e.error.isNull() ? QStringLiteral("<no message>") : e.error) };
       case TaskStatus::cancelled:
         throw Error{ error_code::invalid_request, "task cancelled: " + id };
       default:
@@ -1334,7 +1333,7 @@ namespace mcp
       QJsonObject data;
       if(auto cur = m_tasks->get(parsed.task_id); cur.has_value())
       {
-        data.insert(QStringLiteral("task"), to_json(*cur));
+        data.insert("task", to_json(*cur));
       }
       throw Error{ error_code::invalid_request,
                    "task " + parsed.task_id
@@ -1350,13 +1349,13 @@ namespace mcp
     if(value.isObject())
     {
       QJsonObject obj = value.toObject();
-      QJsonObject meta = obj.value(QStringLiteral("_meta")).isObject()
-                             ? obj.value(QStringLiteral("_meta")).toObject()
+      QJsonObject meta = obj.value("_meta").isObject()
+                             ? obj.value("_meta").toObject()
                              : QJsonObject{};
       meta.insert(tasks_related_task_meta_key,
                   QJsonObject{
-                      { QStringLiteral("taskId"), to_json(parsed.task_id) } });
-      obj.insert(QStringLiteral("_meta"), meta);
+                      { "taskId", to_json(parsed.task_id) } });
+      obj.insert("_meta", meta);
       value = obj;
     }
     return value;

@@ -34,15 +34,14 @@ public:
     registerPublicSlots();
     m_claimed
         = m_host
-              .callFunc(
-                  QStringLiteral("bool mcp::Host::claimLogging(QString)"),
+              .callFunc("bool mcp::Host::registerLogger(QString)",
                   { QStringLiteral("void TestLogPlugin::log(int,QString)") })
               .toBool();
   }
   void shutdown(void) override {}
 
 public slots:
-  // Sink invoked by the host after claimLogging.
+  // Sink invoked by the host after registerLogger.
   void log(int level, QString message)
   {
     (void)level;

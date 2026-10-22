@@ -155,8 +155,7 @@ namespace mcp
           if(note_ec)
           {
             throw Error{ error_code::internal_error,
-                         QStringLiteral(
-                             "failed to send notifications/initialized: ")
+                         QStringLiteral("failed to send notifications/initialized: ")
                              + note_ec.message().c_str() };
           }
           return res;

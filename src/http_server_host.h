@@ -144,7 +144,7 @@ namespace mcp
       /// metadata endpoint includes `Access-Control-Allow-Origin: *`
       /// because RFC 9728 expects discovery to be publicly readable
       /// cross-origin.
-      QJsonValue resource_metadata;
+      QJsonValue resource_metadata = {};
 
       /// Public URL of the resource metadata document, embedded in
       /// the WWW-Authenticate challenge so the client can discover

@@ -68,11 +68,11 @@ namespace mcp
   JsonRpcRequest::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("jsonrpc"), to_json(kJsonrpcVersion));
-    o.insert(QStringLiteral("id"), to_json(id));
-    o.insert(QStringLiteral("method"), to_json(method));
+    o.insert("jsonrpc", to_json(kJsonrpcVersion));
+    o.insert("id", to_json(id));
+    o.insert("method", to_json(method));
     if(!params.isNull())
-      o.insert(QStringLiteral("params"), params);
+      o.insert("params", params);
     return o;
   }
 
@@ -94,10 +94,10 @@ namespace mcp
   JsonRpcNotification::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("jsonrpc"), to_json(kJsonrpcVersion));
-    o.insert(QStringLiteral("method"), to_json(method));
+    o.insert("jsonrpc", to_json(kJsonrpcVersion));
+    o.insert("method", to_json(method));
     if(!params.isNull())
-      o.insert(QStringLiteral("params"), params);
+      o.insert("params", params);
     return o;
   }
 
@@ -118,10 +118,10 @@ namespace mcp
   ErrorObject::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("code"), to_json(static_cast<int>(code)));
-    o.insert(QStringLiteral("message"), to_json(message));
+    o.insert("code", to_json(static_cast<int>(code)));
+    o.insert("message", to_json(message));
     if(has_data())
-      o.insert(QStringLiteral("data"), data);
+      o.insert("data", data);
     return o;
   }
 
@@ -130,7 +130,7 @@ namespace mcp
     const QJsonObject o = as_object(j);
     code = static_cast<error_code>(require<int>(o, "code"));
     message = require<QString>(o, "message");
-    const auto it = o.constFind(QStringLiteral("data"));
+    const auto it = o.constFind("data");
     data = (it != o.constEnd() && !it->isNull())
                ? *it
                : QJsonValue(QJsonValue::Null);
@@ -141,15 +141,15 @@ namespace mcp
   JsonRpcResponse::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("jsonrpc"), to_json(kJsonrpcVersion));
+    o.insert("jsonrpc", to_json(kJsonrpcVersion));
     if(!id.isNull())
-      o.insert(QStringLiteral("id"), to_json(id));
+      o.insert("id", to_json(id));
     else
-      o.insert(QStringLiteral("id"), QJsonValue(QJsonValue::Null));
+      o.insert("id", QJsonValue(QJsonValue::Null));
     if(is_success())
-      o.insert(QStringLiteral("result"), std::get<0>(outcome));
+      o.insert("result", std::get<0>(outcome));
     else
-      o.insert(QStringLiteral("error"), to_json(std::get<1>(outcome)));
+      o.insert("error", to_json(std::get<1>(outcome)));
     return o;
   }
 
@@ -160,7 +160,7 @@ namespace mcp
     {
       throw Error(error_code::invalid_request, "jsonrpc must be \"2.0\"");
     }
-    const auto idIt = o.constFind(QStringLiteral("id"));
+    const auto idIt = o.constFind("id");
     if(idIt != o.constEnd() && !idIt->isNull())
     {
       id = from_json<RequestId>(*idIt);
@@ -169,8 +169,8 @@ namespace mcp
     {
       id = RequestId();
     }
-    const bool has_result = o.contains(QStringLiteral("result"));
-    const bool has_error = o.contains(QStringLiteral("error"));
+    const bool has_result = o.contains("result");
+    const bool has_error = o.contains("error");
     if(has_result == has_error)
     {
       throw Error(error_code::invalid_request,
@@ -179,11 +179,11 @@ namespace mcp
     }
     if(has_result)
     {
-      outcome = o.value(QStringLiteral("result"));
+      outcome = o.value("result");
     }
     else
     {
-      outcome = from_json<ErrorObject>(o.value(QStringLiteral("error")));
+      outcome = from_json<ErrorObject>(o.value("error"));
     }
 
     return *this;
@@ -192,10 +192,10 @@ namespace mcp
   JsonRpcMessage parse_message(const QJsonValue& j)
   {
     const QJsonObject o = as_object(j);
-    const bool has_id = o.contains(QStringLiteral("id"));
-    const bool has_method = o.contains(QStringLiteral("method"));
-    const bool has_result = o.contains(QStringLiteral("result"));
-    const bool has_error = o.contains(QStringLiteral("error"));
+    const bool has_id = o.contains("id");
+    const bool has_method = o.contains("method");
+    const bool has_result = o.contains("result");
+    const bool has_error = o.contains("error");
 
     if(has_method && has_id)
       return from_json<JsonRpcRequest>(j);
@@ -221,7 +221,7 @@ namespace mcp
   Icon::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("src"), to_json(src));
+    o.insert("src", to_json(src));
     put_optional_string(o, "mimeType", mime_type);
     put_optional_string(o, "sizes", sizes);
     put_optional_string(o, "theme", theme);
@@ -242,8 +242,8 @@ namespace mcp
   Implementation::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("name"), to_json(name));
-    o.insert(QStringLiteral("version"), to_json(version));
+    o.insert("name", to_json(name));
+    o.insert("version", to_json(version));
     put_optional_string(o, "title", title);
     put_optional_string(o, "description", description);
     put_optional_string(o, "websiteUrl", website_url);
@@ -481,9 +481,9 @@ namespace mcp
   InitializeRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("protocolVersion"), to_json(protocol_version));
-    o.insert(QStringLiteral("capabilities"), to_json(capabilities));
-    o.insert(QStringLiteral("clientInfo"), to_json(client_info));
+    o.insert("protocolVersion", to_json(protocol_version));
+    o.insert("capabilities", to_json(capabilities));
+    o.insert("clientInfo", to_json(client_info));
     return o;
   }
 
@@ -501,9 +501,9 @@ namespace mcp
   InitializeResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("protocolVersion"), to_json(protocol_version));
-    o.insert(QStringLiteral("capabilities"), to_json(capabilities));
-    o.insert(QStringLiteral("serverInfo"), to_json(server_info));
+    o.insert("protocolVersion", to_json(protocol_version));
+    o.insert("capabilities", to_json(capabilities));
+    o.insert("serverInfo", to_json(server_info));
     put_optional_string(o, "instructions", instructions);
     put_optional_json(o, "_meta", meta);
     return o;
@@ -537,7 +537,7 @@ namespace mcp
       QJsonArray arr;
       for(auto r : *audience)
         arr.append(to_json(r));
-      o.insert(QStringLiteral("audience"), arr);
+      o.insert("audience", arr);
     }
     put_optional(o, "priority", priority);
     put_optional_string(o, "lastModified", last_modified);
@@ -547,7 +547,7 @@ namespace mcp
   Annotations& Annotations::operator=(const QJsonValue& j)
   {
     const QJsonObject o = as_object(j);
-    if(auto it = o.constFind(QStringLiteral("audience"));
+    if(auto it = o.constFind("audience");
        it != o.constEnd() && it->isArray())
     {
       const QJsonArray arr = it->toArray();
@@ -566,8 +566,8 @@ namespace mcp
   TextContent::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("text"));
-    o.insert(QStringLiteral("text"), to_json(text));
+    o.insert("type", to_json("text"));
+    o.insert("text", to_json(text));
     put_optional(o, "annotations", annotations);
     return o;
   }
@@ -584,9 +584,9 @@ namespace mcp
   ImageContent::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("image"));
-    o.insert(QStringLiteral("data"), to_json(data));
-    o.insert(QStringLiteral("mimeType"), to_json(mime_type));
+    o.insert("type", to_json("image"));
+    o.insert("data", to_json(data));
+    o.insert("mimeType", to_json(mime_type));
     put_optional(o, "annotations", annotations);
     return o;
   }
@@ -604,9 +604,9 @@ namespace mcp
   AudioContent::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("audio"));
-    o.insert(QStringLiteral("data"), to_json(data));
-    o.insert(QStringLiteral("mimeType"), to_json(mime_type));
+    o.insert("type", to_json("audio"));
+    o.insert("data", to_json(data));
+    o.insert("mimeType", to_json(mime_type));
     put_optional(o, "annotations", annotations);
     return o;
   }
@@ -628,8 +628,8 @@ namespace mcp
   TextResourceContents::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uri"), to_json(uri));
-    o.insert(QStringLiteral("text"), to_json(text));
+    o.insert("uri", to_json(uri));
+    o.insert("text", to_json(text));
     put_optional_string(o, "mimeType", mime_type);
     return o;
   }
@@ -647,8 +647,8 @@ namespace mcp
   BlobResourceContents::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uri"), to_json(uri));
-    o.insert(QStringLiteral("blob"), to_json(blob));
+    o.insert("uri", to_json(uri));
+    o.insert("blob", to_json(blob));
     put_optional_string(o, "mimeType", mime_type);
     return o;
   }
@@ -666,8 +666,8 @@ namespace mcp
   Resource::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uri"), to_json(uri));
-    o.insert(QStringLiteral("name"), to_json(name));
+    o.insert("uri", to_json(uri));
+    o.insert("name", to_json(name));
     put_optional_string(o, "title", title);
     put_optional_string(o, "description", description);
     put_optional_string(o, "mimeType", mime_type);
@@ -697,8 +697,8 @@ namespace mcp
   ResourceTemplate::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uriTemplate"), to_json(uri_template));
-    o.insert(QStringLiteral("name"), to_json(name));
+    o.insert("uriTemplate", to_json(uri_template));
+    o.insert("name", to_json(name));
     put_optional_string(o, "title", title);
     put_optional_string(o, "description", description);
     put_optional_string(o, "mimeType", mime_type);
@@ -726,9 +726,9 @@ namespace mcp
   ResourceLink::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("resource_link"));
-    o.insert(QStringLiteral("uri"), to_json(uri));
-    o.insert(QStringLiteral("name"), to_json(name));
+    o.insert("type", to_json("resource_link"));
+    o.insert("uri", to_json(uri));
+    o.insert("name", to_json(name));
     put_optional_string(o, "title", title);
     put_optional_string(o, "description", description);
     put_optional_string(o, "mimeType", mime_type);
@@ -758,8 +758,8 @@ namespace mcp
   EmbeddedResource::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("resource"));
-    o.insert(QStringLiteral("resource"), to_json(resource));
+    o.insert("type", to_json("resource"));
+    o.insert("resource", to_json(resource));
     put_optional(o, "annotations", annotations);
     return o;
   }
@@ -776,10 +776,10 @@ namespace mcp
   ToolUseContent::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("tool_use"));
-    o.insert(QStringLiteral("id"), to_json(id));
-    o.insert(QStringLiteral("name"), to_json(name));
-    o.insert(QStringLiteral("input"), input);
+    o.insert("type", to_json("tool_use"));
+    o.insert("id", to_json(id));
+    o.insert("name", to_json(name));
+    o.insert("input", input);
     put_optional(o, "annotations", annotations);
     return o;
   }
@@ -836,9 +836,9 @@ namespace mcp
   ToolResultContent::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("tool_result"));
-    o.insert(QStringLiteral("toolUseId"), to_json(tool_use_id));
-    o.insert(QStringLiteral("content"), to_json(content));
+    o.insert("type", to_json("tool_result"));
+    o.insert("toolUseId", to_json(tool_use_id));
+    o.insert("content", to_json(content));
     put_optional(o, "isError", is_error);
     put_optional(o, "annotations", annotations);
     return o;
@@ -913,14 +913,14 @@ namespace mcp
   ToolExecution::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("taskSupport"), to_json(task_support));
+    o.insert("taskSupport", to_json(task_support));
     return o;
   }
 
   ToolExecution& ToolExecution::operator=(const QJsonValue& j)
   {
     const QJsonObject o = as_object(j);
-    if(auto it = o.constFind(QStringLiteral("taskSupport"));
+    if(auto it = o.constFind("taskSupport");
        it != o.constEnd())
     {
       task_support = from_json<TaskSupport>(*it);
@@ -936,8 +936,8 @@ namespace mcp
   Tool::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("name"), to_json(name));
-    o.insert(QStringLiteral("inputSchema"), input_schema);
+    o.insert("name", to_json(name));
+    o.insert("inputSchema", input_schema);
     put_optional_string(o, "title", title);
     put_optional_string(o, "description", description);
     put_optional_json(o, "outputSchema", output_schema);
@@ -983,7 +983,7 @@ namespace mcp
   ListToolsResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("tools"), to_json(tools));
+    o.insert("tools", to_json(tools));
     put_optional_string(o, "nextCursor", next_cursor);
     put_optional_json(o, "_meta", meta);
     return o;
@@ -1002,7 +1002,7 @@ namespace mcp
   CallToolRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("name"), to_json(name));
+    o.insert("name", to_json(name));
     put_optional_json(o, "arguments", arguments);
     put_optional(o, "task", task);
     return o;
@@ -1021,7 +1021,7 @@ namespace mcp
   CallToolResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("content"), to_json(content));
+    o.insert("content", to_json(content));
     put_optional_json(o, "structuredContent", structured_content);
     put_optional(o, "isError", is_error);
     put_optional_json(o, "_meta", meta);
@@ -1062,7 +1062,7 @@ namespace mcp
   ListResourcesResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("resources"), to_json(resources));
+    o.insert("resources", to_json(resources));
     put_optional_string(o, "nextCursor", next_cursor);
     put_optional_json(o, "_meta", meta);
     return o;
@@ -1097,7 +1097,7 @@ namespace mcp
   ListResourceTemplatesResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("resourceTemplates"), to_json(resource_templates));
+    o.insert("resourceTemplates", to_json(resource_templates));
     put_optional_string(o, "nextCursor", next_cursor);
     put_optional_json(o, "_meta", meta);
     return o;
@@ -1118,7 +1118,7 @@ namespace mcp
   ReadResourceRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uri"), to_json(uri));
+    o.insert("uri", to_json(uri));
     return o;
   }
 
@@ -1134,7 +1134,7 @@ namespace mcp
   ReadResourceResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("contents"), to_json(contents));
+    o.insert("contents", to_json(contents));
     put_optional_json(o, "_meta", meta);
     return o;
   }
@@ -1151,7 +1151,7 @@ namespace mcp
   SubscribeRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uri"), to_json(uri));
+    o.insert("uri", to_json(uri));
     return o;
   }
 
@@ -1167,7 +1167,7 @@ namespace mcp
   UnsubscribeRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uri"), to_json(uri));
+    o.insert("uri", to_json(uri));
     return o;
   }
 
@@ -1183,7 +1183,7 @@ namespace mcp
   ResourceUpdatedNotificationParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uri"), to_json(uri));
+    o.insert("uri", to_json(uri));
     return o;
   }
 
@@ -1203,7 +1203,7 @@ namespace mcp
   PromptArgument::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("name"), to_json(name));
+    o.insert("name", to_json(name));
     put_optional_string(o, "title", title);
     put_optional_string(o, "description", description);
     put_optional(o, "required", required);
@@ -1224,11 +1224,11 @@ namespace mcp
   Prompt::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("name"), to_json(name));
+    o.insert("name", to_json(name));
     put_optional_string(o, "title", title);
     put_optional_string(o, "description", description);
     if(arguments.has_value())
-      o.insert(QStringLiteral("arguments"), to_json(arguments));
+      o.insert("arguments", to_json(arguments));
     put_optional(o, "icons", icons);
     put_optional_json(o, "_meta", meta);
     return o;
@@ -1240,7 +1240,7 @@ namespace mcp
     name = require<QString>(o, "name");
     take_optional_string(o, "title", title);
     take_optional_string(o, "description", description);
-    if(auto it = o.constFind(QStringLiteral("arguments"));
+    if(auto it = o.constFind("arguments");
        it != o.constEnd() && !it->isNull())
     {
       arguments = from_json<QList<PromptArgument>>(*it);
@@ -1254,8 +1254,8 @@ namespace mcp
   PromptMessage::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("role"), to_json(role));
-    o.insert(QStringLiteral("content"), to_json(content));
+    o.insert("role", to_json(role));
+    o.insert("content", to_json(content));
     return o;
   }
 
@@ -1287,7 +1287,7 @@ namespace mcp
   ListPromptsResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("prompts"), to_json(prompts));
+    o.insert("prompts", to_json(prompts));
     put_optional_string(o, "nextCursor", next_cursor);
     put_optional_json(o, "_meta", meta);
     return o;
@@ -1306,7 +1306,7 @@ namespace mcp
   GetPromptRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("name"), to_json(name));
+    o.insert("name", to_json(name));
     if(arguments.has_value())
     {
       QJsonObject args;
@@ -1314,7 +1314,7 @@ namespace mcp
       {
         args.insert(it.key(), to_json(it.value()));
       }
-      o.insert(QStringLiteral("arguments"), args);
+      o.insert("arguments", args);
     }
     return o;
   }
@@ -1324,7 +1324,7 @@ namespace mcp
   {
     const QJsonObject o = as_object(j);
     name = require<QString>(o, "name");
-    if(auto it = o.constFind(QStringLiteral("arguments"));
+    if(auto it = o.constFind("arguments");
        it != o.constEnd() && it->isObject())
     {
       const QJsonObject src = it->toObject();
@@ -1346,7 +1346,7 @@ namespace mcp
   {
     QJsonObject o;
     put_optional_string(o, "description", description);
-    o.insert(QStringLiteral("messages"), to_json(messages));
+    o.insert("messages", to_json(messages));
     put_optional_json(o, "_meta", meta);
     return o;
   }
@@ -1369,7 +1369,7 @@ namespace mcp
   {
     QJsonObject o;
     if(!request_id.isNull())
-      o.insert(QStringLiteral("requestId"), to_json(request_id));
+      o.insert("requestId", to_json(request_id));
     put_optional_string(o, "reason", reason);
     return o;
   }
@@ -1378,7 +1378,7 @@ namespace mcp
   CancelledNotificationParams::operator=(const QJsonValue& j)
   {
     const QJsonObject o = as_object(j);
-    if(auto it = o.constFind(QStringLiteral("requestId"));
+    if(auto it = o.constFind("requestId");
        it != o.constEnd() && !it->isNull())
     {
       request_id = from_json<RequestId>(*it);
@@ -1426,8 +1426,8 @@ namespace mcp
   ProgressNotificationParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("progressToken"), to_json(progress_token));
-    o.insert(QStringLiteral("progress"), to_json(progress));
+    o.insert("progressToken", to_json(progress_token));
+    o.insert("progress", to_json(progress));
     put_optional(o, "total", total);
     put_optional_string(o, "message", message);
     return o;
@@ -1456,7 +1456,7 @@ namespace mcp
   SetLevelRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("level"), to_json(level));
+    o.insert("level", to_json(level));
     return o;
   }
 
@@ -1471,8 +1471,8 @@ namespace mcp
   LoggingMessageNotificationParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("level"), to_json(level));
-    o.insert(QStringLiteral("data"), data);
+    o.insert("level", to_json(level));
+    o.insert("data", data);
     put_optional_string(o, "logger", logger);
     return o;
   }
@@ -1511,7 +1511,7 @@ namespace mcp
   {
     QJsonObject o;
     if(hints.has_value())
-      o.insert(QStringLiteral("hints"), to_json(*hints));
+      o.insert("hints", to_json(*hints));
     put_optional(o, "costPriority", cost_priority);
     put_optional(o, "speedPriority", speed_priority);
     put_optional(o, "intelligencePriority", intelligence_priority);
@@ -1521,7 +1521,7 @@ namespace mcp
   ModelPreferences& ModelPreferences::operator=(const QJsonValue& j)
   {
     const QJsonObject o = as_object(j);
-    if(auto it = o.constFind(QStringLiteral("hints"));
+    if(auto it = o.constFind("hints");
        it != o.constEnd() && it->isArray())
     {
       hints = from_json<QList<ModelHint>>(*it);
@@ -1541,7 +1541,7 @@ namespace mcp
   {
     if(m == ToolChoiceMode::m_auto)
     {
-      return QStringLiteral("auto");
+      return "auto";
     }
     return QMetaEnum::fromType<ToolChoiceMode>().valueToKey(
         static_cast<int>(m));
@@ -1552,7 +1552,7 @@ namespace mcp
   void from_json(const QJsonValue& j, ToolChoiceMode& m)
   {
     const QString s = from_json<QString>(j);
-    if(s == QStringLiteral("auto"))
+    if(s == "auto")
     {
       m = ToolChoiceMode::m_auto;
       return;
@@ -1573,9 +1573,9 @@ namespace mcp
     if(mode.has_value() && *mode == ToolChoiceMode::tool)
     {
       QJsonObject o;
-      o.insert(QStringLiteral("type"), to_json("tool"));
+      o.insert("type", to_json("tool"));
       if(!name.isNull())
-        o.insert(QStringLiteral("name"), to_json(name));
+        o.insert("name", to_json(name));
       return o;
     }
     if(mode.has_value())
@@ -1595,7 +1595,7 @@ namespace mcp
     if(j.isObject())
     {
       const QJsonObject o = j.toObject();
-      if(auto it = o.constFind(QStringLiteral("type"));
+      if(auto it = o.constFind("type");
          it != o.constEnd() && it->isString())
       {
         const auto t = it->toString();
@@ -1621,14 +1621,14 @@ namespace mcp
   SamplingMessage::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("role"), to_json(role));
+    o.insert("role", to_json(role));
     if(content.size() == 1)
     {
-      o.insert(QStringLiteral("content"), to_json(content.front()));
+      o.insert("content", to_json(content.front()));
     }
     else
     {
-      o.insert(QStringLiteral("content"), to_json(content));
+      o.insert("content", to_json(content));
     }
     return o;
   }
@@ -1637,7 +1637,7 @@ namespace mcp
   {
     const QJsonObject o = as_object(j);
     role = require<Role>(o, "role");
-    const QJsonValue c = o.value(QStringLiteral("content"));
+    const QJsonValue c = o.value("content");
     if(c.isArray())
     {
       content = from_json<QList<ContentBlock>>(c);
@@ -1653,14 +1653,14 @@ namespace mcp
   CreateMessageRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("messages"), to_json(messages));
-    o.insert(QStringLiteral("maxTokens"), to_json(max_tokens));
+    o.insert("messages", to_json(messages));
+    o.insert("maxTokens", to_json(max_tokens));
     put_optional(o, "modelPreferences", model_preferences);
     put_optional_string(o, "systemPrompt", system_prompt);
     put_optional(o, "includeContext", include_context);
     put_optional(o, "temperature", temperature);
     if(stop_sequences.has_value())
-      o.insert(QStringLiteral("stopSequences"), to_json(*stop_sequences));
+      o.insert("stopSequences", to_json(*stop_sequences));
     put_optional_json(o, "metadata", metadata);
     put_optional(o, "tools", tools);
     put_optional(o, "toolChoice", tool_choice);
@@ -1674,7 +1674,7 @@ namespace mcp
     messages = require<QList<SamplingMessage>>(o, "messages");
 
     // maxTokens: reject non-integer / negative / fractional values.
-    const QJsonValue mt = o.value(QStringLiteral("maxTokens"));
+    const QJsonValue mt = o.value("maxTokens");
     if(!mt.isDouble())
     {
       throw Error(error_code::invalid_params, "maxTokens must be an integer");
@@ -1696,7 +1696,7 @@ namespace mcp
     take_optional_string(o, "systemPrompt", system_prompt);
     take_optional(o, "includeContext", include_context);
     take_optional(o, "temperature", temperature);
-    if(auto it = o.constFind(QStringLiteral("stopSequences"));
+    if(auto it = o.constFind("stopSequences");
        it != o.constEnd() && it->isArray())
     {
       stop_sequences = from_json<QList<QString>>(*it);
@@ -1711,16 +1711,16 @@ namespace mcp
   CreateMessageResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("role"), to_json(role));
+    o.insert("role", to_json(role));
     if(content.size() == 1)
     {
-      o.insert(QStringLiteral("content"), to_json(content.front()));
+      o.insert("content", to_json(content.front()));
     }
     else
     {
-      o.insert(QStringLiteral("content"), to_json(content));
+      o.insert("content", to_json(content));
     }
-    o.insert(QStringLiteral("model"), to_json(model));
+    o.insert("model", to_json(model));
     put_optional_string(o, "stopReason", stop_reason);
     put_optional_json(o, "_meta", meta);
     return o;
@@ -1730,7 +1730,7 @@ namespace mcp
   {
     const QJsonObject o = as_object(j);
     role = require<Role>(o, "role");
-    const QJsonValue c = o.value(QStringLiteral("content"));
+    const QJsonValue c = o.value("content");
     if(c.isArray())
     {
       content = from_json<QList<ContentBlock>>(c);
@@ -1753,7 +1753,7 @@ namespace mcp
   Root::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("uri"), to_json(uri));
+    o.insert("uri", to_json(uri));
     put_optional_string(o, "name", name);
     return o;
   }
@@ -1770,7 +1770,7 @@ namespace mcp
   ListRootsResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("roots"), to_json(roots));
+    o.insert("roots", to_json(roots));
     return o;
   }
 
@@ -1789,8 +1789,8 @@ namespace mcp
   ResourceTemplateReference::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("ref/resource"));
-    o.insert(QStringLiteral("uri"), to_json(uri_template));
+    o.insert("type", to_json("ref/resource"));
+    o.insert("uri", to_json(uri_template));
     return o;
   }
 
@@ -1806,8 +1806,8 @@ namespace mcp
   PromptReference::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("type"), to_json("ref/prompt"));
-    o.insert(QStringLiteral("name"), to_json(name));
+    o.insert("type", to_json("ref/prompt"));
+    o.insert("name", to_json(name));
     put_optional_string(o, "title", title);
     return o;
   }
@@ -1824,8 +1824,8 @@ namespace mcp
   CompleteArgument::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("name"), to_json(name));
-    o.insert(QStringLiteral("value"), to_json(value));
+    o.insert("name", to_json(name));
+    o.insert("value", to_json(value));
     return o;
   }
 
@@ -1841,8 +1841,8 @@ namespace mcp
   CompleteRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("ref"), to_json(reference));
-    o.insert(QStringLiteral("argument"), to_json(argument));
+    o.insert("ref", to_json(reference));
+    o.insert("argument", to_json(argument));
     if(context_arguments.has_value())
     {
       QJsonObject ctx;
@@ -1852,8 +1852,8 @@ namespace mcp
         ctx.insert(it.key(), to_json(it.value()));
       }
       QJsonObject wrapper;
-      wrapper.insert(QStringLiteral("arguments"), ctx);
-      o.insert(QStringLiteral("context"), wrapper);
+      wrapper.insert("arguments", ctx);
+      o.insert("context", wrapper);
     }
     return o;
   }
@@ -1863,11 +1863,11 @@ namespace mcp
     const QJsonObject o = as_object(j);
     reference = require<CompletionReference>(o, "ref");
     argument = require<CompleteArgument>(o, "argument");
-    if(auto it = o.constFind(QStringLiteral("context"));
+    if(auto it = o.constFind("context");
        it != o.constEnd() && it->isObject())
     {
       const QJsonObject ctx = it->toObject();
-      if(auto a = ctx.constFind(QStringLiteral("arguments"));
+      if(auto a = ctx.constFind("arguments");
          a != ctx.constEnd() && a->isObject())
       {
         const QJsonObject src = a->toObject();
@@ -1889,7 +1889,7 @@ namespace mcp
   CompletionValues::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("values"), to_json(values));
+    o.insert("values", to_json(values));
     put_optional(o, "total", total);
     put_optional(o, "hasMore", has_more);
     return o;
@@ -1908,7 +1908,7 @@ namespace mcp
   CompleteResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("completion"), to_json(completion));
+    o.insert("completion", to_json(completion));
     return o;
   }
 
@@ -1929,8 +1929,8 @@ namespace mcp
     QJsonObject o;
     // mode is optional and defaults to "form"; we omit it to match the
     // canonical wire form most servers and validators emit.
-    o.insert(QStringLiteral("message"), to_json(message));
-    o.insert(QStringLiteral("requestedSchema"), requested_schema);
+    o.insert("message", to_json(message));
+    o.insert("requestedSchema", requested_schema);
     return o;
   }
 
@@ -1957,10 +1957,10 @@ namespace mcp
   ElicitUrlRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("mode"), to_json("url"));
-    o.insert(QStringLiteral("message"), to_json(message));
-    o.insert(QStringLiteral("url"), to_json(url));
-    o.insert(QStringLiteral("elicitationId"), to_json(elicitation_id));
+    o.insert("mode", to_json("url"));
+    o.insert("message", to_json(message));
+    o.insert("url", to_json(url));
+    o.insert("elicitationId", to_json(elicitation_id));
     return o;
   }
 
@@ -1978,7 +1978,7 @@ namespace mcp
   ElicitResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("action"), to_json(action));
+    o.insert("action", to_json(action));
     put_optional_json(o, "content", content);
     return o;
   }
@@ -1995,7 +1995,7 @@ namespace mcp
   ElicitationCompleteNotificationParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("elicitationId"), to_json(elicitation_id));
+    o.insert("elicitationId", to_json(elicitation_id));
     return o;
   }
 
@@ -2011,7 +2011,7 @@ namespace mcp
   UrlElicitationRequiredErrorData::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("elicitations"), to_json(elicitations));
+    o.insert("elicitations", to_json(elicitations));
     return o;
   }
 
@@ -2031,10 +2031,10 @@ namespace mcp
   Task::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("taskId"), to_json(taskId));
-    o.insert(QStringLiteral("status"), to_json(status));
-    o.insert(QStringLiteral("createdAt"), to_json(created_at));
-    o.insert(QStringLiteral("lastUpdatedAt"), to_json(last_updated_at));
+    o.insert("taskId", to_json(taskId));
+    o.insert("status", to_json(status));
+    o.insert("createdAt", to_json(created_at));
+    o.insert("lastUpdatedAt", to_json(last_updated_at));
     put_optional_string(o, "statusMessage", status_message);
     put_optional(o, "ttl", ttl);
     put_optional(o, "pollInterval", poll_interval);
@@ -2058,7 +2058,7 @@ namespace mcp
   CreateTaskResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("task"), to_json(task));
+    o.insert("task", to_json(task));
     return o;
   }
 
@@ -2073,7 +2073,7 @@ namespace mcp
   GetTaskRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("taskId"), to_json(task_id));
+    o.insert("taskId", to_json(task_id));
     return o;
   }
 
@@ -2088,7 +2088,7 @@ namespace mcp
   GetTaskResultRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("taskId"), to_json(task_id));
+    o.insert("taskId", to_json(task_id));
     return o;
   }
 
@@ -2120,7 +2120,7 @@ namespace mcp
   ListTasksResult::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("tasks"), to_json(tasks));
+    o.insert("tasks", to_json(tasks));
     put_optional_string(o, "nextCursor", next_cursor);
     return o;
   }
@@ -2137,7 +2137,7 @@ namespace mcp
   CancelTaskRequestParams::operator QJsonValue() const
   {
     QJsonObject o;
-    o.insert(QStringLiteral("taskId"), to_json(task_id));
+    o.insert("taskId", to_json(task_id));
     return o;
   }
 

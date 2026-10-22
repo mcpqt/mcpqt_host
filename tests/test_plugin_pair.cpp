@@ -39,7 +39,7 @@ public:
     const QStringList funcs = m_host.getFuncs();
     for(const QString& sig : funcs)
     {
-      if(sig.startsWith(QStringLiteral("QString TestPlugin::echo(")))
+      if(sig.startsWith("QString TestPlugin::echo("))
       {
         m_target = sig;
         break;
@@ -57,7 +57,7 @@ public slots:
   {
     if(m_target.isEmpty())
     {
-      return QStringLiteral("target echo function not found");
+      return "target echo function not found";
     }
 
     // Inter-plugin call: one positional argument, routed by the host.
