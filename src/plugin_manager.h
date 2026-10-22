@@ -16,8 +16,9 @@
 // builds the QGenericArguments and invokes the typed slot; plugins never pack
 // their parameters into a single QVariant.
 //
-// NOTE: functions are exposed only to other plugins for now. Automatically
-// publishing them as MCP tools is intentionally not part of this design yet.
+// NOTE: tools declared in a plugin's metadata "Tools" object are
+// auto-published: the host registers the matching public slot even when the
+// plugin did not call registerPublicSlots() itself.
 //
 // Lifetime: registered calls keep a weak reference to the loaded plugin, so
 // once a plugin is unloaded (or the manager destroyed) calling one of its
@@ -165,8 +166,9 @@ namespace mcp
     [[nodiscard]] bool has_function(const QString& signature) const;
 
     /// Tool declarations contributed by loaded plugins (from each plugin's
-    /// metadata "Tools" object), sorted by signature. Entries whose signature
-    /// is not a published function are dropped at load time with a warning.
+    /// metadata "Tools" object), sorted by signature. Declared signatures are
+    /// auto-published as the plugin's matching public slots; entries that do
+    /// not name a published function are dropped at load time with a warning.
     [[nodiscard]] QList<PluginTool> tools() const;
 
     /// The Tool declared for `signature`, if any loaded plugin

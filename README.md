@@ -318,10 +318,11 @@ deferred plugins across passes, so the directory can be scanned in any order.
 
 It may also declare a `"Tools"` object mapping a published function signature
 to an MCP `Tool` JSON value (name, description, inputSchema, ...).
-`PluginManager` parses these at load time and drops entries whose signature is
-not a function the plugin published. The mapping is exposed (not yet registered
-as MCP tools) via `PluginManager::tools()` and
-`PluginManager::tool(signature)`:
+`PluginManager` parses these at load time. A Tool whose signature names a public
+slot on the plugin is auto-published by the host even when the plugin did not
+register that slot through `registerPublicSlots()`; entries whose signature does
+not name a published function are dropped. The mapping is exposed via
+`PluginManager::tools()` and `PluginManager::tool(signature)`:
 
 ```json
 {

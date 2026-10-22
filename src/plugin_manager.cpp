@@ -211,10 +211,10 @@ namespace mcp
 
   PluginManager::PluginManager(void)
   {
-    register_host_function("bool Host::registerLogger(QString)",
+    register_host_function("bool mcp::Host::registerLogger(QString)",
                            [this](const QVariantList& args) -> QVariant { return registerLogger(args); });
 
-    register_host_function("QVariant Host::elicitPrompt(QVariant)",
+    register_host_function("QVariant mcp::Host::elicit(QVariant)",
                            [](const QVariantList& args) -> QVariant { return PluginManager::elicitPrompt(args); });
   }
 
@@ -739,6 +739,25 @@ namespace mcp
       }
       unload_instance(inst);
       return LoadOutcome::Failed;
+    }
+
+    // Auto-publish: a Tool declared in metadata also publishes the matching
+    // public slot on the plugin, even when the plugin did not register it via
+    // regFunc()/registerPublicSlots(). This lets a plugin expose tools purely
+    // by declaring them in its JSON metadata. Entries that match no public
+    // slot are still dropped with a warning.
+    for(auto it = declared_tools.constBegin(); it != declared_tools.constEnd();
+        ++it)
+    {
+      if(inst->signatures.contains(it.key()))
+      {
+        continue;
+      }
+      if(host_reg_func(inst, it.key()))
+      {
+        MCP_LOG_INFO("PluginManager: auto-registered Tool function '"
+                     + it.key() + "' declared by '" + inst->id + "'");
+      }
     }
 
     // Keep only Tools entries that name a function this plugin actually

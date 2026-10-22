@@ -73,10 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Tool declarations in metadata.** A plugin's metadata JSON may declare a
     `"Tools"` object mapping a published function signature to an MCP `Tool`
     JSON value (name, description, inputSchema, ...). `PluginManager` parses
-    and validates the
-    entries at load time (dropping signatures that are not published
-    functions) and exposes them via `tools()` / `tool(signature)`.
-    Registering them as MCP tools is a later step.
+    the entries at load time and auto-publishes the matching public slots on
+    the plugin, even when the plugin did not register them itself. Signatures
+    that do not name a published function are dropped; retained tools are
+    exposed via `tools()` / `tool(signature)` and registered as MCP tools.
   - **Typed functions, no QVariant packing.** A plugin publishes functions by
     declaring ordinary public slots with 0–10 parameters; parameter and return
     types are normal registered QMetaTypes (the return type may be `void` or
