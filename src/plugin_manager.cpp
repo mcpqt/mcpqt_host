@@ -718,6 +718,10 @@ namespace mcp
     host.unloadSelf = [this, inst](const QString& reason) {
       host_unload_self(inst, reason);
     };
+    host.log = [](int level, const QString& message) {
+      const int clamped = std::clamp(level, 0, 5);
+      log_message(static_cast<LogLevel>(clamped), message);
+    };
 
     try
     {
