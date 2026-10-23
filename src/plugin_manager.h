@@ -209,6 +209,8 @@ namespace mcp
   private:
     QVariant registerLogger(const QVariantList& args);
     static QVariant elicitPrompt(const QVariantList& args);
+    QVariant toolList(const QVariantList& args);
+    QVariant toolDetails(const QVariantList& args);
     struct Instance;
     struct FunctionEntry;
 

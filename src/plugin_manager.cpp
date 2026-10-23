@@ -216,6 +216,71 @@ namespace mcp
   }
 
 
+  QVariant PluginManager::toolList(const QVariantList& args)
+  {
+    if(!args.isEmpty())
+    {
+      throw Error{ error_code::invalid_params,
+                   "toolList expects no arguments" };
+    }
+    Server* server = current_server();
+    if(server == nullptr)
+    {
+      throw Error{ error_code::internal_error,
+                   "toolList is only available while a server is "
+                   "dispatching a plugin call" };
+    }
+
+    QStringList names;
+    for(const Tool& tool : server->tools())
+    {
+      names.append(tool.name);
+    }
+    return QVariant::fromValue(names);
+  }
+
+  QVariant PluginManager::toolDetails(const QVariantList& args)
+  {
+    if(args.size() != 1)
+    {
+      throw Error{ error_code::invalid_params,
+                   "toolDetails expects one tool name" };
+    }
+    Server* server = current_server();
+    if(server == nullptr)
+    {
+      throw Error{ error_code::internal_error,
+                   "toolDetails is only available while a server is "
+                   "dispatching a plugin call" };
+    }
+
+    const QString name = args[0].toString();
+    for(const Tool& tool : server->tools())
+    {
+      if(tool.name != name)
+      {
+        continue;
+      }
+      QVariantMap details;
+      details.insert(QStringLiteral("name"), tool.name);
+      details.insert(QStringLiteral("title"), tool.title);
+      details.insert(QStringLiteral("description"), tool.description);
+      details.insert(QStringLiteral("inputSchema"),
+                     dump(tool.input_schema));
+      details.insert(QStringLiteral("outputSchema"),
+                     dump(tool.output_schema));
+      details.insert(QStringLiteral("source"),
+                     name == QStringLiteral("plugin")
+                             || name.startsWith(QStringLiteral("tool_search"))
+                         ? QStringLiteral("builtin")
+                         : QStringLiteral("plugin"));
+      return QVariant::fromValue(details);
+    }
+
+    throw Error{ error_code::invalid_params,
+                 "unknown tool: " + name };
+  }
+
   PluginManager::PluginManager(void)
   {
     register_host_function("bool mcp::Host::registerLogger(QString)",
@@ -223,6 +288,12 @@ namespace mcp
 
     register_host_function("QVariant mcp::Host::elicit(QVariant)",
                            [](const QVariantList& args) -> QVariant { return PluginManager::elicitPrompt(args); });
+
+    register_host_function("QVariant mcp::Host::toolList()",
+                           [this](const QVariantList& args) -> QVariant { return toolList(args); });
+
+    register_host_function("QVariant mcp::Host::toolDetails(QString)",
+                           [this](const QVariantList& args) -> QVariant { return toolDetails(args); });
   }
 
   PluginManager::~PluginManager(void)

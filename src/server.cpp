@@ -656,6 +656,20 @@ namespace mcp
     return *this;
   }
 
+  QList<Tool> Server::tools(void)
+  {
+    QList<Tool> out;
+    {
+      std::lock_guard<std::mutex> lk(m_tools_mu);
+      out.reserve(m_tools.size());
+      for(auto it = m_tools.constBegin(); it != m_tools.constEnd(); ++it)
+      {
+        out.push_back(it.value().descriptor);
+      }
+    }
+    return out;
+  }
+
   Server& Server::resource(Resource descriptor, ResourceReadHandler handler)
   {
     std::lock_guard<std::mutex> lk(m_resources_mu);

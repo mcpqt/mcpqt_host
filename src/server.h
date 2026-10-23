@@ -112,6 +112,10 @@ namespace mcp
     Server& tool(QString name, QJsonValue input_schema, ToolHandler handler,
                  ToolMetadata meta);
 
+    /// Snapshot of all currently registered tool descriptors. Used by host
+    /// services that expose the tool catalog to plugins.
+    [[nodiscard]] QList<Tool> tools(void);
+
     /// Register a resource the server exposes. The handler is invoked
     /// when a client calls `resources/read` for this URI.
     Server& resource(Resource descriptor, ResourceReadHandler handler);

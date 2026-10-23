@@ -65,7 +65,7 @@ namespace mcp
 
     struct Options
     {
-      std::chrono::milliseconds default_request_timeout = 30 * 1000; // 30s
+      std::chrono::milliseconds default_request_timeout { 30 * 1000 }; // 30s
     };
 
     explicit Session(std::unique_ptr<Transport> transport);
