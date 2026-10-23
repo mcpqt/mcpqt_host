@@ -854,6 +854,428 @@ namespace mcp
   };
 
   // =====================================================================
+  // Route handlers and callback helpers
+  // =====================================================================
+
+  void HttpServerHost::handle_post_request(const QHttpServerRequest& req,
+                                           QTcpSocket* socket)
+  {
+    auto send = [socket](RawResponseSpec spec) {
+      write_raw_http_response(socket, spec);
+    };
+
+    if(!origin_allowed(req, m_opts.allowed_origins))
+    {
+      send({ 403,
+             QByteArrayLiteral("text/plain"),
+             QByteArrayLiteral("Origin not allowed"),
+             {} });
+      return;
+    }
+    // Spec MUST: a present-but-unsupported MCP-Protocol-Version
+    // is a 400. Header is allowed to be absent.
+    if(const auto v = header_value(req, "MCP-Protocol-Version");
+       !v.isNull() && !valid_protocol_version_header(v))
+    {
+      send({ 400,
+             QByteArrayLiteral("text/plain"),
+             QByteArray("unsupported MCP-Protocol-Version: ") + v,
+             {} });
+      return;
+    }
+    {
+      const auto auth = authorize(req, m_opts);
+      if(!auth.allowed)
+      {
+        QList<std::pair<QByteArray, QByteArray>> h;
+        if(!auth.challenge.isEmpty())
+        {
+          h.emplace_back(QByteArrayLiteral("WWW-Authenticate"),
+                         auth.challenge.toUtf8());
+        }
+        send({ auth.status, QByteArrayLiteral("text/plain"),
+               auth.body.toUtf8(), std::move(h) });
+        return;
+      }
+    }
+
+    // Resolve or mint session id.
+    QString sid;
+    if(const auto h = header_value(req, "Mcp-Session-Id"); !h.isNull())
+      sid = h;
+    const QString body = req.body();
+    const bool is_initialize_body = body.contains("\"initialize\"");
+    if(sid.isEmpty() && is_initialize_body)
+      sid = make_session_id();
+
+    std::shared_ptr<SessionContext> ctx;
+    if(!sid.isEmpty())
+    {
+      std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+      auto it = m_impl->sessions.find(sid);
+      if(it != m_impl->sessions.end())
+      {
+        ctx = it.value();
+        ctx->last_seen = std::chrono::steady_clock::now();
+      }
+      else if(is_initialize_body)
+      {
+        ctx = std::make_shared<SessionContext>();
+        ctx->id = sid;
+        ctx->last_seen = std::chrono::steady_clock::now();
+        ctx->transport = std::make_shared<HttpSessionTransport>();
+        ctx->server = std::make_unique<Server>(m_server_info);
+        m_factory(*ctx->server);
+
+        // Run the Server on its own thread, wrapping our
+        // shared_ptr transport in a unique_ptr-shaped shim so
+        // Server::run can take ownership without disturbing
+        // the host's own reference.
+        auto* server_ptr = ctx->server.get();
+        auto transport = ctx->transport;
+        ctx->run_thread = std::thread([server_ptr, transport]() {
+          server_ptr->run(
+              std::make_unique<SharedTransportShim>(transport));
+        });
+        m_impl->sessions.emplace(sid, ctx);
+      }
+    }
+
+    if(!ctx)
+    {
+      if(!sid.isEmpty())
+      {
+        // Session id refers to a session we no longer know
+        // (expired, deleted, or bogus). Spec: the server
+        // MUST respond 404 so the client knows to start a
+        // fresh session with a new InitializeRequest.
+        send({ 404,
+               QByteArrayLiteral("text/plain"),
+               QByteArrayLiteral("unknown or expired session id"),
+               {} });
+        return;
+      }
+      // No session id and not an initialize — malformed usage.
+      send({ 400,
+             QByteArrayLiteral("text/plain"),
+             QByteArrayLiteral(
+                 "missing session id; send initialize first"),
+             {} });
+      return;
+    }
+
+    // Hand the body to the per-session transport. If it was a
+    // request, we'll get a future for the response; otherwise
+    // we reply 202.
+    auto reply = ctx->transport->deliver_request_or_notification(
+        body.toUtf8());
+    if(!reply.has_value())
+    {
+      QList<std::pair<QByteArray, QByteArray>> h{
+        { QByteArrayLiteral("Mcp-Session-Id"), ctx->id.toUtf8() }
+      };
+      send({ 202,
+             QByteArrayLiteral("application/json"),
+             {},
+             std::move(h) });
+      return;
+    }
+
+    // Async: park the reply future and poll it from a QTimer that
+    // lives on this (server) thread, so the response is delivered
+    // without ever blocking a worker. This also lets the handler
+    // issue server-initiated requests (sampling/roots/...) whose
+    // answers arrive as additional POSTs on other connections.
+    auto reply_shared = std::make_shared<std::future<QByteArray>>(
+        std::move(*reply));
+    auto budget
+        = std::make_shared<std::chrono::steady_clock::time_point>(
+            std::chrono::steady_clock::now()
+            + std::chrono::seconds{ 30 });
+    const QString session_id = ctx->id;
+    QPointer<QTcpSocket> sock = socket;
+
+    auto* timer = new QTimer(m_impl->http);
+    timer->setInterval(10);
+    QObject::connect(
+        timer, &QTimer::timeout, timer,
+        [this, reply_shared, budget, session_id, sock, timer]() {
+          poll_post_reply(timer, sock, session_id, reply_shared, budget);
+        });
+    QObject::connect(socket, &QAbstractSocket::disconnected, timer,
+                     [timer]() {
+                       timer->stop();
+                       timer->deleteLater();
+                     });
+    timer->start();
+  }
+
+  void HttpServerHost::poll_post_reply(
+      QTimer* timer, QPointer<QTcpSocket> sock, const QString& session_id,
+      const std::shared_ptr<std::future<QByteArray>>& reply_shared,
+      const std::shared_ptr<std::chrono::steady_clock::time_point>& budget)
+  {
+    QList<std::pair<QByteArray, QByteArray>> h{
+      { QByteArrayLiteral("Mcp-Session-Id"), session_id.toUtf8() }
+    };
+    if(!sock || sock->state() != QAbstractSocket::ConnectedState)
+    {
+      timer->stop();
+      timer->deleteLater();
+      return;
+    }
+    if(reply_shared->wait_for(std::chrono::milliseconds{ 0 })
+       == std::future_status::ready)
+    {
+      timer->stop();
+      timer->deleteLater();
+      try
+      {
+        QByteArray rbody = reply_shared->get();
+        write_raw_http_response(
+            sock, { 200, QByteArrayLiteral("application/json"),
+                    rbody, std::move(h) });
+      }
+      catch(const std::exception& e)
+      {
+        write_raw_http_response(
+            sock, { 500, QByteArrayLiteral("text/plain"),
+                    QByteArray("handler error: ") + e.what(),
+                    std::move(h) });
+      }
+      catch(...)
+      {
+        write_raw_http_response(
+            sock, { 500, QByteArrayLiteral("text/plain"),
+                    QByteArrayLiteral("handler error"),
+                    std::move(h) });
+      }
+      return;
+    }
+    if(std::chrono::steady_clock::now() >= *budget)
+    {
+      timer->stop();
+      timer->deleteLater();
+      write_raw_http_response(
+          sock, { 504, QByteArrayLiteral("text/plain"),
+                  QByteArrayLiteral("handler timed out"),
+                  std::move(h) });
+    }
+  }
+
+  void HttpServerHost::handle_get_request(const QHttpServerRequest& req,
+                                          QTcpSocket* socket)
+  {
+    if(!origin_allowed(req, m_opts.allowed_origins))
+    {
+      write_raw_http_error(socket, 403, "Origin not allowed");
+      return;
+    }
+    const auto auth = authorize(req, m_opts);
+    if(!auth.allowed)
+    {
+      write_raw_http_error(socket, auth.status, auth.body.toUtf8(),
+                           auth.challenge.toUtf8());
+      return;
+    }
+    const auto sid = header_value(req, "Mcp-Session-Id");
+    if(sid.isEmpty())
+    {
+      // No session -> we have no business holding a stream.
+      write_raw_http_error(socket, 405, "");
+      return;
+    }
+    std::shared_ptr<SessionContext> ctx;
+    {
+      std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+      auto sit = m_impl->sessions.find(QString::fromUtf8(sid));
+      if(sit != m_impl->sessions.end())
+        ctx = sit.value();
+    }
+    if(!ctx)
+    {
+      write_raw_http_error(socket, 404, "");
+      return;
+    }
+
+    auto transport = ctx->transport;
+    transport->enter_get_stream();
+
+    QByteArray head = QByteArrayLiteral("HTTP/1.1 200 OK\r\n");
+    head += QByteArrayLiteral("Content-Type: text/event-stream\r\n");
+    head += QByteArrayLiteral("Cache-Control: no-cache\r\n");
+    head += QByteArrayLiteral("Connection: keep-alive\r\n");
+    head += QByteArrayLiteral("Transfer-Encoding: chunked\r\n");
+    head += QByteArrayLiteral("\r\n");
+    socket->write(head);
+
+    QPointer<QTcpSocket> sock = socket;
+    auto* timer = new QTimer(m_impl->http);
+    timer->setInterval(10);
+    auto last_beat
+        = std::make_shared<std::chrono::steady_clock::time_point>(
+            std::chrono::steady_clock::now());
+
+    QObject::connect(
+        timer, &QTimer::timeout, timer,
+        [this, transport, sock, timer, last_beat]() {
+          poll_get_stream(timer, sock, transport, last_beat);
+        });
+    QObject::connect(socket, &QAbstractSocket::disconnected, timer,
+                     [transport, timer]() {
+                       transport->leave_get_stream();
+                       timer->stop();
+                       timer->deleteLater();
+                     });
+    timer->start();
+  }
+
+  void HttpServerHost::poll_get_stream(
+      QTimer* timer, QPointer<QTcpSocket> sock,
+      const std::shared_ptr<Transport>& transport,
+      const std::shared_ptr<std::chrono::steady_clock::time_point>& last_beat)
+  {
+    auto session_transport
+        = std::static_pointer_cast<HttpSessionTransport>(transport);
+    if(!sock || session_transport->is_closed()
+       || sock->state() != QAbstractSocket::ConnectedState)
+    {
+      session_transport->leave_get_stream();
+      // Close the TCP connection so the client's GET
+      // reply observes EOF and its read loop returns.
+      // Without this the peer can hang forever waiting
+      // on a stream the server has already abandoned.
+      if(QTcpSocket* s = sock.data())
+        s->disconnectFromHost();
+      timer->stop();
+      timer->deleteLater();
+      return;
+    }
+    while(true)
+    {
+      const QByteArray frame = session_transport->try_get_frame();
+      if(frame.isNull())
+        break;
+      write_sse_chunk(sock, frame);
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if(now - *last_beat >= std::chrono::seconds{ 15 })
+    {
+      *last_beat = now;
+      write_sse_comment(sock);
+    }
+  }
+
+  QHttpServerResponse
+  HttpServerHost::handle_delete_request(const QHttpServerRequest& req)
+  {
+    if(!origin_allowed(req, m_opts.allowed_origins))
+    {
+      return text_response("Origin not allowed",
+                           QHttpServerResponder::StatusCode::Forbidden);
+    }
+    const auto auth = authorize(req, m_opts);
+    if(!auth.allowed)
+    {
+      auto r = text_response(auth.body, status_from_int(auth.status));
+      if(!auth.challenge.isEmpty())
+      {
+        r.setHeader(QByteArrayLiteral("WWW-Authenticate"),
+                    auth.challenge.toUtf8());
+      }
+      return r;
+    }
+    const auto it = header_value(req, "Mcp-Session-Id");
+    if(it.isNull())
+    {
+      return QHttpServerResponse(
+          QHttpServerResponder::StatusCode::BadRequest);
+    }
+    std::shared_ptr<SessionContext> ctx;
+    {
+      std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+      auto sit = m_impl->sessions.find(QString::fromUtf8(it));
+      if(sit != m_impl->sessions.end())
+      {
+        ctx = sit.value();
+        m_impl->sessions.erase(sit);
+      }
+    }
+    if(ctx)
+    {
+      // Notify the embedder while the Server is still fully
+      // alive (before close/join/destruction) so it can drop
+      // any raw Server* it holds. The sessions_mu is already
+      // released.
+      invoke_session_closed(m_opts, *ctx->server);
+      // Close the transport first, let its on_close cascade
+      // unblock the server's run loop, then join.
+      ctx->transport->close();
+      if(ctx->run_thread.joinable())
+        ctx->run_thread.join();
+    }
+    return QHttpServerResponse(
+        QHttpServerResponder::StatusCode::NoContent);
+  }
+
+  QHttpServerResponse
+  HttpServerHost::handle_options_request(const QHttpServerRequest& req)
+  {
+    const auto acao = resolve_cors_origin(req, m_opts.allowed_origins);
+    if(acao.isEmpty())
+    {
+      return QHttpServerResponse(
+          QHttpServerResponder::StatusCode::Forbidden);
+    }
+    auto r = QHttpServerResponse(
+        QHttpServerResponder::StatusCode::NoContent);
+    r.setHeader(QByteArrayLiteral("Access-Control-Allow-Origin"),
+                acao.toUtf8());
+    r.setHeader(QByteArrayLiteral("Access-Control-Allow-Methods"),
+                QByteArrayLiteral("GET, POST, DELETE, OPTIONS"));
+    r.setHeader(QByteArrayLiteral("Access-Control-Allow-Headers"),
+                QByteArrayLiteral("Authorization, Content-Type, "
+                                  "Mcp-Session-Id, "
+                                  "MCP-Protocol-Version, "
+                                  "Last-Event-ID, Accept"));
+    r.setHeader(QByteArrayLiteral("Access-Control-Expose-Headers"),
+                QByteArrayLiteral("Mcp-Session-Id, WWW-Authenticate"));
+    r.setHeader(QByteArrayLiteral("Access-Control-Max-Age"),
+                QByteArrayLiteral("600"));
+    return r;
+  }
+
+  QHttpServerResponse HttpServerHost::handle_resource_metadata_request(void)
+  {
+    const QByteArray body = dump(m_opts.resource_metadata).toUtf8();
+    auto r = QHttpServerResponse(QByteArrayLiteral("application/json"), body,
+                                 QHttpServerResponder::StatusCode::Ok);
+    r.setHeader(QByteArrayLiteral("Access-Control-Allow-Origin"),
+                QByteArrayLiteral("*"));
+    r.setHeader(QByteArrayLiteral("Cache-Control"),
+                QByteArrayLiteral("public, max-age=3600"));
+    return r;
+  }
+
+  void HttpServerHost::bind_listener(std::shared_ptr<std::promise<int>> bound)
+  {
+    QHostAddress addr;
+    if(m_opts.host == "localhost")
+    {
+      addr = QHostAddress::LocalHost;
+    }
+    else
+    {
+      addr = QHostAddress(m_opts.host);
+    }
+    const quint16 requested = static_cast<quint16>(m_opts.port);
+    const quint16 actual = m_impl->http->listen(addr, requested);
+    const int result = actual != 0 ? static_cast<int>(actual) : -1;
+    m_impl->port.store(result, std::memory_order_release);
+    bound->set_value(result);
+  }
+
+  // =====================================================================
   // Construction / destruction
   // =====================================================================
 
@@ -957,202 +1379,7 @@ namespace mcp
             m_opts.path, QHttpServerRequest::Method::Post,
             [this](const QRegularExpressionMatch&,
                    const QHttpServerRequest& req, QTcpSocket* socket) {
-              auto send = [socket](RawResponseSpec spec) {
-                write_raw_http_response(socket, spec);
-              };
-
-              if(!origin_allowed(req, m_opts.allowed_origins))
-              {
-                send({ 403,
-                       QByteArrayLiteral("text/plain"),
-                       QByteArrayLiteral("Origin not allowed"),
-                       {} });
-                return;
-              }
-              // Spec MUST: a present-but-unsupported MCP-Protocol-Version
-              // is a 400. Header is allowed to be absent.
-              if(const auto v = header_value(req, "MCP-Protocol-Version");
-                 !v.isNull() && !valid_protocol_version_header(v))
-              {
-                send({ 400,
-                       QByteArrayLiteral("text/plain"),
-                       QByteArray("unsupported MCP-Protocol-Version: ") + v,
-                       {} });
-                return;
-              }
-              {
-                const auto auth = authorize(req, m_opts);
-                if(!auth.allowed)
-                {
-                  QList<std::pair<QByteArray, QByteArray>> h;
-                  if(!auth.challenge.isEmpty())
-                  {
-                    h.emplace_back(QByteArrayLiteral("WWW-Authenticate"),
-                                   auth.challenge.toUtf8());
-                  }
-                  send({ auth.status, QByteArrayLiteral("text/plain"),
-                         auth.body.toUtf8(), std::move(h) });
-                  return;
-                }
-              }
-
-              // Resolve or mint session id.
-              QString sid;
-              if(const auto h = header_value(req, "Mcp-Session-Id");
-                 !h.isNull())
-                sid = h;
-              const QString body = req.body();
-              const bool is_initialize_body = body.contains("\"initialize\"");
-              if(sid.isEmpty() && is_initialize_body)
-                sid = make_session_id();
-
-              std::shared_ptr<SessionContext> ctx;
-              if(!sid.isEmpty())
-              {
-                std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
-                auto it = m_impl->sessions.find(sid);
-                if(it != m_impl->sessions.end())
-                {
-                  ctx = it.value();
-                  ctx->last_seen = std::chrono::steady_clock::now();
-                }
-                else if(is_initialize_body)
-                {
-                  ctx = std::make_shared<SessionContext>();
-                  ctx->id = sid;
-                  ctx->last_seen = std::chrono::steady_clock::now();
-                  ctx->transport = std::make_shared<HttpSessionTransport>();
-                  ctx->server = std::make_unique<Server>(m_server_info);
-                  m_factory(*ctx->server);
-
-                  // Run the Server on its own thread, wrapping our
-                  // shared_ptr transport in a unique_ptr-shaped shim so
-                  // Server::run can take ownership without disturbing
-                  // the host's own reference.
-                  auto* server_ptr = ctx->server.get();
-                  auto transport = ctx->transport;
-                  ctx->run_thread = std::thread([server_ptr, transport]() {
-                    server_ptr->run(
-                        std::make_unique<SharedTransportShim>(transport));
-                  });
-                  m_impl->sessions.emplace(sid, ctx);
-                }
-              }
-
-              if(!ctx)
-              {
-                if(!sid.isEmpty())
-                {
-                  // Session id refers to a session we no longer know
-                  // (expired, deleted, or bogus). Spec: the server
-                  // MUST respond 404 so the client knows to start a
-                  // fresh session with a new InitializeRequest.
-                  send({ 404,
-                         QByteArrayLiteral("text/plain"),
-                         QByteArrayLiteral("unknown or expired session id"),
-                         {} });
-                  return;
-                }
-                // No session id and not an initialize — malformed usage.
-                send({ 400,
-                       QByteArrayLiteral("text/plain"),
-                       QByteArrayLiteral(
-                           "missing session id; send initialize first"),
-                       {} });
-                return;
-              }
-
-              // Hand the body to the per-session transport. If it was a
-              // request, we'll get a future for the response; otherwise
-              // we reply 202.
-              auto reply = ctx->transport->deliver_request_or_notification(
-                  body.toUtf8());
-              if(!reply.has_value())
-              {
-                QList<std::pair<QByteArray, QByteArray>> h{
-                  { QByteArrayLiteral("Mcp-Session-Id"), ctx->id.toUtf8() }
-                };
-                send({ 202,
-                       QByteArrayLiteral("application/json"),
-                       {},
-                       std::move(h) });
-                return;
-              }
-
-              // Async: park the reply future and poll it from a QTimer that
-              // lives on this (server) thread, so the response is delivered
-              // without ever blocking a worker. This also lets the handler
-              // issue server-initiated requests (sampling/roots/...) whose
-              // answers arrive as additional POSTs on other connections.
-              auto reply_shared = std::make_shared<std::future<QByteArray>>(
-                  std::move(*reply));
-              auto budget
-                  = std::make_shared<std::chrono::steady_clock::time_point>(
-                      std::chrono::steady_clock::now()
-                      + std::chrono::seconds{ 30 });
-              const QString session_id = ctx->id;
-              QPointer<QTcpSocket> sock = socket;
-
-              auto* timer = new QTimer(m_impl->http);
-              timer->setInterval(10);
-              QObject::connect(
-                  timer, &QTimer::timeout, timer,
-                  [reply_shared, budget, session_id, sock, timer]() {
-                    QList<std::pair<QByteArray, QByteArray>> h{
-                      { QByteArrayLiteral("Mcp-Session-Id"),
-                        session_id.toUtf8() }
-                    };
-                    if(!sock
-                       || sock->state() != QAbstractSocket::ConnectedState)
-                    {
-                      timer->stop();
-                      timer->deleteLater();
-                      return;
-                    }
-                    if(reply_shared->wait_for(std::chrono::milliseconds{ 0 })
-                       == std::future_status::ready)
-                    {
-                      timer->stop();
-                      timer->deleteLater();
-                      try
-                      {
-                        QByteArray rbody = reply_shared->get();
-                        write_raw_http_response(
-                            sock, { 200, QByteArrayLiteral("application/json"),
-                                    rbody, std::move(h) });
-                      }
-                      catch(const std::exception& e)
-                      {
-                        write_raw_http_response(
-                            sock, { 500, QByteArrayLiteral("text/plain"),
-                                    QByteArray("handler error: ") + e.what(),
-                                    std::move(h) });
-                      }
-                      catch(...)
-                      {
-                        write_raw_http_response(
-                            sock, { 500, QByteArrayLiteral("text/plain"),
-                                    QByteArrayLiteral("handler error"),
-                                    std::move(h) });
-                      }
-                      return;
-                    }
-                    if(std::chrono::steady_clock::now() >= *budget)
-                    {
-                      timer->stop();
-                      timer->deleteLater();
-                      write_raw_http_response(
-                          sock, { 504, QByteArrayLiteral("text/plain"),
-                                  QByteArrayLiteral("handler timed out"),
-                                  std::move(h) });
-                    }
-                  });
-              QObject::connect(socket, &QAbstractSocket::disconnected, timer,
-                               [timer]() {
-                                 timer->stop();
-                                 timer->deleteLater();
-                               });
-              timer->start();
+              handle_post_request(req, socket);
             }));
 
     // ---- GET: long-lived SSE stream for server-initiated traffic ----
@@ -1163,147 +1390,14 @@ namespace mcp
             m_opts.path, QHttpServerRequest::Method::Get,
             [this](const QRegularExpressionMatch&,
                    const QHttpServerRequest& req, QTcpSocket* socket) {
-              if(!origin_allowed(req, m_opts.allowed_origins))
-              {
-                write_raw_http_error(socket, 403, "Origin not allowed");
-                return;
-              }
-              const auto auth = authorize(req, m_opts);
-              if(!auth.allowed)
-              {
-                write_raw_http_error(socket, auth.status, auth.body.toUtf8(),
-                                     auth.challenge.toUtf8());
-                return;
-              }
-              const auto sid = header_value(req, "Mcp-Session-Id");
-              if(sid.isEmpty())
-              {
-                // No session -> we have no business holding a stream.
-                write_raw_http_error(socket, 405, "");
-                return;
-              }
-              std::shared_ptr<SessionContext> ctx;
-              {
-                std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
-                auto sit = m_impl->sessions.find(QString::fromUtf8(sid));
-                if(sit != m_impl->sessions.end())
-                  ctx = sit.value();
-              }
-              if(!ctx)
-              {
-                write_raw_http_error(socket, 404, "");
-                return;
-              }
-
-              auto transport = ctx->transport;
-              transport->enter_get_stream();
-
-              QByteArray head = QByteArrayLiteral("HTTP/1.1 200 OK\r\n");
-              head += QByteArrayLiteral("Content-Type: text/event-stream\r\n");
-              head += QByteArrayLiteral("Cache-Control: no-cache\r\n");
-              head += QByteArrayLiteral("Connection: keep-alive\r\n");
-              head += QByteArrayLiteral("Transfer-Encoding: chunked\r\n");
-              head += QByteArrayLiteral("\r\n");
-              socket->write(head);
-
-              QPointer<QTcpSocket> sock = socket;
-              auto* timer = new QTimer(m_impl->http);
-              timer->setInterval(10);
-              auto last_beat
-                  = std::make_shared<std::chrono::steady_clock::time_point>(
-                      std::chrono::steady_clock::now());
-
-              QObject::connect(
-                  timer, &QTimer::timeout, timer,
-                  [transport, sock, timer, last_beat]() {
-                    if(!sock || transport->is_closed()
-                       || sock->state() != QAbstractSocket::ConnectedState)
-                    {
-                      transport->leave_get_stream();
-                      // Close the TCP connection so the client's GET
-                      // reply observes EOF and its read loop returns.
-                      // Without this the peer can hang forever waiting
-                      // on a stream the server has already abandoned.
-                      if(QTcpSocket* s = sock.data())
-                        s->disconnectFromHost();
-                      timer->stop();
-                      timer->deleteLater();
-                      return;
-                    }
-                    while(true)
-                    {
-                      const QByteArray frame = transport->try_get_frame();
-                      if(frame.isNull())
-                        break;
-                      write_sse_chunk(sock, frame);
-                    }
-                    const auto now = std::chrono::steady_clock::now();
-                    if(now - *last_beat >= std::chrono::seconds{ 15 })
-                    {
-                      *last_beat = now;
-                      write_sse_comment(sock);
-                    }
-                  });
-              QObject::connect(socket, &QAbstractSocket::disconnected, timer,
-                               [transport, timer]() {
-                                 transport->leave_get_stream();
-                                 timer->stop();
-                                 timer->deleteLater();
-                               });
-              timer->start();
+              handle_get_request(req, socket);
             }));
 
     // ---- DELETE: terminate session ----
     http->route(
         m_opts.path, QHttpServerRequest::Method::Delete,
         [this](const QHttpServerRequest& req) -> QHttpServerResponse {
-          if(!origin_allowed(req, m_opts.allowed_origins))
-          {
-            return text_response("Origin not allowed",
-                                 QHttpServerResponder::StatusCode::Forbidden);
-          }
-          const auto auth = authorize(req, m_opts);
-          if(!auth.allowed)
-          {
-            auto r = text_response(auth.body, status_from_int(auth.status));
-            if(!auth.challenge.isEmpty())
-            {
-              r.setHeader(QByteArrayLiteral("WWW-Authenticate"),
-                          auth.challenge.toUtf8());
-            }
-            return r;
-          }
-          const auto it = header_value(req, "Mcp-Session-Id");
-          if(it.isNull())
-          {
-            return QHttpServerResponse(
-                QHttpServerResponder::StatusCode::BadRequest);
-          }
-          std::shared_ptr<SessionContext> ctx;
-          {
-            std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
-            auto sit = m_impl->sessions.find(QString::fromUtf8(it));
-            if(sit != m_impl->sessions.end())
-            {
-              ctx = sit.value();
-              m_impl->sessions.erase(sit);
-            }
-          }
-          if(ctx)
-          {
-            // Notify the embedder while the Server is still fully
-            // alive (before close/join/destruction) so it can drop
-            // any raw Server* it holds. The sessions_mu is already
-            // released.
-            invoke_session_closed(m_opts, *ctx->server);
-            // Close the transport first, let its on_close cascade
-            // unblock the server's run loop, then join.
-            ctx->transport->close();
-            if(ctx->run_thread.joinable())
-              ctx->run_thread.join();
-          }
-          return QHttpServerResponse(
-              QHttpServerResponder::StatusCode::NoContent);
+          return handle_delete_request(req);
         });
 
     // ---- OPTIONS preflight ----
@@ -1312,45 +1406,16 @@ namespace mcp
       http->route(
           m_opts.path, QHttpServerRequest::Method::Options,
           [this](const QHttpServerRequest& req) -> QHttpServerResponse {
-            const auto acao = resolve_cors_origin(req, m_opts.allowed_origins);
-            if(acao.isEmpty())
-            {
-              return QHttpServerResponse(
-                  QHttpServerResponder::StatusCode::Forbidden);
-            }
-            auto r = QHttpServerResponse(
-                QHttpServerResponder::StatusCode::NoContent);
-            r.setHeader(QByteArrayLiteral("Access-Control-Allow-Origin"),
-                        acao.toUtf8());
-            r.setHeader(QByteArrayLiteral("Access-Control-Allow-Methods"),
-                        QByteArrayLiteral("GET, POST, DELETE, OPTIONS"));
-            r.setHeader(QByteArrayLiteral("Access-Control-Allow-Headers"),
-                        QByteArrayLiteral("Authorization, Content-Type, "
-                                          "Mcp-Session-Id, "
-                                          "MCP-Protocol-Version, "
-                                          "Last-Event-ID, Accept"));
-            r.setHeader(QByteArrayLiteral("Access-Control-Expose-Headers"),
-                        QByteArrayLiteral("Mcp-Session-Id, WWW-Authenticate"));
-            r.setHeader(QByteArrayLiteral("Access-Control-Max-Age"),
-                        QByteArrayLiteral("600"));
-            return r;
+            return handle_options_request(req);
           });
     }
 
     // ---- RFC 9728 Protected Resource Metadata ----
     if(!m_opts.resource_metadata.isNull())
     {
-      const QByteArray body = dump(m_opts.resource_metadata).toUtf8();
       const auto handler
-          = [body](const QHttpServerRequest&) -> QHttpServerResponse {
-        auto r
-            = QHttpServerResponse(QByteArrayLiteral("application/json"), body,
-                                  QHttpServerResponder::StatusCode::Ok);
-        r.setHeader(QByteArrayLiteral("Access-Control-Allow-Origin"),
-                    QByteArrayLiteral("*"));
-        r.setHeader(QByteArrayLiteral("Cache-Control"),
-                    QByteArrayLiteral("public, max-age=3600"));
-        return r;
+          = [this](const QHttpServerRequest&) -> QHttpServerResponse {
+        return handle_resource_metadata_request();
       };
       http->route("/.well-known/oauth-protected-resource",
                   QHttpServerRequest::Method::Get, handler);
@@ -1370,20 +1435,7 @@ namespace mcp
     auto bound = std::make_shared<std::promise<int>>();
     auto bound_fut = bound->get_future();
     QObject::connect(m_impl->thread, &QThread::started, http, [this, bound]() {
-      QHostAddress addr;
-      if(m_opts.host == "localhost")
-      {
-        addr = QHostAddress::LocalHost;
-      }
-      else
-      {
-        addr = QHostAddress(m_opts.host);
-      }
-      const quint16 requested = static_cast<quint16>(m_opts.port);
-      const quint16 actual = m_impl->http->listen(addr, requested);
-      const int result = actual != 0 ? static_cast<int>(actual) : -1;
-      m_impl->port.store(result, std::memory_order_release);
-      bound->set_value(result);
+      bind_listener(bound);
     });
 
     m_impl->thread->start();

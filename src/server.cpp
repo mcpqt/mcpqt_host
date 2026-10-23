@@ -1459,39 +1459,37 @@ namespace mcp
       m_session = local;
     }
 
-    local->set_request_handler(
-        QString{ method_initialize },
+    local->set_request_handler(method_initialize,
         [this](const QJsonValue& p) { return handle_initialize(p); });
-    local->set_request_handler(
-        QString{ method_tools_list },
+
+    local->set_request_handler(method_tools_list,
         [this](const QJsonValue& p) { return handle_list_tools(p); });
-    local->set_request_handler(
-        QString{ method_tools_call },
+
+    local->set_request_handler(method_tools_call,
         [this](const QJsonValue& p) { return handle_call_tool(p); });
-    local->set_request_handler(
-        QString{ method_resources_list },
+
+    local->set_request_handler(method_resources_list,
         [this](const QJsonValue& p) { return handle_list_resources(p); });
-    local->set_request_handler(QString{ method_resources_templates_list },
-                               [this](const QJsonValue& p) {
-                                 return handle_list_resource_templates(p);
-                               });
-    local->set_request_handler(
-        QString{ method_resources_read },
+
+    local->set_request_handler(method_resources_templates_list,
+        [this](const QJsonValue& p) { return handle_list_resource_templates(p); });
+
+    local->set_request_handler(method_resources_read,
         [this](const QJsonValue& p) { return handle_read_resource(p); });
-    local->set_request_handler(
-        QString{ method_prompts_list },
+
+    local->set_request_handler(method_prompts_list,
         [this](const QJsonValue& p) { return handle_list_prompts(p); });
-    local->set_request_handler(
-        QString{ method_prompts_get },
+
+    local->set_request_handler(method_prompts_get,
         [this](const QJsonValue& p) { return handle_get_prompt(p); });
-    local->set_request_handler(
-        QString{ method_ping },
+
+    local->set_request_handler(method_ping,
         [this](const QJsonValue& p) { return handle_ping(p); });
-    local->set_request_handler(
-        QString{ method_logging_set_level },
+
+    local->set_request_handler(method_logging_set_level,
         [this](const QJsonValue& p) { return handle_set_level(p); });
-    local->set_request_handler(
-        QString{ method_completion_complete },
+
+    local->set_request_handler(method_completion_complete,
         [this](const QJsonValue& p) { return handle_complete(p); });
 
     if(m_tasks)

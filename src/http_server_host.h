@@ -38,12 +38,15 @@
 #include "protocol.h"
 #include "server.h"
 
+#include <QByteArray>
 #include <QList>
+#include <QPointer>
 #include <QString>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -53,6 +56,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+class QHttpServerRequest;
+class QHttpServerResponse;
+class QTcpSocket;
+class QTimer;
 
 namespace mcp
 {
@@ -235,6 +243,22 @@ namespace mcp
   private:
     struct SessionContext;
     struct Impl;
+
+    void handle_post_request(const QHttpServerRequest& req, QTcpSocket* socket);
+    void handle_get_request(const QHttpServerRequest& req, QTcpSocket* socket);
+    QHttpServerResponse handle_delete_request(const QHttpServerRequest& req);
+    QHttpServerResponse handle_options_request(const QHttpServerRequest& req);
+    QHttpServerResponse handle_resource_metadata_request(void);
+    void bind_listener(std::shared_ptr<std::promise<int>> bound);
+
+    void poll_post_reply(
+        QTimer* timer, QPointer<QTcpSocket> sock, const QString& session_id,
+        const std::shared_ptr<std::future<QByteArray>>& reply,
+        const std::shared_ptr<std::chrono::steady_clock::time_point>& budget);
+    void poll_get_stream(
+        QTimer* timer, QPointer<QTcpSocket> sock,
+        const std::shared_ptr<Transport>& transport,
+        const std::shared_ptr<std::chrono::steady_clock::time_point>& last_beat);
 
     Implementation m_server_info;
     Options m_opts;

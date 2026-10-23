@@ -598,15 +598,12 @@ namespace mcp
       QObject::connect(reply, &QNetworkReply::readyRead, &loop, [&] {
         buf += QString::fromUtf8(reply->readAll());
         drain_sse(buf, [this](SseEvent se) {
-          if(!se.id.isNull() && !se.id.isEmpty())
           {
             std::lock_guard<std::mutex> lk(m_get_mu_state);
-            m_last_event_id = se.id;
-          }
-          if(se.retry_ms.has_value())
-          {
-            std::lock_guard<std::mutex> lk(m_get_mu_state);
-            m_next_retry_ms = se.retry_ms;
+            if(!se.id.isNull() && !se.id.isEmpty())
+              m_last_event_id = se.id;
+            if(se.retry_ms.has_value())
+              m_next_retry_ms = se.retry_ms;
           }
           if(!se.data.isEmpty())
             deliver_frame(se.data.toUtf8());
@@ -619,15 +616,12 @@ namespace mcp
       // Drain anything that arrived after the last readyRead.
       buf += QString::fromUtf8(reply->readAll());
       drain_sse(buf, [this](SseEvent se) {
-        if(!se.id.isNull() && !se.id.isEmpty())
         {
           std::lock_guard<std::mutex> lk(m_get_mu_state);
-          m_last_event_id = se.id;
-        }
-        if(se.retry_ms.has_value())
-        {
-          std::lock_guard<std::mutex> lk(m_get_mu_state);
-          m_next_retry_ms = se.retry_ms;
+          if(!se.id.isNull() && !se.id.isEmpty())
+            m_last_event_id = se.id;
+          if(se.retry_ms.has_value())
+            m_next_retry_ms = se.retry_ms;
         }
         if(!se.data.isEmpty())
           deliver_frame(se.data.toUtf8());

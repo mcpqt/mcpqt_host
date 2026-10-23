@@ -716,19 +716,18 @@ namespace mcp
 
     HostInterface host;
     host.getFuncs = [this] { return functions(); };
-    host.callFunc = [this](const QString& sig, const QVariantList& args) {
-      return call_function(sig, args);
-    };
-    host.regFunc = [this, inst](const QString& sig) {
-      return host_reg_func(inst, sig);
-    };
-    host.unloadSelf = [this, inst](const QString& reason) {
-      host_unload_self(inst, reason);
-    };
-    host.log = [](int level, const QString& message) {
-      const int clamped = std::clamp(level, 0, 5);
-      log_message(static_cast<LogLevel>(clamped), message);
-    };
+
+    host.callFunc = [this](const QString& sig, const QVariantList& args)
+      { return call_function(sig, args); };
+
+    host.regFunc = [this, inst](const QString& sig)
+      { return host_reg_func(inst, sig); };
+
+    host.unloadSelf = [this, inst](const QString& reason)
+      { host_unload_self(inst, reason); };
+
+    host.log = [](int level, const QString& message)
+      { log_message(static_cast<LogLevel>(std::clamp(level, 0, 5)), message); };
 
     try
     {
