@@ -78,9 +78,9 @@ namespace mcp
     int m_wakeup_read_fd = -1; // self-pipe read end (closed-on-stop)
     int m_wakeup_write_fd = -1;
 
-    std::atomic<bool> m_running{ false };
-    std::atomic<bool> m_closing{ false };
-    std::atomic<bool> m_close_fired{ false };
+    std::atomic<bool> m_running = false;
+    std::atomic<bool> m_closing = false;
+    std::atomic<bool> m_close_fired = false;
 
     std::thread m_read_thread;
     std::mutex m_write_mutex; // serializes writes to Options::write_fd

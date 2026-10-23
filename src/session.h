@@ -65,7 +65,7 @@ namespace mcp
 
     struct Options
     {
-      std::chrono::milliseconds default_request_timeout{ 30 * 1000 }; // 30s
+      std::chrono::milliseconds default_request_timeout = 30 * 1000; // 30s
     };
 
     explicit Session(std::unique_ptr<Transport> transport);
@@ -205,9 +205,9 @@ namespace mcp
     std::unique_ptr<Transport> m_transport;
     Options m_opts;
 
-    std::atomic<bool> m_started{ false };
-    std::atomic<bool> m_closed{ false };
-    std::atomic<std::int64_t> m_next_id{ 1 };
+    std::atomic<bool> m_started = false;
+    std::atomic<bool> m_closed = false;
+    std::atomic<std::int64_t> m_next_id = 1;
 
     // Pending outbound requests awaiting a response. Keyed by canonical
     // RequestId string so int and string ids never collide.
@@ -226,7 +226,7 @@ namespace mcp
 
     std::mutex m_closed_cb_mu;
     ClosedCallback m_on_closed;
-    std::atomic<bool> m_closed_cb_fired{ false };
+    std::atomic<bool> m_closed_cb_fired = false;
 
     // Tracks live request-dispatch workers so close() can wait for
     // them to finish before any member they touch (m_transport,

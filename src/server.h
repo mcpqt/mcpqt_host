@@ -320,7 +320,7 @@ namespace mcp
     /// error.
     std::unique_ptr<detail::TaskStore> m_tasks;
     std::optional<std::int64_t> m_tasks_default_ttl_ms;
-    std::size_t m_tasks_max_concurrent{ 0 };
+    std::size_t m_tasks_max_concurrent = 0;
 
     /// Acquire a strong reference to the live Session; returns empty
     /// when run() has not started or has already returned. Lets
@@ -330,7 +330,7 @@ namespace mcp
 
     std::shared_ptr<Session> m_session;
     mutable std::mutex m_session_mu;
-    std::atomic<bool> m_initialized{ false };
+    std::atomic<bool> m_initialized = false;
 
     /// Client capabilities captured at initialize, readable any-thread.
     /// Guarded by its own mutex (narrow surface, like the handler
@@ -338,7 +338,7 @@ namespace mcp
     /// m_session_mu.
     std::optional<ClientCapabilities> m_client_capabilities;
     mutable std::mutex m_client_capabilities_mu;
-    std::atomic<bool> m_stop_requested{ false };
+    std::atomic<bool> m_stop_requested = false;
     std::mutex m_stop_mu;
     std::condition_variable m_stop_cv;
   };

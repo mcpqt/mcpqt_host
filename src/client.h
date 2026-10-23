@@ -241,7 +241,7 @@ namespace mcp
     mutable std::mutex m_session_mu;
     std::optional<InitializeResult> m_server;
     mutable std::mutex m_server_mu;
-    std::atomic<bool> m_connected{ false };
+    std::atomic<bool> m_connected = false;
 
     SamplingHandler m_sampling_handler;
     RootsListHandler m_roots_handler;

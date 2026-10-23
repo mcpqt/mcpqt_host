@@ -343,8 +343,7 @@ namespace mcp
   };
 
   inline const QString method_initialize = "initialize";
-  inline const QString method_notifications_initialized
-      = "notifications/initialized";
+  inline const QString method_notifications_initialized = "notifications/initialized";
 
   // --------------------------------------------------------------------------
   // Content blocks
@@ -921,8 +920,7 @@ namespace mcp
     ProgressNotificationParams& operator=(const QJsonValue&);
   };
 
-  inline const QString method_notifications_progress
-      = "notifications/progress";
+  inline const QString method_notifications_progress = "notifications/progress";
 
   // --------------------------------------------------------------------------
   // Logging (server → client log messages)
@@ -1113,8 +1111,7 @@ namespace mcp
   };
 
   inline const QString method_roots_list = "roots/list";
-  inline const QString method_notifications_roots_list_changed
-      = "notifications/roots/list_changed";
+  inline const QString method_notifications_roots_list_changed = "notifications/roots/list_changed";
 
   // --------------------------------------------------------------------------
   // Completion (autocomplete)
@@ -1507,14 +1504,12 @@ namespace mcp
   inline const QString method_tasks_result = "tasks/result";
   inline const QString method_tasks_list = "tasks/list";
   inline const QString method_tasks_cancel = "tasks/cancel";
-  inline const QString method_notifications_tasks_status
-      = "notifications/tasks/status";
+  inline const QString method_notifications_tasks_status = "notifications/tasks/status";
 
   /// Meta key the spec mandates on `tasks/result` payloads to bind the
   /// result back to its task. Server-side tooling sets it; clients can
   /// optionally check it.
-  inline const QString tasks_related_task_meta_key
-      = "io.modelcontextprotocol/related-task";
+  inline const QString tasks_related_task_meta_key = "io.modelcontextprotocol/related-task";
 
 } // namespace mcp
 

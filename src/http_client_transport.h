@@ -154,9 +154,9 @@ namespace mcp
 
     Options m_opts;
 
-    std::atomic<bool> m_started{ false };
-    std::atomic<bool> m_closed{ false };
-    std::atomic<bool> m_close_fired{ false };
+    std::atomic<bool> m_started = false;
+    std::atomic<bool> m_closed = false;
+    std::atomic<bool> m_close_fired = false ;
 
     // Outbound queue: frames the application has handed us that are
     // waiting to go out as POSTs. The worker thread drains, then
@@ -204,7 +204,7 @@ namespace mcp
     // racing the application's token-refresh logic. Fire ONCE per
     // "auth-fail batch" — re-arm on the next successful 2xx. Reads
     // are atomic-CAS so dedup decisions don't need the m_auth_mu.
-    std::atomic<bool> m_auth_callback_armed{ true };
+    std::atomic<bool> m_auth_callback_armed = true;
 
     MessageCallback m_on_message;
     ErrorCallback m_on_error;
