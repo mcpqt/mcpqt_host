@@ -89,8 +89,8 @@ int main(int argc, char** argv)
                           "contributed by loaded plugins.");
 
   const std::size_t registered = plugins.register_tools(server);
-  MCP_LOG_INFO("mcp_stdio_server: registered " + QString::number(registered)
-               + " tool/resource entr(ies)");
+  plugins.register_control_tool(server);
+  MCP_LOG_INFO("mcp_stdio_server: registered tool/resource entries: " + QString::number(registered));
 
   g_server.store(&server, std::memory_order_release);
   std::signal(SIGINT, on_signal);

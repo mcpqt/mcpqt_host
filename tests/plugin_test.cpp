@@ -9,16 +9,23 @@
 
 #include "test_binary_paths.h"
 
+#include "client.h"
 #include "error.h"
+#include "in_memory_transport.h"
 #include "log.h"
 #include "plugin_manager.h"
+#include "server.h"
 
 #include <QCoreApplication>
+#include <QJsonObject>
 #include <QMetaType>
 #include <QStringList>
 #include <QtTest/QtTest>
 
+#include <memory>
 #include <string>
+#include <thread>
+#include <variant>
 
 #if !defined(MCP_TEST_PLUGIN)
 #error                                                                        \
@@ -32,6 +39,49 @@
 #error                                                                        \
     "MCP_TEST_LOG_PLUGIN path was not generated; the log plugin target is missing"
 #endif
+
+namespace
+{
+
+  QString text_content(const mcp::CallToolResult& result)
+  {
+    if(result.content.isEmpty())
+    {
+      return {};
+    }
+    if(const auto* text
+       = std::get_if<mcp::TextContent>(&result.content.front()))
+    {
+      return text->text;
+    }
+    return {};
+  }
+
+  struct ServerThread
+  {
+    std::shared_ptr<mcp::Server> server;
+    std::thread thread;
+
+    ServerThread(std::shared_ptr<mcp::Server> s,
+                 std::unique_ptr<mcp::Transport> transport)
+        : server(std::move(s))
+    {
+      thread = std::thread([s = server, t = std::move(transport)]() mutable {
+        s->run(std::move(t));
+      });
+    }
+
+    ~ServerThread()
+    {
+      server->stop();
+      if(thread.joinable())
+      {
+        thread.join();
+      }
+    }
+  };
+
+} // namespace
 
 class PluginManagerTest : public QObject
 {
@@ -48,6 +98,7 @@ private slots:
   void DependencyGatesLoad(void);
   void CrossPluginForwarding(void);
   void UnloadHonorsReverseDependencies(void);
+  void ControlToolManagesPlugins(void);
   void LoggingPluginClaimsAndCannotBeReplaced(void);
 };
 
@@ -277,6 +328,107 @@ void PluginManagerTest::UnloadHonorsReverseDependencies(void)
   QVERIFY(plugins.unload_plugin("test-plugin"));
   QCOMPARE(plugins.plugin_count(), std::size_t{ 0 });
   QCOMPARE(plugins.functions().size(), 2); // host services only
+}
+
+void PluginManagerTest::ControlToolManagesPlugins(void)
+{
+  mcp::PluginManager plugins;
+  auto server = std::make_shared<mcp::Server>(mcp::Implementation{
+      .name = "plugin-control",
+      .version = "0.1.0",
+  });
+  plugins.register_control_tool(*server);
+
+  auto pair = mcp::test::make_in_memory_pair();
+  ServerThread server_thread(server, std::move(pair.b));
+
+  mcp::Client client{ mcp::Implementation{
+      .name = "tester",
+      .version = "0.1.0",
+  } };
+  client.connect(std::move(pair.a));
+  (void)client.initialize().get();
+
+  const mcp::ListToolsResult listed = client.list_tools().get();
+  QCOMPARE(listed.tools.size(), std::size_t{ 1 });
+  QCOMPARE(listed.tools[0].name, QStringLiteral("plugin"));
+  QVERIFY(!plugins.functions().contains(QStringLiteral("plugin")));
+
+  const mcp::CallToolResult empty_list
+      = client.call_tool("plugin", QJsonObject{ { "command", "list" } }).get();
+  QVERIFY(!empty_list.is_error.value_or(false));
+  QCOMPARE(text_content(empty_list), QStringLiteral("No plugins loaded."));
+
+  const mcp::CallToolResult loaded
+      = client
+            .call_tool("plugin",
+                       QJsonObject{
+                           { "command", "load" },
+                           { "target", QString::fromUtf8(MCP_TEST_PLUGIN) },
+                       })
+            .get();
+  QVERIFY(!loaded.is_error.value_or(false));
+  QVERIFY(text_content(loaded).contains(QStringLiteral("Loaded plugin")));
+  QCOMPARE(plugins.plugin_count(), std::size_t{ 1 });
+  QCOMPARE(plugins.plugin_ids(), QStringList{ "test-plugin" });
+
+  const mcp::CallToolResult one_list
+      = client.call_tool("plugin", QJsonObject{ { "command", "list" } }).get();
+  QVERIFY(!one_list.is_error.value_or(false));
+  QCOMPARE(text_content(one_list), QStringLiteral("test-plugin"));
+
+  const mcp::CallToolResult help
+      = client
+            .call_tool("plugin",
+                       QJsonObject{
+                           { "command", "help" },
+                           { "target", "test-plugin" },
+                       })
+            .get();
+  QVERIFY(!help.is_error.value_or(false));
+  const QString help_text = text_content(help);
+  QVERIFY(help_text.contains(QStringLiteral("\"id\":\"test-plugin\"")));
+  QVERIFY(help_text.contains(QStringLiteral("\"version\":\"9.9.9\"")));
+  QVERIFY(help_text.contains(QStringLiteral("echo")));
+
+  const mcp::CallToolResult unknown_help
+      = client
+            .call_tool("plugin",
+                       QJsonObject{
+                           { "command", "help" },
+                           { "target", "missing-plugin" },
+                       })
+            .get();
+  QVERIFY(unknown_help.is_error.value_or(false));
+
+  const mcp::CallToolResult unloaded
+      = client
+            .call_tool("plugin",
+                       QJsonObject{
+                           { "command", "unload" },
+                           { "target", "test-plugin" },
+                       })
+            .get();
+  QVERIFY(!unloaded.is_error.value_or(false));
+  QCOMPARE(plugins.plugin_count(), std::size_t{ 0 });
+  QCOMPARE(text_content(unloaded),
+           QStringLiteral("Unloaded plugin 'test-plugin'"));
+
+  const mcp::CallToolResult bad_load
+      = client
+            .call_tool("plugin",
+                       QJsonObject{
+                           { "command", "load" },
+                           { "target", "/no/such/plugin.so" },
+                       })
+            .get();
+  QVERIFY(bad_load.is_error.value_or(false));
+
+  const mcp::CallToolResult bad_command
+      = client.call_tool("plugin", QJsonObject{ { "command", "bogus" } }).get();
+  QVERIFY(bad_command.is_error.value_or(false));
+
+  client.disconnect();
 }
 
 void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced(void)

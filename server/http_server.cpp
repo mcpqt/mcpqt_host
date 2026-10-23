@@ -121,7 +121,10 @@ int main(int argc, char** argv)
         .description = "MCP server for dynamically loaded plugins.",
     },
     opts,
-    [&plugins](mcp::Server& server) { plugins.register_tools(server); },
+    [&plugins](mcp::Server& server) {
+      plugins.register_tools(server);
+      plugins.register_control_tool(server);
+    },
   };
 
   std::signal(SIGINT, on_signal);

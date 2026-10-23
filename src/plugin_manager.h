@@ -159,6 +159,12 @@ namespace mcp
     /// The QObject of the loaded plugin with `id`, or nullptr.
     [[nodiscard]] QObject* plugin_object(const QString& id) const;
 
+    /// Human-readable metadata for the loaded plugin with `id`: id, path,
+    /// version/description/license from its Q_CLASSINFO, declared
+    /// dependencies, published functions, tools, and resources. Returns an
+    /// empty object when no plugin has that id.
+    [[nodiscard]] QJsonObject plugin_info(const QString& id) const;
+
     /// Every published function signature, across all loaded plugins.
     [[nodiscard]] QStringList functions(void) const;
 
@@ -186,6 +192,12 @@ namespace mcp
     /// JSON arguments to function parameters by name. May be called once per
     /// Server (e.g. per HTTP session); returns the number of registrations.
     std::size_t register_tools(Server& server) const;
+
+    /// Register the host-only "plugin" control tool on `server`. The tool is
+    /// registered directly on the MCP Server and is deliberately NOT entered
+    /// in the plugin function registry, so plugins can neither call nor
+    /// override it. Commands: list, load <path>, unload <id>, help <id>.
+    void register_control_tool(Server& server);
 
     /// Invoke a published function. `args` holds one QVariant per declared
     /// parameter, in order. Returns the QVariant result (invalid for a void

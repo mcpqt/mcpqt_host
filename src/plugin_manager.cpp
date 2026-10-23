@@ -80,6 +80,13 @@ namespace mcp
       return result;
     }
 
+    CallToolResult text_result(QString text)
+    {
+      CallToolResult result;
+      result.content = { TextContent{ .text = std::move(text) } };
+      return result;
+    }
+
     CallToolResult variant_to_tool_result(const QVariant& out)
     {
       CallToolResult result;
@@ -963,6 +970,55 @@ namespace mcp
     return nullptr;
   }
 
+  QJsonObject PluginManager::plugin_info(const QString& id) const
+  {
+    for(const auto& inst : m_plugins)
+    {
+      if(inst->id != id)
+      {
+        continue;
+      }
+      QJsonObject info;
+      info.insert(QStringLiteral("id"), inst->id);
+      info.insert(QStringLiteral("path"), inst->path);
+      info.insert(QStringLiteral("pinned"), inst->pinned);
+      if(inst->object != nullptr)
+      {
+        const QMetaObject* const meta_object = inst->object->metaObject();
+        for(const char* key : { "version", "description", "license" })
+        {
+          const QString value = class_info(meta_object, key);
+          if(!value.isEmpty())
+          {
+            info.insert(QString::fromLatin1(key), value);
+          }
+        }
+      }
+      info.insert(QStringLiteral("dependencies"),
+                  QJsonArray::fromStringList(inst->dependencies));
+      info.insert(QStringLiteral("functions"),
+                  QJsonArray::fromStringList(inst->signatures));
+
+      QJsonArray tools;
+      for(auto it = inst->tools.constBegin(); it != inst->tools.constEnd();
+          ++it)
+      {
+        tools.append(it.value().name);
+      }
+      info.insert(QStringLiteral("tools"), tools);
+
+      QJsonArray resources;
+      for(auto it = inst->resources.constBegin();
+          it != inst->resources.constEnd(); ++it)
+      {
+        resources.append(it.key());
+      }
+      info.insert(QStringLiteral("resources"), resources);
+      return info;
+    }
+    return {};
+  }
+
   QStringList PluginManager::functions(void) const
   {
     QStringList sigs = m_registry.keys();
@@ -1164,6 +1220,140 @@ namespace mcp
     }
 
     return registered;
+  }
+
+  void PluginManager::register_control_tool(Server& server)
+  {
+    const QJsonObject schema{
+      { "type", "object" },
+      { "properties",
+        QJsonObject{
+            { "command",
+              QJsonObject{
+                  { "type", "string" },
+                  { "enum", QJsonArray{ "list", "load", "unload", "help" } },
+                  { "description",
+                    "Plugin operation to perform: list loaded plugins, load "
+                    "a plugin from a path, unload a plugin by id, or show "
+                    "help for a plugin by id." },
+              } },
+            { "target",
+              QJsonObject{
+                  { "type", "string" },
+                  { "description",
+                    "Path to a plugin file or directory for 'load'; plugin "
+                    "id for 'unload' and 'help'. Omit for 'list'." },
+              } },
+        } },
+      { "required", QJsonArray{ "command" } },
+    };
+
+    auto handler = [this, &server](const QJsonValue& args) -> CallToolResult {
+      const QJsonObject object = args.isObject() ? args.toObject()
+                                                 : QJsonObject{};
+      QString command = object.value("command").toString().trimmed();
+      QString target = object.value("target").toString();
+      if(target.isEmpty())
+      {
+        target = object.value("argument").toString();
+      }
+      if(target.isEmpty())
+      {
+        target = object.value("path").toString();
+      }
+      if(target.isEmpty())
+      {
+        target = object.value("plugin").toString();
+      }
+      // Accept "load <path>" / "unload <id>" / "help <id>" in the command
+      // string itself, in addition to the separate `target` field.
+      if(target.isEmpty())
+      {
+        const qsizetype separator = command.indexOf(QLatin1Char(' '));
+        if(separator > 0)
+        {
+          target = command.mid(separator + 1).trimmed();
+          command = command.left(separator);
+        }
+      }
+
+      if(command == "list")
+      {
+        const QStringList ids = plugin_ids();
+        if(ids.isEmpty())
+        {
+          return text_result("No plugins loaded.");
+        }
+        return text_result(ids.join(QLatin1Char('\n')));
+      }
+
+      if(command == "load")
+      {
+        if(target.isEmpty())
+        {
+          return error_result("load requires a plugin path");
+        }
+        const QFileInfo info(target);
+        bool ok = false;
+        QString message;
+        if(info.isDir())
+        {
+          const std::size_t loaded = load_directory(info.absoluteFilePath());
+          ok = loaded > 0;
+          message = "Loaded " + QString::number(loaded)
+                    + " plugin(s) from " + info.absoluteFilePath();
+        }
+        else
+        {
+          const QString path = info.absoluteFilePath();
+          ok = load_file(path);
+          message = ok ? "Loaded plugin " + path
+                       : "Failed to load plugin " + path;
+        }
+        if(ok)
+        {
+          register_tools(server);
+          register_control_tool(server);
+        }
+        return ok ? text_result(message) : error_result(message);
+      }
+
+      if(command == "unload")
+      {
+        if(target.isEmpty())
+        {
+          return error_result("unload requires a plugin id");
+        }
+        if(!unload_plugin(target))
+        {
+          return error_result("Failed to unload plugin '" + target + "'");
+        }
+        return text_result("Unloaded plugin '" + target + "'");
+      }
+
+      if(command == "help")
+      {
+        if(target.isEmpty())
+        {
+          return error_result("help requires a plugin id");
+        }
+        const QJsonObject info = plugin_info(target);
+        if(info.isEmpty())
+        {
+          return error_result("Unknown plugin '" + target + "'");
+        }
+        return text_result(mcp::dump(QJsonValue(info)));
+      }
+
+      return error_result(
+          "Unknown command '" + command
+          + "'; expected list, load, unload, or help");
+    };
+
+    server.tool(
+        "plugin", schema, handler, "Plugin management",
+        "List, load, unload, or inspect the host's plugins. This tool is "
+        "available to MCP clients only and is not published to plugins.");
   }
 
 } // namespace mcp
