@@ -63,7 +63,7 @@ namespace
       registerPublicSlots();
       const QVariant ok = m_host.callFunc(
           "bool mcp::Host::registerLogger(QString)",
-          { QStringLiteral("void LogPlugin::log(int,QString)") });
+          { QStringLiteral("void TrivialLogger::log(int,QString)") });
       if(!ok.toBool())
       {
         qWarning("logging plugin: log sink already claimed; not taking over");
