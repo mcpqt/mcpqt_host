@@ -7,6 +7,7 @@
 #include "session.h"
 #include "transport.h"
 
+#include <QDateTime>
 #include <QHash>
 #include <QList>
 #include <QString>
@@ -15,7 +16,6 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <ctime>
 #include <deque>
 #include <limits>
 #include <memory>
@@ -41,25 +41,7 @@ namespace mcp
     // no transition happened.
     inline QString iso_utc_now(void)
     {
-      using clock = std::chrono::system_clock;
-      const auto now = clock::now();
-      const auto t = clock::to_time_t(now);
-      const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          now.time_since_epoch())
-                          .count()
-                      % 1000;
-      std::tm tm{};
-#if defined(_WIN32)
-      gmtime_s(&tm, &t);
-#else
-      gmtime_r(&t, &tm);
-#endif
-      char buf[40];
-      const int n = std::snprintf(
-          buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d.%03lldZ",
-          tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
-          tm.tm_sec, static_cast<long long>(ms));
-      return QString::fromLatin1(buf, n);
+      return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     }
 
     // 128-bit hex token. Per-call seeded — not cryptographic, but
@@ -242,7 +224,7 @@ namespace mcp
           // could; treat as if the worker observed cancellation.
           // (We still update the timestamp / status here because
           // the task wasn't yet in a terminal state.)
-          touch_locked(e, TaskStatus::cancelled, QString{ "cancelled" });
+          touch_locked(e, TaskStatus::cancelled, "cancelled" );
         }
         else
         {
