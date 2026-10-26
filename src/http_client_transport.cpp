@@ -152,10 +152,9 @@ namespace mcp
       {
         req.setRawHeader("Last-Event-ID", last_event_id.toUtf8());
       }
-      for(auto it = opts.extra_headers.constBegin();
-          it != opts.extra_headers.constEnd(); ++it)
+      for (const auto& [k, v] : opts.extra_headers.asKeyValueRange())
       {
-        req.setRawHeader(it.key().toUtf8(), it.value().toUtf8());
+        req.setRawHeader(k.toUtf8(), v.toUtf8());
       }
     }
 

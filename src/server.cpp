@@ -649,9 +649,9 @@ namespace mcp
     {
       QMutexLocker lk(&m_tools_mu);
       out.reserve(m_tools.size());
-      for(auto it = m_tools.constBegin(); it != m_tools.constEnd(); ++it)
+      for (const auto& [k, v] : m_tools.asKeyValueRange())
       {
-        out.push_back(it.value().descriptor);
+        out.push_back(v.descriptor);
       }
     }
     return out;
@@ -929,8 +929,8 @@ namespace mcp
     {
       QMutexLocker lk(&m_tools_mu);
       all.reserve(m_tools.size());
-      for(auto it = m_tools.constBegin(); it != m_tools.constEnd(); ++it)
-        all.push_back(it.value().descriptor);
+      for (const auto& [k, v] : m_tools.asKeyValueRange())
+        all.push_back(v.descriptor);
     }
     auto [page, next]
         = paginate(all, decode_cursor(parsed.cursor), m_page_size);
@@ -1080,9 +1080,8 @@ namespace mcp
     {
       QMutexLocker lk(&m_resources_mu);
       all.reserve(m_resources.size());
-      for(auto it = m_resources.constBegin(); it != m_resources.constEnd();
-          ++it)
-        all.push_back(it.value().descriptor);
+      for (const auto& [k, v] : m_resources.asKeyValueRange())
+        all.push_back(v.descriptor);
     }
     auto [page, next]
         = paginate(all, decode_cursor(parsed.cursor), m_page_size);
@@ -1167,8 +1166,8 @@ namespace mcp
     {
       QMutexLocker lk(&m_prompts_mu);
       all.reserve(m_prompts.size());
-      for(auto it = m_prompts.constBegin(); it != m_prompts.constEnd(); ++it)
-        all.push_back(it.value().descriptor);
+      for (const auto& [k, v] : m_prompts.asKeyValueRange())
+        all.push_back(v.descriptor);
     }
     auto [page, next]
         = paginate(all, decode_cursor(parsed.cursor), m_page_size);

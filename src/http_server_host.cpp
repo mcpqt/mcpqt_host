@@ -1483,13 +1483,13 @@ namespace mcp
       }
       // Notify the embedder for every surviving session while its
       // Server is still fully alive, before any close/join/destroy.
-      for(auto it = drained.begin(); it != drained.end(); ++it)
+      for (const auto& [k, v] : drained.asKeyValueRange())
       {
-        invoke_session_closed(m_opts, *it.value()->server);
+        invoke_session_closed(m_opts, *v->server);
       }
-      for(auto it = drained.begin(); it != drained.end(); ++it)
+      for (const auto& [k, v] : drained.asKeyValueRange())
       {
-        it.value()->transport->close();
+        v->transport->close();
       }
 
       // Drain the server's event loop on its own thread and join it.
@@ -1505,10 +1505,10 @@ namespace mcp
       delete m_impl->thread;
       m_impl->thread = nullptr;
 
-      for(auto it = drained.begin(); it != drained.end(); ++it)
+      for (const auto& [k, v] : drained.asKeyValueRange())
       {
-        if(it.value()->run_thread.joinable())
-          it.value()->run_thread.join();
+        if(v->run_thread.joinable())
+          v->run_thread.join();
       }
     }
   }

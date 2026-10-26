@@ -667,18 +667,17 @@ namespace mcp
         const QJsonValue tools_value = meta_object.value("Tools");
         if(tools_value.isObject())
         {
-          const QJsonObject tools_object = tools_value.toObject();
-          for(auto it = tools_object.constBegin();
-              it != tools_object.constEnd(); ++it)
+          for(const auto& [key, value] :
+              tools_value.toObject().toVariantMap().asKeyValueRange())
           {
             try
             {
-              declared_tools.insert(it.key(), from_json<Tool>(it.value()));
+              declared_tools.insert(key, from_json<Tool>(value.toJsonValue()));
             }
             catch(const std::exception& e)
             {
               MCP_LOG_WARN("PluginManager: '" + file + "' Tools entry '"
-                           + it.key() + "' is invalid: " + e.what());
+                           + key + "' is invalid: " + e.what());
             }
           }
         }
@@ -687,23 +686,24 @@ namespace mcp
         if(resources_value.isObject())
         {
           const QJsonObject resources_object = resources_value.toObject();
-          for(auto it = resources_object.constBegin();
-              it != resources_object.constEnd(); ++it)
+          for(const auto& [uri, value] :
+              resources_object.toVariantMap().asKeyValueRange())
           {
-            if(!it.value().isObject())
+            const QJsonValue json_value = value.toJsonValue();
+            if(!json_value.isObject())
             {
               MCP_LOG_WARN("PluginManager: '" + file + "' Resources entry '"
-                           + it.key() + "' is not an object");
+                           + uri + "' is not an object");
               continue;
             }
-            const QJsonObject o = it.value().toObject();
+            const QJsonObject o = json_value.toObject();
             PluginResource entry;
-            entry.uri = it.key();
+            entry.uri = uri;
             entry.signature = o.value(QLatin1String("signature")).toString();
             if(entry.signature.isEmpty())
             {
               MCP_LOG_WARN("PluginManager: '" + file + "' resource '"
-                           + it.key() + "' has no signature; ignoring");
+                           + uri + "' has no signature; ignoring");
               continue;
             }
             entry.resource.uri = entry.uri;
@@ -762,8 +762,8 @@ namespace mcp
       return LoadOutcome::Failed;
     }
 
-    const QString id_q = class_info(obj->metaObject(), "id");
-    if(id_q.isEmpty())
+    const QString id = class_info(obj->metaObject(), "id");
+    if(id.isEmpty())
     {
       MCP_LOG_WARN("PluginManager: '" + file
                    + "' has no Q_CLASSINFO(\"id\"); rejecting");
@@ -771,7 +771,7 @@ namespace mcp
       delete loader;
       return LoadOutcome::Failed;
     }
-    const QString id = id_q;
+
     for(const auto& existing : m_plugins)
     {
       if(existing->id == id)
@@ -832,46 +832,39 @@ namespace mcp
     // regFunc()/registerPublicSlots(). This lets a plugin expose tools purely
     // by declaring them in its JSON metadata. Entries that match no public
     // slot are still dropped with a warning.
-    for(auto it = declared_tools.constBegin(); it != declared_tools.constEnd();
-        ++it)
+    for (const auto& [k, v] : declared_tools.asKeyValueRange())
     {
-      if(inst->signatures.contains(it.key()))
-      {
-        continue;
-      }
-      if(host_reg_func(inst, it.key()))
+      if(!inst->signatures.contains(k) &&
+          host_reg_func(inst, k))
       {
         MCP_LOG_INFO("PluginManager: auto-registered Tool function '"
-                     + it.key() + "' declared by '" + inst->id + "'");
+                     + k + "' declared by '" + inst->id + "'");
       }
     }
 
     // Keep only Tools entries that name a function this plugin actually
     // published; a stale/typo'd signature is dropped with a warning.
-    for(auto it = declared_tools.constBegin(); it != declared_tools.constEnd();
-        ++it)
+    for (const auto& [k, v] : declared_tools.asKeyValueRange())
     {
-      if(!inst->signatures.contains(it.key()))
+      if(!inst->signatures.contains(k))
       {
-        MCP_LOG_WARN("PluginManager: '" + file + "' declares a Tool for '"
-                     + it.key()
+        MCP_LOG_WARN("PluginManager: '" + file + "' declares a Tool for '" + k
                      + "', which is not a published function; ignoring");
-        continue;
       }
-      inst->tools.insert(it.key(), it.value());
+      else
+        inst->tools.insert(k, v);
     }
 
-    for(auto it = declared_resources.constBegin();
-        it != declared_resources.constEnd(); ++it)
+    for (const auto& [k, v] : declared_resources.asKeyValueRange())
     {
-      if(!inst->signatures.contains(it->signature))
+      if(!inst->signatures.contains(v.signature))
       {
         MCP_LOG_WARN("PluginManager: '" + file + "' declares resource '"
-                     + it.key() + "' with signature '" + it->signature
+                     + k + "' with signature '" + v.signature
                      + "', which is not a published function; ignoring");
-        continue;
       }
-      inst->resources.insert(it.key(), it.value());
+      else
+        inst->resources.insert(k, v);
     }
 
     m_plugins.push_back(std::move(inst));
@@ -1091,18 +1084,16 @@ namespace mcp
                   QJsonArray::fromStringList(inst->signatures));
 
       QJsonArray tools;
-      for(auto it = inst->tools.constBegin(); it != inst->tools.constEnd();
-          ++it)
+      for (const auto& [k, v] : inst->tools.asKeyValueRange())
       {
-        tools.append(it.value().name);
+        tools.append(v.name);
       }
       info.insert(QStringLiteral("tools"), tools);
 
       QJsonArray resources;
-      for(auto it = inst->resources.constBegin();
-          it != inst->resources.constEnd(); ++it)
+      for (const auto& [k, v] : inst->resources.asKeyValueRange())
       {
-        resources.append(it.key());
+        resources.append(k);
       }
       info.insert(QStringLiteral("resources"), resources);
       return info;
@@ -1127,10 +1118,9 @@ namespace mcp
     QList<PluginTool> out;
     for(const auto& inst : m_plugins)
     {
-      for(auto it = inst->tools.constBegin(); it != inst->tools.constEnd();
-          ++it)
+      for (const auto& [k, v] : inst->tools.asKeyValueRange())
       {
-        out.push_back(PluginTool{ it.key(), it.value() });
+        out.push_back(PluginTool{ k, v });
       }
     }
     std::sort(out.begin(), out.end(),
@@ -1158,10 +1148,9 @@ namespace mcp
     QList<PluginResource> out;
     for(const auto& inst : m_plugins)
     {
-      for(auto it = inst->resources.constBegin();
-          it != inst->resources.constEnd(); ++it)
+      for (const auto& [k, v] : inst->resources.asKeyValueRange())
       {
-        out.push_back(it.value());
+        out.push_back(v);
       }
     }
     std::sort(out.begin(), out.end(),
@@ -1191,11 +1180,10 @@ namespace mcp
 
     for(const auto& inst : m_plugins)
     {
-      for(auto it = inst->tools.constBegin(); it != inst->tools.constEnd();
-          ++it)
+      for (const auto& [k, v] : inst->tools.asKeyValueRange())
       {
-        const QString signature = it.key();
-        const Tool tool = it.value();
+        const QString signature = k;
+        const Tool tool = v;
         const auto entry = m_registry.constFind(signature);
         if(entry == m_registry.constEnd() || entry->owner.expired())
         {
@@ -1250,10 +1238,9 @@ namespace mcp
         ++registered;
       }
 
-      for(auto it = inst->resources.constBegin();
-          it != inst->resources.constEnd(); ++it)
+      for (const auto& [k, v] : inst->resources.asKeyValueRange())
       {
-        const PluginResource resource = it.value();
+        const PluginResource resource = v;
         const auto entry = m_registry.constFind(resource.signature);
         if(entry == m_registry.constEnd() || entry->owner.expired())
         {

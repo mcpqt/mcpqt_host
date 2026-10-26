@@ -1310,9 +1310,9 @@ namespace mcp
     if(arguments.has_value())
     {
       QJsonObject args;
-      for(auto it = arguments->constBegin(); it != arguments->constEnd(); ++it)
+      for (const auto& [k, v] : arguments->asKeyValueRange())
       {
-        args.insert(it.key(), to_json(it.value()));
+        args.insert(k, to_json(v));
       }
       o.insert("arguments", args);
     }
@@ -1846,10 +1846,9 @@ namespace mcp
     if(context_arguments.has_value())
     {
       QJsonObject ctx;
-      for(auto it = context_arguments->constBegin();
-          it != context_arguments->constEnd(); ++it)
+      for (const auto& [k, v] : context_arguments->asKeyValueRange())
       {
-        ctx.insert(it.key(), to_json(it.value()));
+        ctx.insert(k, to_json(v));
       }
       QJsonObject wrapper;
       wrapper.insert("arguments", ctx);

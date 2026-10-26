@@ -592,10 +592,10 @@ namespace mcp
       }
 
       auto soonest = steady_clock::time_point::max();
-      for(auto it = m_pending.constBegin(); it != m_pending.constEnd(); ++it)
+      for (const auto& [k, v] : m_pending.asKeyValueRange())
       {
-        if(it.value().deadline < soonest)
-          soonest = it.value().deadline;
+        if(v.deadline < soonest)
+          soonest = v.deadline;
       }
       bool timed_out = false;
       const auto wait_now = steady_clock::now();
@@ -654,10 +654,10 @@ namespace mcp
       drained.swap(m_pending);
       m_timeout_cv.notify_all();
     }
-    for(auto it = drained.begin(); it != drained.end(); ++it)
+    for (const auto& [k, v] : drained.asKeyValueRange())
     {
-      if(it.value().reject)
-        it.value().reject(std::make_exception_ptr(Error{ reason }));
+      if(v.reject)
+        v.reject(std::make_exception_ptr(Error{ reason }));
     }
   }
 
