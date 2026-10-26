@@ -41,6 +41,20 @@
 namespace
 {
 
+  const char* level_name(mcp::LogLevel l) noexcept
+  {
+    switch(l)
+    {
+    case mcp::LogLevel::trace: return "TRACE";
+    case mcp::LogLevel::debug: return "DEBUG";
+    case mcp::LogLevel::info:  return "INFO";
+    case mcp::LogLevel::warn:  return "WARN";
+    case mcp::LogLevel::error: return "ERROR";
+    case mcp::LogLevel::off:   return "OFF";
+    }
+    return "?";
+  }
+
   QStringList library_filters(void)
   {
     QStringList filters;
@@ -149,9 +163,9 @@ int main(int argc, char** argv)
   // logging over. Claiming the sink here (before any plugin loads) does both.
   const bool claimed
       = mcp::claim_log_sink([](mcp::LogLevel level, const QString& msg) {
-          const QByteArray level_text = mcp::to_string(level).toUtf8();
+          const char* level_text = level_name(level);
           const QByteArray text = msg.toUtf8();
-          std::fprintf(stderr, "[%-5s] %.*s\n", level_text.constData(),
+          std::fprintf(stderr, "[%-5s] %.*s\n", level_text,
                        static_cast<int>(text.size()), text.constData());
           std::fflush(stderr);
         });

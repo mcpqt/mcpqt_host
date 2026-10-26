@@ -30,6 +30,20 @@
 namespace
 {
 
+  QString to_string(mcp::LogLevel l) noexcept
+  {
+    switch(l)
+    {
+    case mcp::LogLevel::trace: return "TRACE";
+    case mcp::LogLevel::debug: return "DEBUG";
+    case mcp::LogLevel::info:  return "INFO";
+    case mcp::LogLevel::warn:  return "WARN";
+    case mcp::LogLevel::error: return "ERROR";
+    case mcp::LogLevel::off:   return "OFF";
+    }
+    return "?";
+  }
+
   class TrivialLogger : public mcp::PluginInterface
   {
     Q_OBJECT
@@ -101,7 +115,7 @@ namespace
     {
       const QJsonObject record
       {
-        { "level", mcp::to_string(level) },
+        { "level", to_string(level) },
         { "msg", msg },
       };
       const QByteArray line

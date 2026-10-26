@@ -27,8 +27,6 @@ namespace mcp
     off = 5,
   };
 
-  [[nodiscard]] QString to_string(LogLevel l) noexcept;
-
   /// Sink signature: receives a fully-formatted line (no trailing newline).
   /// The sink is invoked synchronously from whichever thread emitted the log.
   /// The default sink (the core's minimal fallback) writes a timestamped line

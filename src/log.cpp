@@ -26,6 +26,20 @@ namespace mcp
     // g_sink_mutex for writes; read lock-free by log_message().
     std::atomic<bool> g_claimed{ false };
 
+    const char* level_name(LogLevel l) noexcept
+    {
+      switch(l)
+      {
+      case LogLevel::trace: return "TRACE";
+      case LogLevel::debug: return "DEBUG";
+      case LogLevel::info:  return "INFO";
+      case LogLevel::warn:  return "WARN";
+      case LogLevel::error: return "ERROR";
+      case LogLevel::off:   return "OFF";
+      }
+      return "?";
+    }
+
     void default_sink(LogLevel level, const QString& msg)
     {
       // Compose the line under a single mutex so multi-thread interleaving
@@ -48,32 +62,18 @@ namespace mcp
       localtime_r(&tt, &tm_buf);
 #endif
 
-      const QByteArray level_text = to_string(level).toUtf8();
+      const char* level_text = level_name(level);
       const QByteArray text = msg.toUtf8();
       std::fprintf(stderr,
                    "[%04d-%02d-%02d %02d:%02d:%02d.%06lld %-5s] %.*s\n",
                    tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
                    tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec,
-                   static_cast<long long>(micros), level_text.constData(),
+                   static_cast<long long>(micros), level_text,
                    static_cast<int>(text.size()), text.constData());
       std::fflush(stderr);
     }
 
   } // namespace
-
-  QString to_string(LogLevel l) noexcept
-  {
-    switch(l)
-    {
-    case LogLevel::trace: return "TRACE";
-    case LogLevel::debug: return "DEBUG";
-    case LogLevel::info:  return "INFO";
-    case LogLevel::warn:  return "WARN";
-    case LogLevel::error: return "ERROR";
-    case LogLevel::off:   return "OFF";
-    }
-    return "?";
-  }
 
   bool claim_log_sink(LogSink sink)
   {

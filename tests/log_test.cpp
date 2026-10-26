@@ -55,13 +55,6 @@ private slots:
   void ConcurrentEmittersAreSerialized(void);
 };
 
-class LogLevelStrings : public QObject
-{
-  Q_OBJECT
-private slots:
-  void MapsAllValues(void);
-};
-
 void LogTest::init(void)
 {
   install_capture_sink();
@@ -109,26 +102,12 @@ void LogTest::ConcurrentEmittersAreSerialized(void)
   QCOMPARE(drain().size(), static_cast<std::size_t>(kThreads * kPer));
 }
 
-void LogLevelStrings::MapsAllValues(void)
-{
-  QCOMPARE(mcp::to_string(mcp::LogLevel::trace), "TRACE");
-  QCOMPARE(mcp::to_string(mcp::LogLevel::debug), "DEBUG");
-  QCOMPARE(mcp::to_string(mcp::LogLevel::info), "INFO");
-  QCOMPARE(mcp::to_string(mcp::LogLevel::warn), "WARN");
-  QCOMPARE(mcp::to_string(mcp::LogLevel::error), "ERROR");
-  QCOMPARE(mcp::to_string(mcp::LogLevel::off), "OFF");
-}
-
 int main(int argc, char** argv)
 {
   QCoreApplication app(argc, argv);
   int status = 0;
   {
     LogTest suite;
-    status |= QTest::qExec(&suite, argc, argv);
-  }
-  {
-    LogLevelStrings suite;
     status |= QTest::qExec(&suite, argc, argv);
   }
   return status;
