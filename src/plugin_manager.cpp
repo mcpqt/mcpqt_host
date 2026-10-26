@@ -341,28 +341,8 @@ namespace mcp
     const QStringList loaded_ids = plugin_ids();
     const QStringList funcs = functions();
     for(const QString& dep : dependencies)
-    {
-      if(loaded_ids.contains(dep))
-      {
-        continue; // a plugin with this id is already loaded
-      }
-      bool found = false;
-      for(const QString& sig : funcs)
-      {
-        // Match a fully-qualified signature exactly, or as a signature
-        // without its parameter list ("QString HelloPlugin::greet" →
-        // "QString HelloPlugin::greet(QString)").
-        if(sig == dep || sig.startsWith(dep + '('))
-        {
-          found = true;
-          break;
-        }
-      }
-      if(!found)
-      {
+      if(!loaded_ids.contains(dep) && !funcs.contains(dep))
         return false;
-      }
-    }
     return true;
   }
 
@@ -653,9 +633,7 @@ namespace mcp
       if(meta.isObject())
       {
         const QJsonObject meta_object = meta.toObject();
-
-        const QJsonValue tools_value
-            = meta_object.value("Tools");
+        const QJsonValue tools_value = meta_object.value("Tools");
         if(tools_value.isObject())
         {
           const QJsonObject tools_object = tools_value.toObject();
@@ -674,8 +652,7 @@ namespace mcp
           }
         }
 
-        const QJsonValue resources_value
-            = meta_object.value("Resources");
+        const QJsonValue resources_value = meta_object.value("Resources");
         if(resources_value.isObject())
         {
           const QJsonObject resources_object = resources_value.toObject();
