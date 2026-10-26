@@ -267,7 +267,7 @@ int main(int argc, char** argv)
       else
       {
         std::cout << "unload refused: " << id.toStdString()
-                  << " (unknown, pinned, or required by another plugin)\n";
+                  << " (unknown or required by another plugin)\n";
       }
     }
     else

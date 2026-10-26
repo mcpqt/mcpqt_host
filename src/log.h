@@ -44,6 +44,13 @@ namespace mcp
   /// pinning the plugin that claims logging.
   [[nodiscard]] bool claim_log_sink(LogSink sink);
 
+  /// Release a claimed sink and restore the core's default fallback sink.
+  /// Used by `PluginManager` when the plugin that owns the sink is unloaded;
+  /// detaching that plugin's library while the sink still points into it
+  /// would leave a dangling call target. Not intended for general use.
+  /// Thread-safe.
+  void release_log_sink(void) noexcept;
+
   /// True once a sink has been claimed via `claim_log_sink()`.
   [[nodiscard]] bool log_sink_claimed(void) noexcept;
 

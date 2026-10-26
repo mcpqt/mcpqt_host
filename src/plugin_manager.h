@@ -28,10 +28,10 @@
 // Logging: a plugin claims the process-wide diagnostic sink through the host
 // function "bool mcp::Host::registerLogger(QString)" (listed by getFuncs()),
 // passing the canonical signature of its own void log(int, QString) slot. The
-// first claim wins; afterwards the core rejects replacement, and the claiming
-// plugin is pinned — unload_all() leaves it loaded (its sink runs code in the
-// plugin's library, so detaching it would be unsafe). The core keeps its
-// minimal default stderr sink as a fallback.
+// first claim wins; afterwards the core rejects replacement. A plugin that
+// owns the sink may still be unloaded: the manager releases the sink back to
+// the core fallback before detaching the library, so no dangling call target
+// remains. The core keeps its minimal default stderr sink as a fallback.
 
 #pragma once
 
@@ -138,16 +138,17 @@ namespace mcp
     std::size_t load_directory(const QString& directory);
 
     /// Unload a single plugin by its id. Returns false if no such plugin is
-    /// loaded, if it is pinned (owns the log sink), or if another loaded
-    /// plugin declares a dependency on it or on one of its published functions
-    /// — reverse dependencies are honored so a dependent is never left
-    /// dangling. Must not be called while that plugin's calls are in flight.
+    /// loaded or if another loaded plugin declares a dependency on it or on
+    /// one of its published functions — reverse dependencies are honored so a
+    /// dependent is never left dangling. If the plugin owns the log sink, the
+    /// sink is released to the core fallback before its library is detached.
+    /// Must not be called while that plugin's calls are in flight.
     bool unload_plugin(const QString& id);
 
-    /// Call shutdown() on every unloadable plugin and detach its shared
-    /// library. Pinned plugins (those that own the log sink) are kept loaded.
-    /// Safe to call more than once. Must not be called while calls are in
-    /// flight.
+    /// Call shutdown() on every loaded plugin and detach its shared library.
+    /// A plugin that owns the log sink releases it to the core fallback before
+    /// detaching. Safe to call more than once. Must not be called while calls
+    /// are in flight.
     void unload_all(void);
 
     /// Number of currently loaded plugins.

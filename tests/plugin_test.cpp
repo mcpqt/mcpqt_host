@@ -469,11 +469,13 @@ void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced(void)
   // Once claimed, nobody can displace the logging system.
   QVERIFY(!mcp::claim_log_sink([](mcp::LogLevel, QString) {}));
 
-  // The claiming plugin is pinned: unload_all() must not detach it.
-  plugins.unload_all();
+  // It is the only loaded plugin, so unloading it is allowed. The manager
+  // releases the claimed sink back to the core fallback before detaching the
+  // plugin's library, leaving no dangling call target.
   QCOMPARE(plugins.plugin_count(), std::size_t{ 1 });
-  QVERIFY(plugins.plugin_object("test-logger") != nullptr);
-  QVERIFY(mcp::log_sink_claimed());
+  QVERIFY(plugins.unload_plugin("test-logger"));
+  QCOMPARE(plugins.plugin_count(), std::size_t{ 0 });
+  QVERIFY(!mcp::log_sink_claimed());
 }
 
 int main(int argc, char** argv)

@@ -126,9 +126,11 @@ namespace mcp
     QStringList dependencies;   // declared plugin ids / function signatures
     QHash<QString, Tool> tools; // validated metadata "Tools" entries
     QHash<QString, PluginResource> resources; // validated "Resources" entries
-    /// True once this plugin owns the process-wide log sink. Pinned plugins
-    /// are never unloaded: the sink executes code inside the plugin's library.
-    bool pinned = false;
+    /// True once this plugin owns the process-wide log sink. When such a
+    /// plugin is unloaded, the manager releases the sink back to the core
+    /// fallback before detaching the library, so no dangling call target
+    /// remains.
+    bool owns_log_sink = false;
   };
 
   /// One published function: the reflective method on the owning plugin.
@@ -192,7 +194,7 @@ namespace mcp
     {
       return false;
     }
-    owner->pinned = true;
+    owner->owns_log_sink = true;
 
     // Alias the claimed sink as the host log service. Ordinary plugins depend
     // on this signature, so making it available is what lets them load once
@@ -598,14 +600,13 @@ namespace mcp
 
   void PluginManager::unload_instance(const std::shared_ptr<Instance>& inst)
   {
-    if(inst->pinned)
+    if(inst->owns_log_sink)
     {
-      // Pinned plugins own the log sink; detaching the library would leave
-      // the sink pointing at unmapped code. Keep it loaded for the process
-      // lifetime (the loader is intentionally not destroyed).
-      MCP_LOG_WARN("PluginManager: refusing to unload pinned plugin '"
-                   + inst->id + "' (it owns the log sink)");
-      return;
+      // The claimed sink invokes code in this plugin's library. Restore the
+      // core fallback before detaching so later log calls cannot jump into
+      // unmapped memory. Unloading is then safe like any other plugin.
+      release_log_sink();
+      inst->owns_log_sink = false;
     }
     for(const QString& signature : inst->signatures)
     {
@@ -801,11 +802,12 @@ namespace mcp
     {
       MCP_LOG_WARN("PluginManager: initialising '" + file
                    + "' threw: " + e.what());
-      if(inst->pinned)
+      if(inst->owns_log_sink)
       {
-        // It already claimed logging; its sink code must stay resident.
-        m_plugins.push_back(std::move(inst));
-        return LoadOutcome::Failed;
+        // It already claimed logging; release the sink before detaching so
+        // the core cannot call into a failed plugin's unmapped library.
+        release_log_sink();
+        inst->owns_log_sink = false;
       }
       unload_instance(inst);
       return LoadOutcome::Failed;
@@ -969,13 +971,6 @@ namespace mcp
       MCP_LOG_WARN("PluginManager: cannot unload unknown plugin '" + id + "'");
       return false;
     }
-    if(target->pinned)
-    {
-      MCP_LOG_WARN("PluginManager: refusing to unload pinned plugin '" + id
-                   + "'");
-      return false;
-    }
-
     const QString target_id = target->id;
     for(const auto& other : m_plugins)
     {
@@ -1022,11 +1017,6 @@ namespace mcp
   {
     for(auto it = m_plugins.begin(); it != m_plugins.end();)
     {
-      if((*it)->pinned)
-      {
-        ++it;
-        continue;
-      }
       unload_instance(*it);
       it = m_plugins.erase(it);
     }
@@ -1068,7 +1058,7 @@ namespace mcp
       QJsonObject info;
       info.insert(QStringLiteral("id"), inst->id);
       info.insert(QStringLiteral("path"), inst->path);
-      info.insert(QStringLiteral("pinned"), inst->pinned);
+      info.insert(QStringLiteral("owns_log_sink"), inst->owns_log_sink);
       if(inst->object != nullptr)
       {
         const QMetaObject* const meta_object = inst->object->metaObject();

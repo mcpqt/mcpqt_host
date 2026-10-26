@@ -91,6 +91,13 @@ namespace mcp
     return true;
   }
 
+  void release_log_sink(void) noexcept
+  {
+    QMutexLocker lk(&g_sink_mutex);
+    g_sink = &default_sink;
+    g_claimed.store(false, std::memory_order_release);
+  }
+
   bool log_sink_claimed(void) noexcept
   {
     return g_claimed.load(std::memory_order_acquire);

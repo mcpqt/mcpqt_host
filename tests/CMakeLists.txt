@@ -38,7 +38,7 @@ target_compile_options(mcp_test_plugin_pair PRIVATE
 )
 
 # A plugin that claims the process-wide log sink, used to verify Scope A
-# (plugin-owned logging, exclusive claim, pinned lifetime).
+# (plugin-owned logging, exclusive claim, sink release on unload).
 add_library(mcp_test_log_plugin MODULE test_log_plugin.cpp)
 set_target_properties(mcp_test_log_plugin PROPERTIES
     PREFIX ""

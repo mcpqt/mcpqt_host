@@ -100,9 +100,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `bool mcp::Host::claimLogging(QString)` with the canonical signature of its
     own `void log(int, QString)` slot, deciding how each `MCP_LOG_*` event is
     rendered and where it goes. A claim is exclusive:
-    once taken, another claim cannot displace it, and the
-    claiming plugin is pinned so its sink code is never detached. The core
-    retains a minimal timestamped stderr sink as a fallback. See
+    once taken, another claim cannot displace it. When the owning plugin is
+    unloaded, the manager releases the sink back to the core fallback before
+    detaching its library. The core retains a minimal timestamped stderr sink
+    as a fallback. See
     `plugins/log_plugin`.
   - **Interactive plugin tester (`plugintester`).** A standalone binary that
     scans a plugin directory and lets you `load`/`unload` plugins at runtime,
@@ -114,7 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     info, and ping. Tool content, error results, and structured content are
     printed.
   - **`PluginManager::unload_plugin()`** unloads a single plugin by id,
-    refusing pinned plugins and plugins that another loaded plugin depends on.
+    refusing plugins that another loaded plugin depends on. A plugin that owns
+    the log sink releases it before its library is detached.
   - See `examples/hello_plugin` + `examples/cross_caller` (two plugins, one
     calling the other) and `examples/plugin_host`, plus the `plugin_test`
     suite.

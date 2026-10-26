@@ -352,7 +352,7 @@ use; unloading while calls are in flight is not supported.
 out. It scans a directory and accepts `list`, `load <name|path>`, `loadall`,
 `unload <plugin-id>`, `loaded`, `help`, and `quit`. Loading honors declared
 dependencies; `unload_plugin()` refuses to remove a plugin that another loaded
-plugin depends on (and refuses pinned ones). The tester claims the log sink
+plugin depends on. The tester claims the log sink
 with a plain stderr dumper, so SDK logging always goes to stderr and a logging
 plugin cannot take it over.
 
@@ -418,8 +418,10 @@ dependency on the logging plugin. If no logging plugin is present (or it fails
 to load), the host exposes its fallback stderr sink under the same service name
 so ordinary plugins still load.
 
-A claiming plugin is **pinned**: `PluginManager::unload_all()` will not detach
-it, because the installed sink runs code from the plugin's library. See
+A claiming plugin can still be unloaded. `PluginManager` releases the claimed
+sink back to the core fallback before detaching the plugin's library, so no
+dangling call target remains; `unload_plugin()` also honors reverse
+dependencies, so a plugin another loaded plugin depends on is refused. See
 `plugins/log_plugin` for a JSON-lines implementation (writes to
 `$MCP_LOG_FILE`, else stderr).
 
