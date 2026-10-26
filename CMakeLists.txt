@@ -73,6 +73,21 @@ endif()
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+# Vendored JSON-RPC implementation, built as a static library and linked into
+# the core targets. Build it statically even if a parent project enables
+# BUILD_SHARED_LIBS, and skip its standalone tests so the host's test options
+# remain authoritative.
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+add_subdirectory(libqjsonrpc)
+
+# The vendored CMakeLists uses an absolute build-tree include path. Replace it
+# with an install-aware interface so exporting mcp (which links qjsonrpc) works.
+set_target_properties(qjsonrpc PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libqjsonrpc/src>;$<INSTALL_INTERFACE:include/qjsonrpc>"
+)
+
 # ----- Library -------------------------------------------------------------
 
 # Shared warning set, applied to every first-party target (mcp, mcp-http).
@@ -123,7 +138,7 @@ target_include_directories(mcp
         $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(mcp PUBLIC Qt6::Core)
+target_link_libraries(mcp PUBLIC Qt6::Core PRIVATE qjsonrpc)
 
 mcp_target_warnings(mcp)
 
@@ -153,7 +168,7 @@ endif()
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-set(_mcp_install_targets mcp)
+set(_mcp_install_targets mcp qjsonrpc)
 if(MCP_ENABLE_HTTP)
     list(APPEND _mcp_install_targets mcp-http)
 endif()
@@ -167,6 +182,11 @@ install(TARGETS ${_mcp_install_targets}
 
 install(DIRECTORY src/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mcp
+    FILES_MATCHING PATTERN "*.h"
+)
+
+install(DIRECTORY libqjsonrpc/src/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qjsonrpc
     FILES_MATCHING PATTERN "*.h"
 )
 
