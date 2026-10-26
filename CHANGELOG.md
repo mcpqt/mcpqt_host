@@ -100,7 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `bool mcp::Host::claimLogging(QString)` with the canonical signature of its
     own `void log(int, QString)` slot, deciding how each `MCP_LOG_*` event is
     rendered and where it goes. A claim is exclusive:
-    once taken, `set_log_sink`/another claim cannot displace it, and the
+    once taken, another claim cannot displace it, and the
     claiming plugin is pinned so its sink code is never detached. The core
     retains a minimal timestamped stderr sink as a fallback. See
     `plugins/log_plugin`.

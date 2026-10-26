@@ -55,8 +55,6 @@ namespace
 int main(int argc, char** argv)
 {
   QCoreApplication app(argc, argv);
-  mcp::set_log_level(mcp::LogLevel::info);
-
   QString host = "127.0.0.1";
   int port = 8848;
   QString path = "/mcp";

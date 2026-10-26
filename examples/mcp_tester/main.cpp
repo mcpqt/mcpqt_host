@@ -265,8 +265,6 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  mcp::set_log_level(mcp::LogLevel::warn);
-
   std::unique_ptr<Subprocess> server = spawn_server(argv + 1);
   if(!server)
   {

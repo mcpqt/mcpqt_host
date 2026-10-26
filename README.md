@@ -397,7 +397,7 @@ public slots:
 ```
 
 The claim is exclusive — the first successful claim wins, and afterwards
-neither another plugin nor `set_log_sink()` can replace it. The core keeps a
+neither another plugin nor another claim can replace it. The core keeps a
 minimal timestamped stderr sink as a fallback for before the claim and when no
 logging plugin is present.
 

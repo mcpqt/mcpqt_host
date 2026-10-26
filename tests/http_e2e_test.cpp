@@ -43,18 +43,6 @@ namespace
 
   using namespace std::chrono_literals;
 
-  struct EnableTraceLogging
-  {
-    EnableTraceLogging(void)
-    {
-      if(std::getenv("MCP_TRACE"))
-      {
-        mcp::set_log_level(mcp::LogLevel::trace);
-      }
-    }
-  };
-  EnableTraceLogging g_enable_trace;
-
   using Headers = QList<QPair<QByteArray, QByteArray>>;
 
   const char* kInitBody

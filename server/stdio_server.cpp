@@ -61,8 +61,6 @@ namespace
 
 int main(int argc, char** argv)
 {
-  mcp::set_log_level(mcp::LogLevel::info);
-
   QStringList paths;
   for(int i = 1; i < argc; ++i)
   {

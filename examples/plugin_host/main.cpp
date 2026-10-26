@@ -24,8 +24,6 @@
 
 int main(int argc, char** argv)
 {
-  mcp::set_log_level(mcp::LogLevel::info);
-
   const QString directory
       = (argc > 1) ? QString::fromLocal8Bit(argv[1])
                    : qEnvironmentVariable("MCP_PLUGIN_DIR",

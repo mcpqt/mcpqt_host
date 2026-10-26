@@ -17,17 +17,13 @@ namespace mcp
   namespace
   {
 
-    // Atomic level lets readers fast-path without grabbing the sink mutex.
-    std::atomic<LogLevel> g_level{ LogLevel::info };
-
     // The sink itself is mutex-guarded; swaps are rare, calls are frequent.
     QMutex g_sink_mutex;
     LogSink g_sink; // empty until first call to ensure_default_sink().
 
     // Once a sink is claimed (typically by a logging plugin), it is exclusive
-    // for the rest of the process: neither set_log_sink nor another claim may
-    // replace it. Guarded by g_sink_mutex for writes; read lock-free by
-    // log_message().
+    // for the rest of the process: no other claim may replace it. Guarded by
+    // g_sink_mutex for writes; read lock-free by log_message().
     std::atomic<bool> g_claimed{ false };
 
     void default_sink(LogLevel level, const QString& msg)
@@ -79,17 +75,6 @@ namespace mcp
     return "?";
   }
 
-  bool set_log_sink(LogSink sink)
-  {
-    QMutexLocker lk(&g_sink_mutex);
-    if(g_claimed.load(std::memory_order_relaxed))
-    {
-      return false; // a claimed sink is exclusive; refuse to displace it
-    }
-    g_sink = sink ? std::move(sink) : LogSink{ &default_sink };
-    return true;
-  }
-
   bool claim_log_sink(LogSink sink)
   {
     if(!sink)
@@ -111,21 +96,9 @@ namespace mcp
     return g_claimed.load(std::memory_order_acquire);
   }
 
-  void set_log_level(LogLevel level) noexcept
-  {
-    g_level.store(level, std::memory_order_relaxed);
-  }
-
-  LogLevel log_level(void) noexcept
-  {
-    return g_level.load(std::memory_order_relaxed);
-  }
-
   void log_message(LogLevel level, const QString& msg,
                    std::source_location /*loc*/)
   {
-    if(level < g_level.load(std::memory_order_relaxed))
-      return;
     LogSink sink;
     {
       QMutexLocker lk(&g_sink_mutex);

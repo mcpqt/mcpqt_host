@@ -467,7 +467,6 @@ void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced(void)
           .contains("logging-plugin-probe-line"));
 
   // Once claimed, nobody can displace the logging system.
-  QVERIFY(!mcp::set_log_sink([](mcp::LogLevel, QString) {}));
   QVERIFY(!mcp::claim_log_sink([](mcp::LogLevel, QString) {}));
 
   // The claiming plugin is pinned: unload_all() must not detach it.
