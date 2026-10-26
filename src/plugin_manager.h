@@ -233,17 +233,19 @@ namespace mcp
     [[nodiscard]] bool
     plugin_declares_logging(const QPluginLoader* loader) const;
 
-    /// True when every entry of `dependencies` is satisfied.
-    [[nodiscard]] bool
-    dependencies_satisfied(const QStringList& dependencies) const;
+    /// True when every entry of `dependencies` is satisfied. When a logging
+    /// provider is part of the current load batch, ordinary plugins also
+    /// implicitly depend on the process-wide log sink having been claimed;
+    /// `is_logging_provider` exempts the provider itself.
+    [[nodiscard]] bool dependencies_satisfied(const QStringList& dependencies,
+                                              bool is_logging_provider) const;
 
-    /// Load one plugin. When `defer_until_log_sink` is set, an ordinary
-    /// (non-logging) plugin is deferred until the process-wide log sink has
-    /// been claimed, so a logging plugin present in the same directory can be
-    /// initialised first without every other plugin declaring an explicit
-    /// dependency on it. Logging plugins are exempt and always load.
-    LoadOutcome load_file_impl(const QString& file, bool quiet,
-                               bool defer_until_log_sink);
+    /// Load one plugin. Dependency resolution treats the log sink as an
+    /// implicit requirement for ordinary plugins when
+    /// `m_log_sink_required` is set (see load_directory()), so a logging
+    /// plugin present in the same directory is initialised first without every
+    /// other plugin declaring an explicit dependency on it.
+    LoadOutcome load_file_impl(const QString& file, bool quiet);
 
     /// Invoke `method` on `object` with positional QVariant arguments.
     [[nodiscard]] static QVariant invoke_method(QObject* object,
@@ -267,6 +269,11 @@ namespace mcp
 
     QHash<QString, FunctionEntry> m_registry; // signature -> entry
     QList<std::shared_ptr<Instance>> m_plugins;
+
+    /// True while load_directory() is loading a batch that includes a logging
+    /// provider. Ordinary plugins then implicitly depend on the sink being
+    /// claimed before they may initialise.
+    bool m_log_sink_required = false;
   };
 
 } // namespace mcp

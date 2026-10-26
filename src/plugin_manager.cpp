@@ -341,13 +341,20 @@ namespace mcp
         "bool mcp::Host::registerLogger(QString)");
   }
 
-  bool PluginManager::dependencies_satisfied(const QStringList& dependencies) const
+  bool PluginManager::dependencies_satisfied(const QStringList& dependencies,
+                                             bool is_logging_provider) const
   {
     const QStringList loaded_ids = plugin_ids();
     const QStringList funcs = functions();
     for(const QString& dep : dependencies)
       if(!loaded_ids.contains(dep) && !funcs.contains(dep))
         return false;
+
+    // Implicit dependency: when the current load batch contains a logging
+    // provider, ordinary plugins may not initialise until that provider has
+    // claimed the process-wide sink. The provider itself is exempt.
+    if(m_log_sink_required && !is_logging_provider && !log_sink_claimed())
+      return false;
     return true;
   }
 
@@ -623,8 +630,8 @@ namespace mcp
     inst->object = nullptr;
   }
 
-  PluginManager::LoadOutcome PluginManager::load_file_impl(
-      const QString& file, bool quiet, bool defer_until_log_sink)
+  PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
+                                                           bool quiet)
   {
     auto* loader = new QPluginLoader(file);
 
@@ -705,32 +712,14 @@ namespace mcp
     }
 
     const QStringList deps = plugin_dependencies(loader);
-    if(!deps.isEmpty() && !dependencies_satisfied(deps))
+    const bool is_logging_provider = plugin_declares_logging(loader);
+    if(!dependencies_satisfied(deps, is_logging_provider))
     {
       if(!quiet)
       {
         MCP_LOG_WARN("PluginManager: '" + file
-                     + "' declares dependencies that are not yet satisfied; "
-                       "deferring load");
-      }
-      delete loader;
-      return LoadOutcome::UnsatisfiedDependencies;
-    }
-
-    // Implicit logging dependency: when a directory contains a logging
-    // provider, ordinary plugins wait until that provider has claimed the
-    // process-wide sink. The logging plugin itself is exempt — it is the one
-    // expected to perform the claim during initialize(). This gives logging
-    // priority without requiring every other plugin to declare an explicit
-    // dependency on it.
-    if(defer_until_log_sink && !log_sink_claimed()
-       && !plugin_declares_logging(loader))
-    {
-      if(!quiet)
-      {
-        MCP_LOG_WARN("PluginManager: '" + file
-                     + "' is not a logging plugin and the log sink is not yet "
-                       "claimed; deferring load");
+                     + "' has unsatisfied dependencies (explicit or the "
+                       "implicit log-sink requirement); deferring load");
       }
       delete loader;
       return LoadOutcome::UnsatisfiedDependencies;
@@ -879,9 +868,12 @@ namespace mcp
   {
     // A single explicit load never defers: the caller asked for this exact
     // plugin, so load it whether or not a log sink has been claimed.
-    return load_file_impl(file, /*quiet=*/false,
-                          /*defer_until_log_sink=*/false)
-           == LoadOutcome::Loaded;
+    const bool saved = m_log_sink_required;
+    m_log_sink_required = false;
+    const bool ok
+        = load_file_impl(file, /*quiet=*/false) == LoadOutcome::Loaded;
+    m_log_sink_required = saved;
+    return ok;
   }
 
   std::size_t PluginManager::load_directory(const QString& directory)
@@ -911,8 +903,9 @@ namespace mcp
       pending << file.absoluteFilePath();
     }
 
-    // Scan metadata first: if the directory contains a logging provider, give
-    // it priority by deferring ordinary plugins until the sink is claimed.
+    // If the directory contains a logging provider, ordinary plugins will
+    // implicitly depend on the sink being claimed (see
+    // dependencies_satisfied()). The provider is exempt, so it loads first.
     bool has_logging_plugin = false;
     for(const QString& file : pending)
     {
@@ -924,14 +917,16 @@ namespace mcp
       }
     }
 
-    bool defer_until_log_sink = has_logging_plugin;
+    const bool previous_log_sink_required = m_log_sink_required;
+    m_log_sink_required = has_logging_plugin;
+
     while(!pending.isEmpty())
     {
       bool progress = false;
       QStringList still;
       for(const QString& file : pending)
       {
-        switch(load_file_impl(file, /*quiet=*/true, defer_until_log_sink))
+        switch(load_file_impl(file, /*quiet=*/true))
         {
         case LoadOutcome::Loaded:
           ++loaded;
@@ -950,14 +945,15 @@ namespace mcp
         // If a declared logging plugin failed to load (and therefore never
         // claimed the sink), stop deferring so ordinary plugins are not
         // blocked forever.
-        if(defer_until_log_sink && !log_sink_claimed())
+        if(m_log_sink_required && !log_sink_claimed())
         {
-          defer_until_log_sink = false;
+          m_log_sink_required = false;
           continue;
         }
         break;
       }
     }
+    m_log_sink_required = previous_log_sink_required;
     for(const QString& file : pending)
     {
       MCP_LOG_WARN("PluginManager: skipping '" + file
