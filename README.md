@@ -410,11 +410,12 @@ service as a dependency in its metadata JSON:
 }
 ```
 
-`PluginManager::load_directory()` treats that dependency as the marker for a
-logging provider: when one is present in the directory, ordinary plugins are
-deferred until the sink has been claimed. No other plugin therefore needs to
-declare an explicit dependency on the logging plugin. If the declared logging
-plugin fails to load (so the sink is never claimed), the manager stops deferring
+Every other plugin implicitly depends on the host log service
+`void mcp::Host::log(int,QString)`. When the logging plugin claims the sink, the
+host aliases it to that service, satisfying the dependency; until then ordinary
+plugins are deferred. No plugin therefore needs to declare an explicit
+dependency on the logging plugin. If no logging plugin is present (or it fails
+to load), the host exposes its fallback stderr sink under the same service name
 so ordinary plugins still load.
 
 A claiming plugin is **pinned**: `PluginManager::unload_all()` will not detach

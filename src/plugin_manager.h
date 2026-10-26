@@ -225,25 +225,14 @@ namespace mcp
     [[nodiscard]] QStringList
     plugin_dependencies(const QPluginLoader* loader) const;
 
-    /// True when the plugin declares the host `registerLogger` service as a
-    /// dependency, e.g.
-    /// `"dependencies": ["bool mcp::Host::registerLogger(QString)"]`.
-    /// That marks the plugin as the logging provider: it is allowed to load
-    /// before a log sink is claimed, because it is expected to claim it.
+    /// True when every entry of `dependencies` is satisfied.
     [[nodiscard]] bool
-    plugin_declares_logging(const QPluginLoader* loader) const;
+    dependencies_satisfied(const QStringList& dependencies) const;
 
-    /// True when every entry of `dependencies` is satisfied. When a logging
-    /// provider is part of the current load batch, ordinary plugins also
-    /// implicitly depend on the process-wide log sink having been claimed;
-    /// `is_logging_provider` exempts the provider itself.
-    [[nodiscard]] bool dependencies_satisfied(const QStringList& dependencies,
-                                              bool is_logging_provider) const;
-
-    /// Load one plugin. Dependency resolution treats the log sink as an
-    /// implicit requirement for ordinary plugins when
-    /// `m_log_sink_required` is set (see load_directory()), so a logging
-    /// plugin present in the same directory is initialised first without every
+    /// Load one plugin. Dependencies include the implicit host log service
+    /// (`void mcp::Host::log(int,QString)`) for every plugin that does not
+    /// declare `bool mcp::Host::registerLogger(QString)`, so a logging
+    /// provider present in the same directory initialises first without every
     /// other plugin declaring an explicit dependency on it.
     LoadOutcome load_file_impl(const QString& file, bool quiet);
 
@@ -256,8 +245,11 @@ namespace mcp
     using HostFunction = std::function<QVariant(const QVariantList& args)>;
 
     /// Register the built-in host services (registerLogger, elicit).
-    void install_host_functions(void);
     void register_host_function(const QString& signature, HostFunction fn);
+
+    /// Register (or replace) the host log service
+    /// `void mcp::Host::log(int,QString)`, which forwards to the current sink.
+    void install_log_service(void);
 
     bool host_reg_func(const std::shared_ptr<Instance>& inst,
                        const QString& signature);
@@ -269,11 +261,6 @@ namespace mcp
 
     QHash<QString, FunctionEntry> m_registry; // signature -> entry
     QList<std::shared_ptr<Instance>> m_plugins;
-
-    /// True while load_directory() is loading a batch that includes a logging
-    /// provider. Ordinary plugins then implicitly depend on the sink being
-    /// claimed before they may initialise.
-    bool m_log_sink_required = false;
   };
 
 } // namespace mcp

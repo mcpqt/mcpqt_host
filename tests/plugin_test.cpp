@@ -125,12 +125,14 @@ void PluginManagerTest::LoadRegistersTypedFunctions(void)
   // Inherited QObject slots (deleteLater is a public void() slot) are not
   // published as plugin functions.
   QVERIFY(!plugins.has_function("void QObject::deleteLater()"));
-  QCOMPARE(funcs.size(), 11);
+  QCOMPARE(funcs.size(), 12);
   // The host's own services are part of the function list.
   QVERIFY(plugins.has_function(
       QStringLiteral("bool mcp::Host::registerLogger(QString)")));
   QVERIFY(plugins.has_function(
       QStringLiteral("QVariant mcp::Host::elicit(QVariant)")));
+  QVERIFY(plugins.has_function(
+      QStringLiteral("void mcp::Host::log(int,QString)")));
 }
 
 void PluginManagerTest::ToolsMetadataExposed(void)
@@ -196,7 +198,7 @@ void PluginManagerTest::UnloadClearsState(void)
   QCOMPARE(plugins.plugin_count(), std::size_t{ 1 });
   QVERIFY(plugins.unload_plugin("test-plugin"));
   QCOMPARE(plugins.plugin_count(), std::size_t{ 0 });
-  QCOMPARE(plugins.functions().size(), 4); // host services only
+  QCOMPARE(plugins.functions().size(), 5); // host services only
 
   // Idempotent, and unknown ids are rejected.
   QVERIFY(!plugins.unload_plugin("test-plugin"));
@@ -327,7 +329,7 @@ void PluginManagerTest::UnloadHonorsReverseDependencies(void)
   QCOMPARE(plugins.plugin_count(), std::size_t{ 1 });
   QVERIFY(plugins.unload_plugin("test-plugin"));
   QCOMPARE(plugins.plugin_count(), std::size_t{ 0 });
-  QCOMPARE(plugins.functions().size(), 4); // host services only
+  QCOMPARE(plugins.functions().size(), 5); // host services only
 }
 
 void PluginManagerTest::ControlToolManagesPlugins(void)
