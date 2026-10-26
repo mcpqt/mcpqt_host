@@ -233,9 +233,7 @@ namespace mcp
 
     QStringList names;
     for(const Tool& tool : server->tools())
-    {
       names.append(tool.name);
-    }
     return QVariant::fromValue(names);
   }
 
@@ -257,28 +255,26 @@ namespace mcp
     const QString name = args[0].toString();
     for(const Tool& tool : server->tools())
     {
-      if(tool.name != name)
+      if(tool.name == name)
       {
-        continue;
+        QVariantMap details;
+        details.insert(QStringLiteral("name"), tool.name);
+        details.insert(QStringLiteral("title"), tool.title);
+        details.insert(QStringLiteral("description"), tool.description);
+        details.insert(QStringLiteral("inputSchema"),
+                       dump(tool.input_schema));
+        details.insert(QStringLiteral("outputSchema"),
+                       dump(tool.output_schema));
+        details.insert(QStringLiteral("source"),
+                       name == QStringLiteral("plugin")
+                               || name.startsWith(QStringLiteral("tool_search"))
+                           ? QStringLiteral("builtin")
+                           : QStringLiteral("plugin"));
+        return QVariant::fromValue(details);
       }
-      QVariantMap details;
-      details.insert(QStringLiteral("name"), tool.name);
-      details.insert(QStringLiteral("title"), tool.title);
-      details.insert(QStringLiteral("description"), tool.description);
-      details.insert(QStringLiteral("inputSchema"),
-                     dump(tool.input_schema));
-      details.insert(QStringLiteral("outputSchema"),
-                     dump(tool.output_schema));
-      details.insert(QStringLiteral("source"),
-                     name == QStringLiteral("plugin")
-                             || name.startsWith(QStringLiteral("tool_search"))
-                         ? QStringLiteral("builtin")
-                         : QStringLiteral("plugin"));
-      return QVariant::fromValue(details);
     }
 
-    throw Error{ error_code::invalid_params,
-                 "unknown tool: " + name };
+    throw Error{ error_code::invalid_params, "unknown tool: " + name };
   }
 
   PluginManager::PluginManager(void)
@@ -334,6 +330,16 @@ namespace mcp
       }
     }
     return dependencies;
+  }
+
+  bool PluginManager::plugin_declares_logging(const QPluginLoader* loader) const
+  {
+    const QJsonValue meta = loader->metaData().value("MetaData");
+    if(!meta.isObject())
+    {
+      return false;
+    }
+    return meta.toObject().value("Logging").toBool();
   }
 
   bool PluginManager::dependencies_satisfied(const QStringList& dependencies) const
@@ -618,8 +624,8 @@ namespace mcp
     inst->object = nullptr;
   }
 
-  PluginManager::LoadOutcome PluginManager::load_file_impl(const QString& file,
-                                                           bool quiet)
+  PluginManager::LoadOutcome PluginManager::load_file_impl(
+      const QString& file, bool quiet, bool defer_until_log_sink)
   {
     auto* loader = new QPluginLoader(file);
 
@@ -707,6 +713,25 @@ namespace mcp
         MCP_LOG_WARN("PluginManager: '" + file
                      + "' declares dependencies that are not yet satisfied; "
                        "deferring load");
+      }
+      delete loader;
+      return LoadOutcome::UnsatisfiedDependencies;
+    }
+
+    // Implicit logging dependency: when a directory contains a logging
+    // provider, ordinary plugins wait until that provider has claimed the
+    // process-wide sink. The logging plugin itself is exempt — it is the one
+    // expected to perform the claim during initialize(). This gives logging
+    // priority without requiring every other plugin to declare an explicit
+    // dependency on it.
+    if(defer_until_log_sink && !log_sink_claimed()
+       && !plugin_declares_logging(loader))
+    {
+      if(!quiet)
+      {
+        MCP_LOG_WARN("PluginManager: '" + file
+                     + "' is not a logging plugin and the log sink is not yet "
+                       "claimed; deferring load");
       }
       delete loader;
       return LoadOutcome::UnsatisfiedDependencies;
@@ -853,7 +878,11 @@ namespace mcp
 
   bool PluginManager::load_file(const QString& file)
   {
-    return load_file_impl(file, /*quiet=*/false) == LoadOutcome::Loaded;
+    // A single explicit load never defers: the caller asked for this exact
+    // plugin, so load it whether or not a log sink has been claimed.
+    return load_file_impl(file, /*quiet=*/false,
+                          /*defer_until_log_sink=*/false)
+           == LoadOutcome::Loaded;
   }
 
   std::size_t PluginManager::load_directory(const QString& directory)
@@ -883,14 +912,27 @@ namespace mcp
       pending << file.absoluteFilePath();
     }
 
-    bool progress = true;
-    while(!pending.isEmpty() && progress)
+    // Scan metadata first: if the directory contains a logging provider, give
+    // it priority by deferring ordinary plugins until the sink is claimed.
+    bool has_logging_plugin = false;
+    for(const QString& file : pending)
     {
-      progress = false;
+      QPluginLoader probe(file);
+      if(plugin_declares_logging(&probe))
+      {
+        has_logging_plugin = true;
+        break;
+      }
+    }
+
+    bool defer_until_log_sink = has_logging_plugin;
+    while(!pending.isEmpty())
+    {
+      bool progress = false;
       QStringList still;
       for(const QString& file : pending)
       {
-        switch(load_file_impl(file, /*quiet=*/true))
+        switch(load_file_impl(file, /*quiet=*/true, defer_until_log_sink))
         {
         case LoadOutcome::Loaded:
           ++loaded;
@@ -904,6 +946,18 @@ namespace mcp
         }
       }
       pending = still;
+      if(!progress)
+      {
+        // If a declared logging plugin failed to load (and therefore never
+        // claimed the sink), stop deferring so ordinary plugins are not
+        // blocked forever.
+        if(defer_until_log_sink && !log_sink_claimed())
+        {
+          defer_until_log_sink = false;
+          continue;
+        }
+        break;
+      }
     }
     for(const QString& file : pending)
     {

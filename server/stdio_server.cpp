@@ -95,6 +95,7 @@ int main(int argc, char** argv)
   g_server.store(&server, std::memory_order_release);
   std::signal(SIGINT, on_signal);
   std::signal(SIGTERM, on_signal);
+  std::signal(SIGQUIT, on_signal);
 
   std::atomic<bool> supervisor_done{ false };
   std::thread supervisor([&supervisor_done] {

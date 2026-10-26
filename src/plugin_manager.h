@@ -225,11 +225,23 @@ namespace mcp
     [[nodiscard]] QStringList
     plugin_dependencies(const QPluginLoader* loader) const;
 
+    /// True when the plugin's metadata declares it provides process-wide
+    /// logging (`"Logging": true`). Such plugins are allowed to load before a
+    /// log sink is claimed — they are the ones expected to claim it.
+    [[nodiscard]] bool
+    plugin_declares_logging(const QPluginLoader* loader) const;
+
     /// True when every entry of `dependencies` is satisfied.
     [[nodiscard]] bool
     dependencies_satisfied(const QStringList& dependencies) const;
 
-    LoadOutcome load_file_impl(const QString& file, bool quiet);
+    /// Load one plugin. When `defer_until_log_sink` is set, an ordinary
+    /// (non-logging) plugin is deferred until the process-wide log sink has
+    /// been claimed, so a logging plugin present in the same directory can be
+    /// initialised first without every other plugin declaring an explicit
+    /// dependency on it. Logging plugins are exempt and always load.
+    LoadOutcome load_file_impl(const QString& file, bool quiet,
+                               bool defer_until_log_sink);
 
     /// Invoke `method` on `object` with positional QVariant arguments.
     [[nodiscard]] static QVariant invoke_method(QObject* object,

@@ -129,6 +129,7 @@ int main(int argc, char** argv)
 
   std::signal(SIGINT, on_signal);
   std::signal(SIGTERM, on_signal);
+  std::signal(SIGQUIT, on_signal);
 
   server_host.start();
   std::fprintf(stderr, "[mcp_http_server] listening on http://%s:%d%s\n",
