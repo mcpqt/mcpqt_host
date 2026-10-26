@@ -42,7 +42,6 @@ namespace mcp
   // --------------------------------------------------------------------------
 
   inline const QString kLatestProtocolVersion = "2025-11-25";
-  inline const QString kJsonrpcVersion = "2.0";
 
   // --------------------------------------------------------------------------
   // JSON-RPC envelope

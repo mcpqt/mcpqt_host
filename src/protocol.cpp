@@ -19,8 +19,12 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <type_traits>
 #include <variant>
 #include <vector>
+
+// New JSON-RPC implementation lives in the vendored libqjsonrpc library.
+#include "jsonrpc.h"
 
 namespace mcp
 {
@@ -47,9 +51,8 @@ namespace mcp
     }
     if(j.isDouble())
     {
-      // The spec types `id` as `string | number`; some JS clients
-      // emit small whole numbers as floats (`1.0`) because JS has
-      // no integer literal. Accept whole values; reject fractional.
+      // MCP ids are strings or whole numbers. Accept whole values (some
+      // clients emit `1.0`) but reject fractional ids.
       std::int64_t v{};
       from_json(j, v);
       *this = RequestId{ v };
@@ -57,161 +60,224 @@ namespace mcp
     }
     throw Error(error_code::parse_error,
                 "JSON-RPC id must be a string or integer");
-
-    return *this;
   }
 
   // =====================================================================
   // JSON-RPC envelopes
+  //
+  // The original hand-written envelope codec lived here. The wire format is
+  // now handled by the vendored libqjsonrpc implementation; these functions
+  // only adapt between the MCP-facing envelope types and jsonrpc:: types.
   // =====================================================================
+
+  namespace
+  {
+    jsonrpc::RequestId to_jsonrpc_id(const RequestId& id)
+    {
+      jsonrpc::RequestId out;
+      out = static_cast<QJsonValue>(id);
+      return out;
+    }
+
+    RequestId from_jsonrpc_id(const jsonrpc::RequestId& id)
+    {
+      RequestId out;
+      static_cast<QJsonValue&>(out) = static_cast<QJsonValue>(id);
+      return out;
+    }
+
+    jsonrpc::ErrorObject to_jsonrpc_error(const ErrorObject& e)
+    {
+      jsonrpc::ErrorObject out;
+      out.code = static_cast<jsonrpc::error_code>(static_cast<int>(e.code));
+      out.message = e.message;
+      out.data = e.data;
+      return out;
+    }
+
+    ErrorObject from_jsonrpc_error(const jsonrpc::ErrorObject& e)
+    {
+      ErrorObject out;
+      out.code = static_cast<error_code>(static_cast<int>(e.code));
+      out.message = e.message;
+      out.data = e.data;
+      return out;
+    }
+
+    jsonrpc::JsonRpcRequest to_jsonrpc(const JsonRpcRequest& r)
+    {
+      jsonrpc::JsonRpcRequest out;
+      out.id = to_jsonrpc_id(r.id);
+      out.method = r.method;
+      out.params = r.params;
+      return out;
+    }
+
+    JsonRpcRequest from_jsonrpc(const jsonrpc::JsonRpcRequest& r)
+    {
+      JsonRpcRequest out;
+      out.id = from_jsonrpc_id(r.id);
+      out.method = r.method;
+      out.params = r.params;
+      return out;
+    }
+
+    jsonrpc::JsonRpcNotification to_jsonrpc(const JsonRpcNotification& n)
+    {
+      jsonrpc::JsonRpcNotification out;
+      out.method = n.method;
+      out.params = n.params;
+      return out;
+    }
+
+    JsonRpcNotification from_jsonrpc(const jsonrpc::JsonRpcNotification& n)
+    {
+      JsonRpcNotification out;
+      out.method = n.method;
+      out.params = n.params;
+      return out;
+    }
+
+    jsonrpc::JsonRpcResponse to_jsonrpc(const JsonRpcResponse& r)
+    {
+      jsonrpc::JsonRpcResponse out;
+      out.id = to_jsonrpc_id(r.id);
+      if(r.is_success())
+        out.outcome = std::get<0>(r.outcome);
+      else
+        out.outcome = to_jsonrpc_error(std::get<1>(r.outcome));
+      return out;
+    }
+
+    JsonRpcResponse from_jsonrpc(const jsonrpc::JsonRpcResponse& r)
+    {
+      JsonRpcResponse out;
+      out.id = from_jsonrpc_id(r.id);
+      if(r.is_success())
+        out.outcome = std::get<0>(r.outcome);
+      else
+        out.outcome = from_jsonrpc_error(std::get<1>(r.outcome));
+      return out;
+    }
+
+    jsonrpc::JsonRpcMessage to_jsonrpc(const JsonRpcMessage& m)
+    {
+      return std::visit(
+          [](const auto& msg) -> jsonrpc::JsonRpcMessage
+          { return to_jsonrpc(msg); },
+          m);
+    }
+
+    JsonRpcMessage from_jsonrpc(const jsonrpc::JsonRpcMessage& m)
+    {
+      return std::visit(
+          [](const auto& msg) -> JsonRpcMessage
+          {
+            using T = std::decay_t<decltype(msg)>;
+            if constexpr(std::is_same_v<T, jsonrpc::JsonRpcRequest>)
+              return from_jsonrpc(msg);
+            else if constexpr(std::is_same_v<T, jsonrpc::JsonRpcNotification>)
+              return from_jsonrpc(msg);
+            else if constexpr(std::is_same_v<T, jsonrpc::JsonRpcResponse>)
+              return from_jsonrpc(msg);
+            else
+              throw Error(error_code::invalid_request,
+                          "JSON-RPC batches are not supported");
+          },
+          m);
+    }
+
+    template <typename F>
+    auto convert_jsonrpc_error(F&& f) -> decltype(f())
+    {
+      try
+      {
+        return f();
+      }
+      catch(const jsonrpc::Error& e)
+      {
+        throw Error(static_cast<int>(e.code()), e.message(), e.data());
+      }
+    }
+  } // namespace
 
   JsonRpcRequest::operator QJsonValue() const
   {
-    QJsonObject o;
-    o.insert("jsonrpc", to_json(kJsonrpcVersion));
-    o.insert("id", to_json(id));
-    o.insert("method", to_json(method));
-    if(!params.isNull())
-      o.insert("params", params);
-    return o;
+    return static_cast<QJsonValue>(to_jsonrpc(*this));
   }
 
   JsonRpcRequest& JsonRpcRequest::operator=(const QJsonValue& j)
   {
-    const QJsonObject o = as_object(j);
-    if(require<QString>(o, "jsonrpc") != QString{ kJsonrpcVersion })
-    {
-      throw Error(error_code::invalid_request, "jsonrpc must be \"2.0\"");
-    }
-    id = require<RequestId>(o, "id");
-    method = require<QString>(o, "method");
-    params = QJsonValue(QJsonValue::Null);
-    take_optional_json(o, "params", params);
-
+    *this = convert_jsonrpc_error(
+        [&]
+        {
+          jsonrpc::JsonRpcRequest r;
+          r = j;
+          return from_jsonrpc(r);
+        });
     return *this;
   }
 
   JsonRpcNotification::operator QJsonValue() const
   {
-    QJsonObject o;
-    o.insert("jsonrpc", to_json(kJsonrpcVersion));
-    o.insert("method", to_json(method));
-    if(!params.isNull())
-      o.insert("params", params);
-    return o;
+    return static_cast<QJsonValue>(to_jsonrpc(*this));
   }
 
   JsonRpcNotification& JsonRpcNotification::operator=(const QJsonValue& j)
   {
-    const QJsonObject o = as_object(j);
-    if(require<QString>(o, "jsonrpc") != QString{ kJsonrpcVersion })
-    {
-      throw Error(error_code::invalid_request, "jsonrpc must be \"2.0\"");
-    }
-    method = require<QString>(o, "method");
-    params = QJsonValue(QJsonValue::Null);
-    take_optional_json(o, "params", params);
-
+    *this = convert_jsonrpc_error(
+        [&]
+        {
+          jsonrpc::JsonRpcNotification n;
+          n = j;
+          return from_jsonrpc(n);
+        });
     return *this;
   }
 
   ErrorObject::operator QJsonValue() const
   {
-    QJsonObject o;
-    o.insert("code", to_json(static_cast<int>(code)));
-    o.insert("message", to_json(message));
-    if(has_data())
-      o.insert("data", data);
-    return o;
+    return static_cast<QJsonValue>(to_jsonrpc_error(*this));
   }
 
   ErrorObject& ErrorObject::operator=(const QJsonValue& j)
   {
-    const QJsonObject o = as_object(j);
-    code = static_cast<error_code>(require<int>(o, "code"));
-    message = require<QString>(o, "message");
-    const auto it = o.constFind("data");
-    data = (it != o.constEnd() && !it->isNull())
-               ? *it
-               : QJsonValue(QJsonValue::Null);
-
+    *this = convert_jsonrpc_error(
+        [&]
+        {
+          jsonrpc::ErrorObject e;
+          e = j;
+          return from_jsonrpc_error(e);
+        });
     return *this;
   }
 
   JsonRpcResponse::operator QJsonValue() const
   {
-    QJsonObject o;
-    o.insert("jsonrpc", to_json(kJsonrpcVersion));
-    if(!id.isNull())
-      o.insert("id", to_json(id));
-    else
-      o.insert("id", QJsonValue(QJsonValue::Null));
-    if(is_success())
-      o.insert("result", std::get<0>(outcome));
-    else
-      o.insert("error", to_json(std::get<1>(outcome)));
-    return o;
+    return static_cast<QJsonValue>(to_jsonrpc(*this));
   }
 
   JsonRpcResponse& JsonRpcResponse::operator=(const QJsonValue& j)
   {
-    const QJsonObject o = as_object(j);
-    if(require<QString>(o, "jsonrpc") != QString{ kJsonrpcVersion })
-    {
-      throw Error(error_code::invalid_request, "jsonrpc must be \"2.0\"");
-    }
-    const auto idIt = o.constFind("id");
-    if(idIt != o.constEnd() && !idIt->isNull())
-    {
-      id = from_json<RequestId>(*idIt);
-    }
-    else
-    {
-      id = RequestId();
-    }
-    const bool has_result = o.contains("result");
-    const bool has_error = o.contains("error");
-    if(has_result == has_error)
-    {
-      throw Error(error_code::invalid_request,
-                  "JSON-RPC response must carry exactly one of "
-                  "\"result\" or \"error\"");
-    }
-    if(has_result)
-    {
-      outcome = o.value("result");
-    }
-    else
-    {
-      outcome = from_json<ErrorObject>(o.value("error"));
-    }
-
+    *this = convert_jsonrpc_error(
+        [&]
+        {
+          jsonrpc::JsonRpcResponse r;
+          r = j;
+          return from_jsonrpc(r);
+        });
     return *this;
   }
 
   JsonRpcMessage parse_message(const QJsonValue& j)
   {
-    const QJsonObject o = as_object(j);
-    const bool has_id = o.contains("id");
-    const bool has_method = o.contains("method");
-    const bool has_result = o.contains("result");
-    const bool has_error = o.contains("error");
-
-    if(has_method && has_id)
-      return from_json<JsonRpcRequest>(j);
-    if(has_method)
-      return from_json<JsonRpcNotification>(j);
-    if(has_result || has_error)
-      return from_json<JsonRpcResponse>(j);
-
-    throw Error(
-        error_code::invalid_request,
-        "JSON-RPC frame has neither \"method\" nor \"result\"/\"error\"");
+    return convert_jsonrpc_error(
+        [&] { return from_jsonrpc(jsonrpc::parse_message(j)); });
   }
 
   QJsonValue serialize_message(const JsonRpcMessage& m)
   {
-    return std::visit([](const auto& msg) { return to_json(msg); }, m);
+    return jsonrpc::serialize_message(to_jsonrpc(m));
   }
 
   // =====================================================================
