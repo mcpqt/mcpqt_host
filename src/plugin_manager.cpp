@@ -338,7 +338,7 @@ namespace mcp
     // host's registerLogger service. Treat that dependency as the marker for a
     // logging provider instead of requiring a separate metadata flag.
     return plugin_dependencies(loader).contains(
-        QStringLiteral("bool mcp::Host::registerLogger(QString)"));
+        "bool mcp::Host::registerLogger(QString)");
   }
 
   bool PluginManager::dependencies_satisfied(const QStringList& dependencies) const
