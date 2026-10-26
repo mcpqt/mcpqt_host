@@ -17,6 +17,7 @@
 #include "log.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QObject>
@@ -116,6 +117,7 @@ namespace
     {
       const QJsonObject record
       {
+        { "time", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs) },
         { "level", to_string(level) },
         { "msg", msg },
       };
