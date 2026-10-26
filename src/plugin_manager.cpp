@@ -334,12 +334,11 @@ namespace mcp
 
   bool PluginManager::plugin_declares_logging(const QPluginLoader* loader) const
   {
-    const QJsonValue meta = loader->metaData().value("MetaData");
-    if(!meta.isObject())
-    {
-      return false;
-    }
-    return meta.toObject().value("Logging").toBool();
+    // A plugin that intends to claim the process-wide log sink depends on the
+    // host's registerLogger service. Treat that dependency as the marker for a
+    // logging provider instead of requiring a separate metadata flag.
+    return plugin_dependencies(loader).contains(
+        QStringLiteral("bool mcp::Host::registerLogger(QString)"));
   }
 
   bool PluginManager::dependencies_satisfied(const QStringList& dependencies) const

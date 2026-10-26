@@ -401,9 +401,17 @@ neither another plugin nor `set_log_sink()` can replace it. The core keeps a
 minimal timestamped stderr sink as a fallback for before the claim and when no
 logging plugin is present.
 
-A plugin that intends to own logging should declare `"Logging": true` in its
-metadata JSON. `PluginManager::load_directory()` gives such plugins priority:
-when a logging provider is present in the directory, ordinary plugins are
+A plugin that intends to own logging should declare the host's `registerLogger`
+service as a dependency in its metadata JSON:
+
+```json
+{
+    "dependencies": ["bool mcp::Host::registerLogger(QString)"]
+}
+```
+
+`PluginManager::load_directory()` treats that dependency as the marker for a
+logging provider: when one is present in the directory, ordinary plugins are
 deferred until the sink has been claimed. No other plugin therefore needs to
 declare an explicit dependency on the logging plugin. If the declared logging
 plugin fails to load (so the sink is never claimed), the manager stops deferring

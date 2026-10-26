@@ -225,9 +225,11 @@ namespace mcp
     [[nodiscard]] QStringList
     plugin_dependencies(const QPluginLoader* loader) const;
 
-    /// True when the plugin's metadata declares it provides process-wide
-    /// logging (`"Logging": true`). Such plugins are allowed to load before a
-    /// log sink is claimed — they are the ones expected to claim it.
+    /// True when the plugin declares the host `registerLogger` service as a
+    /// dependency, e.g.
+    /// `"dependencies": ["bool mcp::Host::registerLogger(QString)"]`.
+    /// That marks the plugin as the logging provider: it is allowed to load
+    /// before a log sink is claimed, because it is expected to claim it.
     [[nodiscard]] bool
     plugin_declares_logging(const QPluginLoader* loader) const;
 
