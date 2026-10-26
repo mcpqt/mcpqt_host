@@ -23,7 +23,7 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <string_view>
 
@@ -79,7 +79,7 @@ namespace
 
     void shutdown(void) override
     {
-      std::lock_guard<std::mutex> lk(m_mu);
+      QMutexLocker lk(&m_mu);
       if(m_file != nullptr)
       {
         std::fclose(m_file);
@@ -107,13 +107,13 @@ namespace
       const QByteArray line
           = QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n';
 
-      std::lock_guard<std::mutex> lk(m_mu);
+      QMutexLocker lk(&m_mu);
       std::fwrite(line.constData(), 1, static_cast<std::size_t>(line.size()),
                   m_output);
       std::fflush(m_output);
     }
 
-    std::mutex m_mu;
+    QMutex m_mu;
     std::FILE* m_file = nullptr;
     std::FILE* m_output = stderr;
   };

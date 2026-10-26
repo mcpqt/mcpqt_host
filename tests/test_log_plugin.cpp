@@ -11,7 +11,7 @@
 #include <QString>
 
 #include <atomic>
-#include <mutex>
+#include <QMutex>
 #include <string>
 
 class TestLogPlugin : public mcp::PluginInterface
@@ -46,7 +46,7 @@ public slots:
   {
     (void)level;
     m_count.fetch_add(1, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lk(m_mu);
+    QMutexLocker lk(&m_mu);
     m_last = message;
   }
 
@@ -59,14 +59,14 @@ public slots:
   // The most recent message the sink received.
   QString last(void)
   {
-    std::lock_guard<std::mutex> lk(m_mu);
+    QMutexLocker lk(&m_mu);
     return m_last;
   }
 
 private:
   std::atomic<int> m_count{ 0 };
   bool m_claimed = false;
-  std::mutex m_mu;
+  QMutex m_mu;
   QString m_last;
 };
 

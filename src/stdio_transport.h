@@ -26,7 +26,7 @@
 #include <QString>
 #include <atomic>
 #include <cstddef>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <thread>
 
@@ -83,7 +83,7 @@ namespace mcp
     std::atomic<bool> m_close_fired = false;
 
     std::thread m_read_thread;
-    std::mutex m_write_mutex; // serializes writes to Options::write_fd
+    QMutex m_write_mutex; // serializes writes to Options::write_fd
 
     // Callbacks. Set once before start(); read without locking thereafter.
     MessageCallback m_on_message;

@@ -11,7 +11,7 @@
 #include <QString>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -35,7 +35,7 @@ namespace mcp
     }
     disconnect();
     {
-      std::lock_guard<std::mutex> lk(m_session_mu);
+      QMutexLocker lk(&m_session_mu);
       m_session = std::make_shared<Session>(std::move(transport));
     }
     // Start under the lock-acquired pointer, but don't hold the lock
@@ -53,7 +53,7 @@ namespace mcp
       return;
     std::shared_ptr<Session> local;
     {
-      std::lock_guard<std::mutex> lk(m_session_mu);
+      QMutexLocker lk(&m_session_mu);
       local = std::move(m_session);
       m_session.reset();
     }
@@ -63,14 +63,14 @@ namespace mcp
     if(local)
       local->close();
     {
-      std::lock_guard<std::mutex> lk(m_server_mu);
+      QMutexLocker lk(&m_server_mu);
       m_server.reset();
     }
   }
 
   std::shared_ptr<Session> Client::acquire_session(void) const
   {
-    std::lock_guard<std::mutex> lk(m_session_mu);
+    QMutexLocker lk(&m_session_mu);
     return m_session;
   }
 
@@ -81,7 +81,7 @@ namespace mcp
 
   std::optional<InitializeResult> Client::server(void) const
   {
-    std::lock_guard<std::mutex> lk(m_server_mu);
+    QMutexLocker lk(&m_server_mu);
     return m_server;
   }
 
@@ -98,7 +98,7 @@ namespace mcp
     }
     ClientCapabilities caps;
     {
-      std::lock_guard<std::mutex> lk(m_handlers_mu);
+      QMutexLocker lk(&m_handlers_mu);
       // First derive caps from the registered handlers...
       if(m_sampling_handler)
         caps.sampling = SamplingCapability{};
@@ -147,7 +147,7 @@ namespace mcp
                     .get();
           auto res = from_json<InitializeResult>(raw);
           {
-            std::lock_guard<std::mutex> lk(m_server_mu);
+            QMutexLocker lk(&m_server_mu);
             m_server = res;
           }
           const auto note_ec
@@ -275,7 +275,7 @@ namespace mcp
     if(!session)
       throw Error{ error_code::internal_error, "client not connected" };
     {
-      std::lock_guard<std::mutex> lk(m_handlers_mu);
+      QMutexLocker lk(&m_handlers_mu);
       m_task_status_handler = handler;
     }
     const QString method{ method_notifications_tasks_status };
@@ -540,7 +540,7 @@ namespace mcp
     if(!session)
       throw Error{ error_code::internal_error, "client not connected" };
     {
-      std::lock_guard<std::mutex> lk(m_handlers_mu);
+      QMutexLocker lk(&m_handlers_mu);
       m_sampling_handler = handler;
     }
     const QString method{ method_sampling_create_message };
@@ -579,7 +579,7 @@ namespace mcp
     if(!session)
       throw Error{ error_code::internal_error, "client not connected" };
     {
-      std::lock_guard<std::mutex> lk(m_handlers_mu);
+      QMutexLocker lk(&m_handlers_mu);
       m_elicitation_handler = handler;
     }
     const QString method{ method_elicitation_create };
@@ -624,7 +624,7 @@ namespace mcp
     if(!session)
       throw Error{ error_code::internal_error, "client not connected" };
     {
-      std::lock_guard<std::mutex> lk(m_handlers_mu);
+      QMutexLocker lk(&m_handlers_mu);
       m_elicitation_complete_handler = handler;
     }
     const QString method{ method_notifications_elicitation_complete };
@@ -665,7 +665,7 @@ namespace mcp
     if(!session)
       throw Error{ error_code::internal_error, "client not connected" };
     {
-      std::lock_guard<std::mutex> lk(m_handlers_mu);
+      QMutexLocker lk(&m_handlers_mu);
       m_roots_handler = handler;
     }
     const QString method{ method_roots_list };
@@ -701,7 +701,7 @@ namespace mcp
 
   void Client::set_client_capabilities(ClientCapabilities caps)
   {
-    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    QMutexLocker lk(&m_handlers_mu);
     m_capabilities_override = std::move(caps);
   }
 

@@ -162,7 +162,7 @@ namespace mcp
     // close() with fd cleanup (when owns_fds=true), so we must not let
     // a sender be mid-write() on a fd we're about to close.
     {
-      std::lock_guard<std::mutex> lk(m_write_mutex);
+      QMutexLocker lk(&m_write_mutex);
     }
 
     fire_close();
@@ -180,7 +180,7 @@ namespace mcp
       return std::make_error_code(std::errc::invalid_argument);
     }
 
-    std::lock_guard<std::mutex> lk(m_write_mutex);
+    QMutexLocker lk(&m_write_mutex);
     const char* data = frame.data();
     std::size_t left = static_cast<std::size_t>(frame.size());
     while(left > 0)

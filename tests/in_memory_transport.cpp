@@ -6,10 +6,10 @@
 #include <QByteArray>
 #include <QString>
 #include <atomic>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <deque>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -20,8 +20,8 @@ namespace mcp::test
   // One side's queue + flags + cv. Two of them in a Channel make a pair.
   struct Endpoint
   {
-    std::mutex mu;
-    std::condition_variable cv;
+    QMutex mu;
+    QWaitCondition cv;
     std::deque<QByteArray> q;
     bool closed = false;
   };
@@ -85,7 +85,7 @@ namespace mcp::test
     {
       // Wake our own dispatch loop.
       auto& ours = endpoint_for(*m_ch, m_side);
-      std::lock_guard<std::mutex> lk(ours.mu);
+      QMutexLocker lk(&ours.mu);
       ours.closed = true;
       ours.cv.notify_all();
     }
@@ -93,7 +93,7 @@ namespace mcp::test
       // Tell the peer we're gone: setting the peer's incoming (its `ours`)
       // endpoint as closed makes its dispatch loop unwind once drained.
       auto& peer = peer_endpoint(*m_ch, m_side);
-      std::lock_guard<std::mutex> lk(peer.mu);
+      QMutexLocker lk(&peer.mu);
       peer.closed = true;
       peer.cv.notify_all();
     }
@@ -121,7 +121,7 @@ namespace mcp::test
       return std::make_error_code(std::errc::not_connected);
     }
     auto& peer = peer_endpoint(*m_ch, m_side);
-    std::lock_guard<std::mutex> lk(peer.mu);
+    QMutexLocker lk(&peer.mu);
     if(peer.closed)
     {
       return std::make_error_code(std::errc::not_connected);
@@ -145,8 +145,10 @@ namespace mcp::test
     {
       QByteArray frame;
       {
-        std::unique_lock<std::mutex> lk(ours.mu);
-        ours.cv.wait(lk, [&] { return ours.closed || !ours.q.empty(); });
+        QMutexLocker lk(&ours.mu);
+        while (!ours.closed && ours.q.empty()) {
+          ours.cv.wait(&ours.mu);
+        }
         if(ours.closed && ours.q.empty())
         {
           // If we're being torn down by the peer (m_closed flag was

@@ -14,12 +14,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <QWaitCondition>
+#include <QDeadlineTimer>
 #include <cstdint>
 #include <deque>
 #include <limits>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <random>
 #include <sstream>
 #include <string>
@@ -155,8 +156,8 @@ namespace mcp
           e.task.status_message = message;
       }
 
-      mutable std::mutex m_mu;
-      std::condition_variable m_cv;
+      mutable QMutex m_mu;
+      QWaitCondition m_cv;
       std::map<QString, std::unique_ptr<Entry>> m_entries;
       QList<QString> m_order;
       StatusListener m_listener;
@@ -165,8 +166,8 @@ namespace mcp
       // In-flight worker bookkeeping. m_workers_mu + m_workers_cv are
       // held only briefly around increments/decrements; shutdown()
       // takes the lock and waits.
-      mutable std::mutex m_workers_mu;
-      std::condition_variable m_workers_cv;
+      mutable QMutex m_workers_mu;
+      QWaitCondition m_workers_cv;
       int m_workers_inflight{ 0 };
     };
 
@@ -186,7 +187,7 @@ namespace mcp
       Task projection;
       StatusListener listener_copy;
       {
-        std::lock_guard<std::mutex> lk(m_mu);
+        QMutexLocker lk(&m_mu);
         projection = entry->task;
         m_order.push_back(entry->task.taskId);
         m_entries.emplace(entry->task.taskId, std::move(entry));
@@ -203,7 +204,7 @@ namespace mcp
       StatusListener listener_copy;
       bool fire_notify = false;
       {
-        std::lock_guard<std::mutex> lk(m_mu);
+        QMutexLocker lk(&m_mu);
         auto it = m_entries.find(id);
         if(it == m_entries.end())
           return;
@@ -248,7 +249,7 @@ namespace mcp
       Task projection;
       StatusListener listener_copy;
       {
-        std::lock_guard<std::mutex> lk(m_mu);
+        QMutexLocker lk(&m_mu);
         auto it = m_entries.find(id);
         if(it == m_entries.end())
           return;
@@ -271,7 +272,7 @@ namespace mcp
       StatusListener listener_copy;
       bool fire_listener = false;
       {
-        std::lock_guard<std::mutex> lk(m_mu);
+        QMutexLocker lk(&m_mu);
         auto it = m_entries.find(id);
         if(it == m_entries.end())
           return std::nullopt;
@@ -306,7 +307,7 @@ namespace mcp
 
     std::optional<Task> TaskStore::get(const QString& id) const
     {
-      std::lock_guard<std::mutex> lk(m_mu);
+      QMutexLocker lk(&m_mu);
       auto it = m_entries.find(id);
       if(it == m_entries.end())
         return std::nullopt;
@@ -315,7 +316,7 @@ namespace mcp
 
     bool TaskStore::is_cancelled(const QString& id) const
     {
-      std::lock_guard<std::mutex> lk(m_mu);
+      QMutexLocker lk(&m_mu);
       auto it = m_entries.find(id);
       if(it == m_entries.end())
         return false;
@@ -325,17 +326,18 @@ namespace mcp
     QJsonValue TaskStore::wait_result(const QString& id,
                                       std::chrono::milliseconds timeout)
     {
-      std::unique_lock<std::mutex> lk(m_mu);
-      if(!m_cv.wait_for(lk, timeout, [&] {
-           auto it = m_entries.find(id);
-           if(it == m_entries.end())
-             return true; // gone — also "terminal"
-           return is_terminal(it->second->task.status)
-                  || m_shutting_down.load(std::memory_order_acquire);
-         }))
+      QMutexLocker lk(&m_mu);
+      QDeadlineTimer deadline(timeout.count());
+      while(true)
       {
-        // Timed out without reaching terminal.
-        return QJsonValue();
+        auto it = m_entries.find(id);
+        if(it == m_entries.end())
+          break; // gone — also "terminal"
+        if(is_terminal(it->second->task.status)
+           || m_shutting_down.load(std::memory_order_acquire))
+          break;
+        if(!m_cv.wait(&m_mu, deadline))
+          return QJsonValue(); // timed out without reaching terminal
       }
       auto it = m_entries.find(id);
       if(it == m_entries.end())
@@ -370,7 +372,7 @@ namespace mcp
     ListTasksResult TaskStore::list(QString cursor,
                                     std::size_t page_size) const
     {
-      std::lock_guard<std::mutex> lk(m_mu);
+      QMutexLocker lk(&m_mu);
 
       qsizetype offset = 0;
       if(!cursor.isNull() && !cursor.isEmpty())
@@ -419,7 +421,7 @@ namespace mcp
 
     void TaskStore::set_status_listener(StatusListener l)
     {
-      std::lock_guard<std::mutex> lk(m_mu);
+      QMutexLocker lk(&m_mu);
       m_listener = std::move(l);
     }
 
@@ -427,7 +429,7 @@ namespace mcp
     {
       const auto now = std::chrono::steady_clock::now();
       std::size_t removed = 0;
-      std::lock_guard<std::mutex> lk(m_mu);
+      QMutexLocker lk(&m_mu);
       auto it = m_entries.begin();
       while(it != m_entries.end())
       {
@@ -457,13 +459,13 @@ namespace mcp
 
     void TaskStore::worker_started(void) noexcept
     {
-      std::lock_guard<std::mutex> lk(m_workers_mu);
+      QMutexLocker lk(&m_workers_mu);
       ++m_workers_inflight;
     }
 
     int TaskStore::workers_inflight(void) const noexcept
     {
-      std::lock_guard<std::mutex> lk(m_workers_mu);
+      QMutexLocker lk(&m_workers_mu);
       return m_workers_inflight;
     }
 
@@ -473,7 +475,7 @@ namespace mcp
       // could see m_workers_inflight == 0, return, and ~TaskStore could
       // destroy m_workers_cv while we were still inside notify_all() —
       // a TSan-visible race against pthread_cond_destroy.
-      std::lock_guard<std::mutex> lk(m_workers_mu);
+      QMutexLocker lk(&m_workers_mu);
       if(--m_workers_inflight == 0)
       {
         m_workers_cv.notify_all();
@@ -483,7 +485,7 @@ namespace mcp
     void TaskStore::shutdown(void)
     {
       {
-        std::lock_guard<std::mutex> lk(m_mu);
+        QMutexLocker lk(&m_mu);
         m_shutting_down.store(true, std::memory_order_release);
       }
       m_cv.notify_all();
@@ -491,8 +493,11 @@ namespace mcp
       // the Server destructor can race with a still-running task
       // worker that holds `this` and would call back into a freed
       // store.
-      std::unique_lock<std::mutex> lk(m_workers_mu);
-      m_workers_cv.wait(lk, [&] { return m_workers_inflight == 0; });
+      QMutexLocker lk(&m_workers_mu);
+      while(m_workers_inflight != 0)
+      {
+        m_workers_cv.wait(&m_workers_mu);
+      }
     }
 
   } // namespace detail
@@ -514,7 +519,7 @@ namespace mcp
     // wedge the user's program rather than fail loudly.
     m_stop_requested.store(true, std::memory_order_release);
     {
-      std::lock_guard<std::mutex> lk(m_stop_mu);
+      QMutexLocker lk(&m_stop_mu);
       m_stop_cv.notify_all();
     }
     // Drain detached task workers before m_tasks is destroyed —
@@ -614,7 +619,7 @@ namespace mcp
       .execution = std::nullopt,
       .meta = {},
     };
-    std::lock_guard<std::mutex> lk(m_tools_mu);
+    QMutexLocker lk(&m_tools_mu);
     m_tools[name] = ToolEntry{ std::move(t), std::move(handler) };
     return *this;
   }
@@ -633,7 +638,7 @@ namespace mcp
       .execution = std::move(meta.execution),
       .meta = std::move(meta.meta),
     };
-    std::lock_guard<std::mutex> lk(m_tools_mu);
+    QMutexLocker lk(&m_tools_mu);
     m_tools[name] = ToolEntry{ std::move(t), std::move(handler) };
     return *this;
   }
@@ -642,7 +647,7 @@ namespace mcp
   {
     QList<Tool> out;
     {
-      std::lock_guard<std::mutex> lk(m_tools_mu);
+      QMutexLocker lk(&m_tools_mu);
       out.reserve(m_tools.size());
       for(auto it = m_tools.constBegin(); it != m_tools.constEnd(); ++it)
       {
@@ -654,7 +659,7 @@ namespace mcp
 
   Server& Server::resource(Resource descriptor, ResourceReadHandler handler)
   {
-    std::lock_guard<std::mutex> lk(m_resources_mu);
+    QMutexLocker lk(&m_resources_mu);
     const QString uri = descriptor.uri;
     m_resources[uri]
         = ResourceEntry{ std::move(descriptor), std::move(handler) };
@@ -663,21 +668,21 @@ namespace mcp
 
   Server& Server::resource_template(ResourceTemplate descriptor)
   {
-    std::lock_guard<std::mutex> lk(m_resources_mu);
+    QMutexLocker lk(&m_resources_mu);
     m_resource_templates.push_back(std::move(descriptor));
     return *this;
   }
 
   Server& Server::fallback_resource_handler(ResourceReadHandler handler)
   {
-    std::lock_guard<std::mutex> lk(m_resources_mu);
+    QMutexLocker lk(&m_resources_mu);
     m_fallback_resource_handler = std::move(handler);
     return *this;
   }
 
   Server& Server::prompt(Prompt descriptor, PromptGetHandler handler)
   {
-    std::lock_guard<std::mutex> lk(m_prompts_mu);
+    QMutexLocker lk(&m_prompts_mu);
     const QString name = descriptor.name;
     m_prompts[name] = PromptEntry{ std::move(descriptor), std::move(handler) };
     return *this;
@@ -777,7 +782,7 @@ namespace mcp
   void
   Server::set_elicitation_complete_handler(ElicitationCompleteHandler handler)
   {
-    std::lock_guard<std::mutex> lk(m_completion_mu);
+    QMutexLocker lk(&m_completion_mu);
     m_elicitation_complete_handler = std::move(handler);
   }
 
@@ -795,19 +800,19 @@ namespace mcp
 
   std::shared_ptr<Session> Server::acquire_session(void) const
   {
-    std::lock_guard<std::mutex> lk(m_session_mu);
+    QMutexLocker lk(&m_session_mu);
     return m_session;
   }
 
   std::optional<ClientCapabilities> Server::client_capabilities(void) const
   {
-    std::lock_guard<std::mutex> lk(m_client_capabilities_mu);
+    QMutexLocker lk(&m_client_capabilities_mu);
     return m_client_capabilities;
   }
 
   Server& Server::enable_completion(CompletionHandler handler)
   {
-    std::lock_guard<std::mutex> lk(m_completion_mu);
+    QMutexLocker lk(&m_completion_mu);
     m_completion_handler = std::move(handler);
     return *this;
   }
@@ -854,7 +859,7 @@ namespace mcp
     // (the CAS above serialises concurrent initializes), so this is a
     // single, race-free store.
     {
-      std::lock_guard<std::mutex> lk(m_client_capabilities_mu);
+      QMutexLocker lk(&m_client_capabilities_mu);
       m_client_capabilities = parsed.capabilities;
     }
 
@@ -870,12 +875,12 @@ namespace mcp
     // for it. listChanged is unset because we don't yet emit those
     // notifications (Phase 3).
     {
-      std::lock_guard<std::mutex> lk(m_tools_mu);
+      QMutexLocker lk(&m_tools_mu);
       if(!m_tools.empty())
         result.capabilities.tools = ToolsCapability{};
     }
     {
-      std::lock_guard<std::mutex> lk(m_resources_mu);
+      QMutexLocker lk(&m_resources_mu);
       if(!m_resources.empty() || !m_resource_templates.empty()
          || m_fallback_resource_handler)
       {
@@ -883,7 +888,7 @@ namespace mcp
       }
     }
     {
-      std::lock_guard<std::mutex> lk(m_prompts_mu);
+      QMutexLocker lk(&m_prompts_mu);
       if(!m_prompts.empty())
         result.capabilities.prompts = PromptsCapability{};
     }
@@ -892,7 +897,7 @@ namespace mcp
       result.capabilities.logging = QJsonObject{};
     }
     {
-      std::lock_guard<std::mutex> lk(m_completion_mu);
+      QMutexLocker lk(&m_completion_mu);
       if(m_completion_handler)
       {
         result.capabilities.completions = QJsonObject{};
@@ -922,7 +927,7 @@ namespace mcp
                                   : from_json<ListToolsRequestParams>(params);
     QList<Tool> all;
     {
-      std::lock_guard<std::mutex> lk(m_tools_mu);
+      QMutexLocker lk(&m_tools_mu);
       all.reserve(m_tools.size());
       for(auto it = m_tools.constBegin(); it != m_tools.constEnd(); ++it)
         all.push_back(it.value().descriptor);
@@ -956,7 +961,7 @@ namespace mcp
     ToolHandler h;
     std::optional<TaskSupport> tool_task_support;
     {
-      std::lock_guard<std::mutex> lk(m_tools_mu);
+      QMutexLocker lk(&m_tools_mu);
       auto it = m_tools.find(parsed.name);
       if(it == m_tools.end())
       {
@@ -1073,7 +1078,7 @@ namespace mcp
                       : from_json<ListResourcesRequestParams>(params);
     QList<Resource> all;
     {
-      std::lock_guard<std::mutex> lk(m_resources_mu);
+      QMutexLocker lk(&m_resources_mu);
       all.reserve(m_resources.size());
       for(auto it = m_resources.constBegin(); it != m_resources.constEnd();
           ++it)
@@ -1099,7 +1104,7 @@ namespace mcp
                       : from_json<ListResourceTemplatesRequestParams>(params);
     QList<ResourceTemplate> all;
     {
-      std::lock_guard<std::mutex> lk(m_resources_mu);
+      QMutexLocker lk(&m_resources_mu);
       all = m_resource_templates;
     }
     auto [page, next]
@@ -1130,7 +1135,7 @@ namespace mcp
 
     ResourceReadHandler h;
     {
-      std::lock_guard<std::mutex> lk(m_resources_mu);
+      QMutexLocker lk(&m_resources_mu);
       auto it = m_resources.find(parsed.uri);
       if(it != m_resources.end())
       {
@@ -1160,7 +1165,7 @@ namespace mcp
                       : from_json<ListPromptsRequestParams>(params);
     QList<Prompt> all;
     {
-      std::lock_guard<std::mutex> lk(m_prompts_mu);
+      QMutexLocker lk(&m_prompts_mu);
       all.reserve(m_prompts.size());
       for(auto it = m_prompts.constBegin(); it != m_prompts.constEnd(); ++it)
         all.push_back(it.value().descriptor);
@@ -1193,7 +1198,7 @@ namespace mcp
 
     PromptGetHandler h;
     {
-      std::lock_guard<std::mutex> lk(m_prompts_mu);
+      QMutexLocker lk(&m_prompts_mu);
       auto it = m_prompts.find(parsed.name);
       if(it != m_prompts.end())
         h = it.value().handler;
@@ -1240,7 +1245,7 @@ namespace mcp
     }
     CompletionHandler h;
     {
-      std::lock_guard<std::mutex> lk(m_completion_mu);
+      QMutexLocker lk(&m_completion_mu);
       h = m_completion_handler;
     }
     if(!h)
@@ -1451,7 +1456,7 @@ namespace mcp
 
     auto local = std::make_shared<Session>(std::move(transport));
     {
-      std::lock_guard<std::mutex> lk(m_session_mu);
+      QMutexLocker lk(&m_session_mu);
       m_session = local;
     }
 
@@ -1526,7 +1531,7 @@ namespace mcp
         [this](const QJsonValue& params) {
           ElicitationCompleteHandler h;
           {
-            std::lock_guard<std::mutex> lk(m_completion_mu);
+            QMutexLocker lk(&m_completion_mu);
             h = m_elicitation_complete_handler;
           }
           if(!h || !params.isObject())
@@ -1575,22 +1580,22 @@ namespace mcp
         });
 
     local->set_on_closed([this]() {
-      std::lock_guard<std::mutex> lk(m_stop_mu);
+      QMutexLocker lk(&m_stop_mu);
       m_stop_cv.notify_all();
     });
 
     local->start();
 
     {
-      std::unique_lock<std::mutex> lk(m_stop_mu);
-      m_stop_cv.wait(lk, [this, &local] {
-        return m_stop_requested.load(std::memory_order_acquire)
-               || !local->is_open();
-      });
+      QMutexLocker lk(&m_stop_mu);
+      while(!m_stop_requested.load(std::memory_order_acquire) && local->is_open())
+      {
+        m_stop_cv.wait(&m_stop_mu);
+      }
     }
     local->close();
     {
-      std::lock_guard<std::mutex> lk(m_session_mu);
+      QMutexLocker lk(&m_session_mu);
       m_session.reset();
     }
   }
@@ -1600,7 +1605,7 @@ namespace mcp
     // Notify under the lock so a concurrent run() loop can't unblock,
     // return, and start tearing down m_stop_cv before this notify_all
     // observes it. (Same pattern Session uses for its m_workers_cv.)
-    std::lock_guard<std::mutex> lk(m_stop_mu);
+    QMutexLocker lk(&m_stop_mu);
     m_stop_requested.store(true, std::memory_order_release);
     m_stop_cv.notify_all();
   }

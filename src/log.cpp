@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <ctime>
 #include <iomanip>
-#include <mutex>
+#include <QMutex>
 #include <sstream>
 
 namespace mcp
@@ -21,7 +21,7 @@ namespace mcp
     std::atomic<LogLevel> g_level{ LogLevel::info };
 
     // The sink itself is mutex-guarded; swaps are rare, calls are frequent.
-    std::mutex g_sink_mutex;
+    QMutex g_sink_mutex;
     LogSink g_sink; // empty until first call to ensure_default_sink().
 
     // Once a sink is claimed (typically by a logging plugin), it is exclusive
@@ -34,8 +34,8 @@ namespace mcp
     {
       // Compose the line under a single mutex so multi-thread interleaving
       // doesn't garble output. fwrite is line-buffered on stderr by default.
-      static std::mutex io_mutex;
-      std::lock_guard<std::mutex> lk(io_mutex);
+      static QMutex io_mutex;
+      QMutexLocker lk(&io_mutex);
 
       using clock = std::chrono::system_clock;
       const auto now = clock::now();
@@ -81,7 +81,7 @@ namespace mcp
 
   bool set_log_sink(LogSink sink)
   {
-    std::lock_guard<std::mutex> lk(g_sink_mutex);
+    QMutexLocker lk(&g_sink_mutex);
     if(g_claimed.load(std::memory_order_relaxed))
     {
       return false; // a claimed sink is exclusive; refuse to displace it
@@ -96,7 +96,7 @@ namespace mcp
     {
       return false;
     }
-    std::lock_guard<std::mutex> lk(g_sink_mutex);
+    QMutexLocker lk(&g_sink_mutex);
     if(g_claimed.load(std::memory_order_relaxed))
     {
       return false; // someone else already owns logging
@@ -128,7 +128,7 @@ namespace mcp
       return;
     LogSink sink;
     {
-      std::lock_guard<std::mutex> lk(g_sink_mutex);
+      QMutexLocker lk(&g_sink_mutex);
       if(!g_sink)
         g_sink = &default_sink;
       sink = g_sink;

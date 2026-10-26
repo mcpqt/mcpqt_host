@@ -13,7 +13,7 @@
 #include <exception>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -56,7 +56,7 @@ namespace mcp
       m_closed.store(true, std::memory_order_release);
       ClosedCallback cb;
       {
-        std::lock_guard<std::mutex> lk(m_closed_cb_mu);
+        QMutexLocker lk(&m_closed_cb_mu);
         if(!m_closed_cb_fired.exchange(true, std::memory_order_acq_rel))
         {
           cb = m_on_closed;
@@ -84,43 +84,43 @@ namespace mcp
 
   void Session::set_request_handler(QString method, RequestHandler h)
   {
-    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    QMutexLocker lk(&m_handlers_mu);
     m_req_handlers[std::move(method)] = std::move(h);
   }
 
   void Session::set_notification_handler(QString method, NotificationHandler h)
   {
-    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    QMutexLocker lk(&m_handlers_mu);
     m_note_handlers[std::move(method)] = std::move(h);
   }
 
   void Session::clear_request_handler(const QString& method)
   {
-    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    QMutexLocker lk(&m_handlers_mu);
     m_req_handlers.remove(method);
   }
 
   void Session::clear_notification_handler(const QString& method)
   {
-    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    QMutexLocker lk(&m_handlers_mu);
     m_note_handlers.remove(method);
   }
 
   void Session::set_fallback_request_handler(RequestHandler h)
   {
-    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    QMutexLocker lk(&m_handlers_mu);
     m_fallback_req = std::move(h);
   }
 
   void Session::set_fallback_notification_handler(NotificationHandler h)
   {
-    std::lock_guard<std::mutex> lk(m_handlers_mu);
+    QMutexLocker lk(&m_handlers_mu);
     m_fallback_note = std::move(h);
   }
 
   void Session::set_on_closed(ClosedCallback cb)
   {
-    std::lock_guard<std::mutex> lk(m_closed_cb_mu);
+    QMutexLocker lk(&m_closed_cb_mu);
     m_on_closed = std::move(cb);
   }
 
@@ -165,8 +165,11 @@ namespace mcp
     // responses to stdout, and closing the transport here would turn
     // those writes into "not_connected" errors.
     {
-      std::unique_lock<std::mutex> lk(m_workers_mu);
-      m_workers_cv.wait(lk, [this] { return m_workers_running == 0; });
+      QMutexLocker lk(&m_workers_mu);
+      while(m_workers_running != 0)
+      {
+        m_workers_cv.wait(&m_workers_mu);
+      }
     }
 
     // Now actually shut down the transport. Only the first close()
@@ -176,7 +179,7 @@ namespace mcp
       m_transport->close();
 
     {
-      std::lock_guard<std::mutex> lk(m_pending_mu);
+      QMutexLocker lk(&m_pending_mu);
       m_timeout_cv.notify_all();
     }
     if(m_timeout_thread.joinable())
@@ -245,7 +248,7 @@ namespace mcp
     };
     Parked state;
     {
-      std::lock_guard<std::mutex> lk(m_pending_mu);
+      QMutexLocker lk(&m_pending_mu);
       if(m_closed.load(std::memory_order_acquire))
       {
         // Don't park a new entry on a closed session — its future
@@ -297,7 +300,7 @@ namespace mcp
       Pending parked;
       bool found = false;
       {
-        std::lock_guard<std::mutex> lk(m_pending_mu);
+        QMutexLocker lk(&m_pending_mu);
         auto it = m_pending.find(id);
         if(it != m_pending.end())
         {
@@ -398,7 +401,7 @@ namespace mcp
             // returning so the dispatched worker can never outlive
             // members it touches (m_transport, handlers).
             {
-              std::lock_guard<std::mutex> lk(m_workers_mu);
+              QMutexLocker lk(&m_workers_mu);
               ++m_workers_running;
             }
             std::thread([this, req = std::move(m)]() mutable {
@@ -408,7 +411,7 @@ namespace mcp
               // m_workers_running==0, return, and destroy the cv
               // before this thread reaches notify_all — TSan
               // catches that race against pthread_cond_destroy.
-              std::lock_guard<std::mutex> lk(m_workers_mu);
+              QMutexLocker lk(&m_workers_mu);
               --m_workers_running;
               m_workers_cv.notify_all();
             }).detach();
@@ -429,7 +432,7 @@ namespace mcp
   {
     RequestHandler handler;
     {
-      std::lock_guard<std::mutex> lk(m_handlers_mu);
+      QMutexLocker lk(&m_handlers_mu);
       auto it = m_req_handlers.find(req.method);
       if(it != m_req_handlers.end())
         handler = it.value();
@@ -506,7 +509,7 @@ namespace mcp
   {
     NotificationHandler handler;
     {
-      std::lock_guard<std::mutex> lk(m_handlers_mu);
+      QMutexLocker lk(&m_handlers_mu);
       auto it = m_note_handlers.find(note.method);
       if(it != m_note_handlers.end())
         handler = it.value();
@@ -546,7 +549,7 @@ namespace mcp
 
     Pending pending;
     {
-      std::lock_guard<std::mutex> lk(m_pending_mu);
+      QMutexLocker lk(&m_pending_mu);
       auto it = m_pending.find(resp.id);
       if(it == m_pending.end())
       {
@@ -579,12 +582,12 @@ namespace mcp
 
   void Session::timeout_loop(void)
   {
-    std::unique_lock<std::mutex> lk(m_pending_mu);
+    QMutexLocker lk(&m_pending_mu);
     while(!m_closed.load(std::memory_order_acquire))
     {
       if(m_pending.empty())
       {
-        m_timeout_cv.wait(lk);
+        m_timeout_cv.wait(&m_pending_mu);
         continue;
       }
 
@@ -594,7 +597,21 @@ namespace mcp
         if(it.value().deadline < soonest)
           soonest = it.value().deadline;
       }
-      if(m_timeout_cv.wait_until(lk, soonest) == std::cv_status::timeout)
+      bool timed_out = false;
+      const auto wait_now = steady_clock::now();
+      if(soonest > wait_now)
+      {
+        const auto remaining
+            = std::chrono::duration_cast<std::chrono::milliseconds>(soonest - wait_now)
+                  .count();
+        timed_out = !m_timeout_cv.wait(&m_pending_mu, static_cast<unsigned long>(remaining));
+      }
+      else
+      {
+        timed_out = true;
+      }
+
+      if(timed_out)
       {
         const auto now = steady_clock::now();
         // Snapshot the expired entries under the lock, drop them
@@ -624,7 +641,7 @@ namespace mcp
           reject(std::make_exception_ptr(
               Error{ error_code::internal_error, "request timed out" }));
         }
-        lk.lock();
+        lk.relock();
       }
     }
   }
@@ -633,7 +650,7 @@ namespace mcp
   {
     QHash<RequestId, Pending> drained;
     {
-      std::lock_guard<std::mutex> lk(m_pending_mu);
+      QMutexLocker lk(&m_pending_mu);
       drained.swap(m_pending);
       m_timeout_cv.notify_all();
     }

@@ -18,7 +18,7 @@
 #include <chrono>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -254,7 +254,7 @@ void LoggingIntegration::SetLevelFiltersServerEmissions(void)
            });
   });
 
-  std::mutex mu;
+  QMutex mu;
   int received_count = 0;
 
   mcp::Client client{ mcp::Implementation{ .name = "tester",
@@ -262,7 +262,7 @@ void LoggingIntegration::SetLevelFiltersServerEmissions(void)
   client.connect(std::move(p.a));
   client.set_log_message_handler(
       [&](const mcp::LoggingMessageNotificationParams&) {
-        std::lock_guard<std::mutex> lk(mu);
+        QMutexLocker lk(&mu);
         ++received_count;
       });
   (void)client.initialize().get();
@@ -273,7 +273,7 @@ void LoggingIntegration::SetLevelFiltersServerEmissions(void)
   std::this_thread::sleep_for(50ms);
 
   {
-    std::lock_guard<std::mutex> lk(mu);
+    QMutexLocker lk(&mu);
     QCOMPARE(received_count, 0);
   }
 
@@ -299,14 +299,14 @@ void ProgressIntegration::ServerProgressReachesClient(void)
            });
   });
 
-  std::mutex mu;
+  QMutex mu;
   QList<double> progresses;
 
   mcp::Client client{ mcp::Implementation{ .name = "tester",
                                            .version = "0" } };
   client.connect(std::move(p.a));
   client.set_progress_handler([&](const mcp::ProgressNotificationParams& pn) {
-    std::lock_guard<std::mutex> lk(mu);
+    QMutexLocker lk(&mu);
     progresses.push_back(pn.progress);
   });
   (void)client.initialize().get();
@@ -314,7 +314,7 @@ void ProgressIntegration::ServerProgressReachesClient(void)
   (void)client.call_tool("loud_op").get();
   std::this_thread::sleep_for(50ms);
 
-  std::lock_guard<std::mutex> lk(mu);
+  QMutexLocker lk(&mu);
   QVERIFY(progresses.size() >= 2u);
   QCOMPARE(progresses[0], 0.25);
   QCOMPARE(progresses[1], 0.75);

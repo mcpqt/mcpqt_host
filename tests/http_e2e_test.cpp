@@ -32,7 +32,7 @@
 #include <cstdlib>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <thread>
 #include <variant>
@@ -459,7 +459,7 @@ void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete(void)
   // The pre-destruction hook must fire exactly once per session on the
   // client-DELETE teardown path, with the Server still alive. Track the
   // Server* seen so we can assert identity, and count invocations.
-  std::mutex seen_mu;
+  QMutex seen_mu;
   QList<mcp::Server*> seen;
   std::atomic<int> calls{ 0 };
 
@@ -470,7 +470,7 @@ void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete(void)
     // The Server is alive here: an any-thread call must succeed.
     (void)s.client_capabilities();
     {
-      std::lock_guard<std::mutex> lk(seen_mu);
+      QMutexLocker lk(&seen_mu);
       seen.push_back(&s);
     }
     calls.fetch_add(1, std::memory_order_relaxed);
@@ -500,7 +500,7 @@ void HttpEndToEnd::OnSessionClosedFiresOnceOnDelete(void)
   // Fired exactly once, on the DELETE.
   QCOMPARE(calls.load(), 1);
   {
-    std::lock_guard<std::mutex> lk(seen_mu);
+    QMutexLocker lk(&seen_mu);
     QCOMPARE(seen.size(), std::size_t{ 1 });
     QVERIFY(seen[0] != nullptr);
   }

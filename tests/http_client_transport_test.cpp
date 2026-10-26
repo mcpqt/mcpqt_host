@@ -18,12 +18,13 @@
 
 #include <QtTest/QtTest>
 
+#include <QDeadlineTimer>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -49,11 +50,11 @@ private slots:
 
 void HttpClientTransport::PostSingleJsonResponseIsDelivered(void)
 {
-  std::mutex mu;
+  QMutex mu;
   QString observed_body;
   mcp::test::FakeHttpServer fake(
       [&](const mcp::test::FakeHttpServer::Request& req) {
-        std::lock_guard<std::mutex> lk(mu);
+        QMutexLocker lk(&mu);
         observed_body = req.body;
         return mcp::test::json_response(R"({"ok":true})");
       });
@@ -80,7 +81,7 @@ void HttpClientTransport::PostSingleJsonResponseIsDelivered(void)
   QCOMPARE(fut.wait_for(2s), std::future_status::ready);
   QCOMPARE(QString(fut.get()), QString::fromUtf8(R"({"ok":true})"));
   {
-    std::lock_guard<std::mutex> lk(mu);
+    QMutexLocker lk(&mu);
     QCOMPARE(QString(observed_body), QString::fromUtf8(R"({"hello":1})"));
   }
   transport->close();
@@ -99,11 +100,11 @@ void HttpClientTransport::PostSseResponseDeliversMultipleFrames(void)
   opts.open_get_stream = false;
   auto transport = std::make_unique<mcp::HttpClientTransport>(opts);
 
-  std::mutex mu;
-  std::condition_variable cv;
+  QMutex mu;
+  QWaitCondition cv;
   QList<QString> frames;
   transport->on_message([&](QString s) {
-    std::lock_guard<std::mutex> lk(mu);
+    QMutexLocker lk(&mu);
     frames.push_back(std::move(s));
     cv.notify_all();
   });
@@ -111,8 +112,12 @@ void HttpClientTransport::PostSseResponseDeliversMultipleFrames(void)
   QVERIFY(!transport->send("{}"));
 
   {
-    std::unique_lock<std::mutex> lk(mu);
-    QVERIFY(cv.wait_for(lk, 2s, [&] { return frames.size() >= 2; }));
+    QMutexLocker lk(&mu);
+    QDeadlineTimer deadline(2000);
+    while (frames.size() < 2) {
+      if (!cv.wait(&mu, deadline)) break;
+    }
+    QVERIFY(frames.size() >= 2);
   }
   QCOMPARE(frames.size(), std::size_t{ 2 });
   QCOMPARE(QString(frames[0]), QString::fromUtf8(R"({"a":1})"));
@@ -148,7 +153,7 @@ void HttpClientTransport::NotificationGets202AbsorbedSilently(void)
 void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void)
 {
   std::atomic<int> first_call{ 0 };
-  std::mutex mu;
+  QMutex mu;
   QString captured_id_on_second_call;
   mcp::test::FakeHttpServer fake(
       [&](const mcp::test::FakeHttpServer::Request& req) {
@@ -161,7 +166,7 @@ void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void)
         const QByteArray id = req.header("Mcp-Session-Id");
         if(!id.isEmpty())
         {
-          std::lock_guard<std::mutex> lk(mu);
+          QMutexLocker lk(&mu);
           captured_id_on_second_call = id;
         }
         return mcp::test::json_response("{}");
@@ -185,7 +190,7 @@ void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void)
   while(messages.load() < 2)
     std::this_thread::sleep_for(5ms);
   {
-    std::lock_guard<std::mutex> lk(mu);
+    QMutexLocker lk(&mu);
     QCOMPARE(QString(captured_id_on_second_call), QStringLiteral("deadbeef"));
   }
 
@@ -194,14 +199,14 @@ void HttpClientTransport::McpSessionIdIsCapturedAndEchoed(void)
 
 void HttpClientTransport::McpProtocolVersionHeaderIsSent(void)
 {
-  std::mutex mu;
+  QMutex mu;
   QString captured_pv;
   mcp::test::FakeHttpServer fake(
       [&](const mcp::test::FakeHttpServer::Request& req) {
         const QByteArray pv = req.header("MCP-Protocol-Version");
         if(!pv.isEmpty())
         {
-          std::lock_guard<std::mutex> lk(mu);
+          QMutexLocker lk(&mu);
           captured_pv = pv;
         }
         return mcp::test::json_response("{}");
@@ -220,7 +225,7 @@ void HttpClientTransport::McpProtocolVersionHeaderIsSent(void)
   while(messages.load() < 1)
     std::this_thread::sleep_for(5ms);
   {
-    std::lock_guard<std::mutex> lk(mu);
+    QMutexLocker lk(&mu);
     QCOMPARE(QString(captured_pv), QStringLiteral("2025-11-25"));
   }
   transport->close();

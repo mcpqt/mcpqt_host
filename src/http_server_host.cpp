@@ -39,7 +39,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <cstdint>
 #include <cstdio>
 #include <deque>
@@ -47,7 +47,7 @@
 #include <functional>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -98,7 +98,7 @@ namespace mcp
         // map and emit a spurious "method not found: initialize"
         // response. The `m_started` gate, flipped by start(), is what
         // marks the dispatcher as fully populated.
-        std::lock_guard<std::mutex> lk(m_buffered_mu);
+        QMutexLocker lk(&m_buffered_mu);
         m_on_message = std::move(cb);
       }
       void on_error(ErrorCallback cb) override { m_on_error = std::move(cb); }
@@ -111,7 +111,7 @@ namespace mcp
         // runs us, set_request_handler in Server::run has completed.
         std::deque<QByteArray> drain;
         {
-          std::lock_guard<std::mutex> lk(m_buffered_mu);
+          QMutexLocker lk(&m_buffered_mu);
           m_started = true;
           m_buffered.swap(drain);
         }
@@ -129,7 +129,7 @@ namespace mcp
         // Cancel any waiters on pending POST replies.
         std::map<QString, std::promise<QByteArray>> drained;
         {
-          std::lock_guard<std::mutex> lk(m_pending_mu);
+          QMutexLocker lk(&m_pending_mu);
           drained.swap(m_pending);
         }
         for(auto& [id, p] : drained)
@@ -145,7 +145,7 @@ namespace mcp
         }
         // Wake any GET stream waiter so the http handler can return.
         {
-          std::lock_guard<std::mutex> lk(m_get_mu);
+          QMutexLocker lk(&m_get_mu);
           m_get_cv.notify_all();
         }
         if(m_on_close)
@@ -198,7 +198,7 @@ namespace mcp
           QString key = canonical_id(j.value("id"));
           std::promise<QByteArray> awaiter;
           {
-            std::lock_guard<std::mutex> lk(m_pending_mu);
+            QMutexLocker lk(&m_pending_mu);
             auto it = m_pending.find(key);
             if(it == m_pending.end())
             {
@@ -219,7 +219,7 @@ namespace mcp
         // client opens its GET stream so a tool handler that fires
         // server.sample() right after initialize doesn't lose its
         // request to a startup race.
-        std::lock_guard<std::mutex> lk(m_get_mu);
+        QMutexLocker lk(&m_get_mu);
         m_get_queue.emplace_back(frame.toByteArray());
         m_get_cv.notify_all();
         return {};
@@ -231,12 +231,12 @@ namespace mcp
       // traffic stops being dropped.
       void enter_get_stream(void)
       {
-        std::lock_guard<std::mutex> lk(m_get_mu);
+        QMutexLocker lk(&m_get_mu);
         m_get_active = true;
       }
       void leave_get_stream(void)
       {
-        std::lock_guard<std::mutex> lk(m_get_mu);
+        QMutexLocker lk(&m_get_mu);
         m_get_active = false;
         // Don't drain the queue: another GET might be opened (with
         // resumability). This build ships without resumability so in
@@ -244,7 +244,7 @@ namespace mcp
       }
       QByteArray try_get_frame(void)
       {
-        std::lock_guard<std::mutex> lk(m_get_mu);
+        QMutexLocker lk(&m_get_mu);
         if(m_get_queue.empty())
           return QByteArray();
         QByteArray out = std::move(m_get_queue.front());
@@ -283,7 +283,7 @@ namespace mcp
           QString key = canonical_id(j.value("id"));
           std::promise<QByteArray> p;
           reply = p.get_future();
-          std::lock_guard<std::mutex> lk(m_pending_mu);
+          QMutexLocker lk(&m_pending_mu);
           m_pending.emplace(std::move(key), std::move(p));
         }
         // Deliver under m_buffered_mu so the m_started/m_buffered/m_on_message
@@ -292,7 +292,7 @@ namespace mcp
         // wired by Session::Session before set_request_handler calls
         // run, and dispatching during that window produces spurious
         // "method not found" errors.
-        std::lock_guard<std::mutex> lk(m_buffered_mu);
+        QMutexLocker lk(&m_buffered_mu);
         if(m_started && m_on_message)
         {
           m_on_message(std::move(raw));
@@ -320,7 +320,7 @@ namespace mcp
       // mutex so their three-way consistency is maintained across the
       // setter (on_message), the gate flip (start), and the producer
       // (deliver_request_or_notification).
-      std::mutex m_buffered_mu;
+      QMutex m_buffered_mu;
       bool m_started = false;
       MessageCallback m_on_message;
       std::deque<QByteArray> m_buffered;
@@ -328,14 +328,14 @@ namespace mcp
       ErrorCallback m_on_error;
       CloseCallback m_on_close;
 
-      std::mutex m_pending_mu;
+      QMutex m_pending_mu;
       std::map<QString, std::promise<QByteArray>> m_pending;
 
       // GET-stream queue (server-initiated outbound traffic). Frames
       // produced by `send()` while a GET stream is active are pushed
       // here and consumed by the GET handler.
-      std::mutex m_get_mu;
-      std::condition_variable m_get_cv;
+      QMutex m_get_mu;
+      QWaitCondition m_get_cv;
       std::deque<QByteArray> m_get_queue;
       bool m_get_active = false;
     };
@@ -849,7 +849,7 @@ namespace mcp
 
     std::atomic<int> port{ 0 };
 
-    std::mutex sessions_mu;
+    QMutex sessions_mu;
     QHash<QString, std::shared_ptr<HttpServerHost::SessionContext>> sessions;
   };
 
@@ -911,7 +911,7 @@ namespace mcp
     std::shared_ptr<SessionContext> ctx;
     if(!sid.isEmpty())
     {
-      std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+      QMutexLocker lk(&m_impl->sessions_mu);
       auto it = m_impl->sessions.find(sid);
       if(it != m_impl->sessions.end())
       {
@@ -1087,7 +1087,7 @@ namespace mcp
     }
     std::shared_ptr<SessionContext> ctx;
     {
-      std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+      QMutexLocker lk(&m_impl->sessions_mu);
       auto sit = m_impl->sessions.find(QString::fromUtf8(sid));
       if(sit != m_impl->sessions.end())
         ctx = sit.value();
@@ -1193,7 +1193,7 @@ namespace mcp
     }
     std::shared_ptr<SessionContext> ctx;
     {
-      std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+      QMutexLocker lk(&m_impl->sessions_mu);
       auto sit = m_impl->sessions.find(QString::fromUtf8(it));
       if(sit != m_impl->sessions.end())
       {
@@ -1299,7 +1299,7 @@ namespace mcp
   {
     if(!m_impl)
       return 0;
-    std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+    QMutexLocker lk(&m_impl->sessions_mu);
     return static_cast<std::size_t>(m_impl->sessions.size());
   }
 
@@ -1478,7 +1478,7 @@ namespace mcp
       // "on_close finished".
       QHash<QString, std::shared_ptr<SessionContext>> drained;
       {
-        std::lock_guard<std::mutex> lk(m_impl->sessions_mu);
+        QMutexLocker lk(&m_impl->sessions_mu);
         drained.swap(m_impl->sessions);
       }
       // Notify the embedder for every surviving session while its

@@ -7,7 +7,7 @@
 
 #include <QCoreApplication>
 
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -39,11 +39,11 @@ private slots:
 private:
   QList<CapturedLine> drain(void)
   {
-    std::lock_guard<std::mutex> lk(m_mu);
+    QMutexLocker lk(&m_mu);
     return std::move(m_captured);
   }
 
-  std::mutex m_mu;
+  QMutex m_mu;
   QList<CapturedLine> m_captured;
   mcp::LogLevel m_prev_level{ mcp::LogLevel::info };
 };
@@ -60,7 +60,7 @@ void LogTest::init(void)
   m_prev_level = mcp::log_level();
   mcp::set_log_level(mcp::LogLevel::trace);
   (void)mcp::set_log_sink([this](mcp::LogLevel lvl, QString msg) {
-    std::lock_guard<std::mutex> lk(m_mu);
+    QMutexLocker lk(&m_mu);
     m_captured.push_back({ lvl, QString(msg) });
   });
 }

@@ -15,14 +15,15 @@
 #include <QtTest/QtTest>
 
 #include <QCoreApplication>
+#include <QDeadlineTimer>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -410,14 +411,14 @@ void TasksIntegration::StatusNotificationsArrive(void)
            });
   });
 
-  std::mutex mu;
-  std::condition_variable cv;
+  QMutex mu;
+  QWaitCondition cv;
   QList<mcp::TaskStatus> seen;
 
   mcp::Client client{ mcp::Implementation{ .name = "t", .version = "0" } };
   client.connect(std::move(p.a));
   client.set_task_status_handler([&](const mcp::Task& t) {
-    std::lock_guard<std::mutex> lk(mu);
+    QMutexLocker lk(&mu);
     seen.push_back(t.status);
     cv.notify_all();
   });
@@ -430,12 +431,16 @@ void TasksIntegration::StatusNotificationsArrive(void)
   (void)client.task_result(env.task.taskId).get();
 
   // Wait for the working + completed transitions to arrive.
-  std::unique_lock<std::mutex> lk(mu);
-  QVERIFY(cv.wait_for(lk, 2s, [&] {
+  QMutexLocker lk(&mu);
+  bool saw_working = false;
+  bool saw_completed = false;
+  QDeadlineTimer deadline(2000);
+  while(true)
+  {
     // We expect at least: working (on create) and completed
     // (on terminal). Other intermediate states are fine.
-    bool saw_working = false;
-    bool saw_completed = false;
+    saw_working = false;
+    saw_completed = false;
     for(auto s : seen)
     {
       if(s == mcp::TaskStatus::working)
@@ -443,8 +448,12 @@ void TasksIntegration::StatusNotificationsArrive(void)
       if(s == mcp::TaskStatus::completed)
         saw_completed = true;
     }
-    return saw_working && saw_completed;
-  }));
+    if(saw_working && saw_completed)
+      break;
+    if(!cv.wait(&mu, deadline))
+      break;
+  }
+  QVERIFY(saw_working && saw_completed);
 
   client.disconnect();
 }
@@ -501,14 +510,14 @@ void TasksIntegration::CancelOnceFiresStatusListenerOnce(void)
            });
   });
 
-  std::mutex mu;
-  std::condition_variable cv;
+  QMutex mu;
+  QWaitCondition cv;
   QList<mcp::TaskStatus> seen;
 
   mcp::Client client{ mcp::Implementation{ .name = "t", .version = "0" } };
   client.connect(std::move(p.a));
   client.set_task_status_handler([&](const mcp::Task& t) {
-    std::lock_guard<std::mutex> lk(mu);
+    QMutexLocker lk(&mu);
     seen.push_back(t.status);
     cv.notify_all();
   });
@@ -523,11 +532,13 @@ void TasksIntegration::CancelOnceFiresStatusListenerOnce(void)
   let_finish.store(true, std::memory_order_release);
 
   // Give the worker time to exit.
-  std::unique_lock<std::mutex> lk(mu);
-  cv.wait_for(lk, 1s, [&] {
-    return std::count(seen.begin(), seen.end(), mcp::TaskStatus::cancelled)
-           > 1;
-  });
+  QMutexLocker lk(&mu);
+  QDeadlineTimer deadline(1000);
+  while(std::count(seen.begin(), seen.end(), mcp::TaskStatus::cancelled) <= 1)
+  {
+    if(!cv.wait(&mu, deadline))
+      break;
+  }
   int cancelled_count = static_cast<int>(
       std::count(seen.begin(), seen.end(), mcp::TaskStatus::cancelled));
   QCOMPARE(cancelled_count, 1);

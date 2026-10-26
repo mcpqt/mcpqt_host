@@ -14,10 +14,10 @@
 #include <QByteArrayView>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <deque>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -206,7 +206,7 @@ namespace mcp
 
   QString HttpClientTransport::session_id(void) const
   {
-    std::lock_guard<std::mutex> lk(m_session_id_mu);
+    QMutexLocker lk(&m_session_id_mu);
     return m_session_id;
   }
 
@@ -248,7 +248,7 @@ namespace mcp
     // always proceeds.
     QString sid;
     {
-      std::lock_guard<std::mutex> lk(m_session_id_mu);
+      QMutexLocker lk(&m_session_id_mu);
       sid = m_session_id;
     }
     if(!sid.isNull() && !sid.isEmpty() && m_impl)
@@ -257,7 +257,7 @@ namespace mcp
       {
         QString token;
         {
-          std::lock_guard<std::mutex> lk(m_auth_mu);
+          QMutexLocker lk(&m_auth_mu);
           token = m_access_token;
         }
         QNetworkAccessManager nam;
@@ -277,11 +277,11 @@ namespace mcp
     }
 
     {
-      std::lock_guard<std::mutex> lk(m_out_mu);
+      QMutexLocker lk(&m_out_mu);
       m_out_cv.notify_all();
     }
     {
-      std::lock_guard<std::mutex> lk(m_session_id_mu);
+      QMutexLocker lk(&m_session_id_mu);
       m_session_id_cv.notify_all();
     }
 
@@ -291,8 +291,11 @@ namespace mcp
       m_get_thread.join();
 
     {
-      std::unique_lock<std::mutex> lk(m_inflight_mu);
-      m_inflight_cv.wait(lk, [this] { return m_inflight == 0; });
+      QMutexLocker lk(&m_inflight_mu);
+      while(m_inflight != 0)
+      {
+        m_inflight_cv.wait(&m_inflight_mu);
+      }
     }
     fire_close();
   }
@@ -369,7 +372,7 @@ namespace mcp
       return std::make_error_code(std::errc::not_connected);
     }
     {
-      std::lock_guard<std::mutex> lk(m_out_mu);
+      QMutexLocker lk(&m_out_mu);
       m_out.emplace_back(frame.toByteArray());
       m_out_cv.notify_one();
     }
@@ -390,22 +393,23 @@ namespace mcp
     {
       QByteArray frame;
       {
-        std::unique_lock<std::mutex> lk(m_out_mu);
-        m_out_cv.wait(lk, [this] {
-          return m_closed.load(std::memory_order_acquire) || !m_out.empty();
-        });
+        QMutexLocker lk(&m_out_mu);
+        while(!m_closed.load(std::memory_order_acquire) && m_out.empty())
+        {
+          m_out_cv.wait(&m_out_mu);
+        }
         if(m_closed.load(std::memory_order_acquire) && m_out.empty())
           return;
         frame = std::move(m_out.front());
         m_out.pop_front();
       }
       {
-        std::lock_guard<std::mutex> lk(m_inflight_mu);
+        QMutexLocker lk(&m_inflight_mu);
         ++m_inflight;
       }
       std::thread([this, f = std::move(frame)]() mutable {
         process_send(std::move(f));
-        std::lock_guard<std::mutex> lk(m_inflight_mu);
+        QMutexLocker lk(&m_inflight_mu);
         --m_inflight;
         m_inflight_cv.notify_all();
       }).detach();
@@ -416,12 +420,12 @@ namespace mcp
   {
     QString sid;
     {
-      std::lock_guard<std::mutex> lk(m_session_id_mu);
+      QMutexLocker lk(&m_session_id_mu);
       sid = m_session_id;
     }
     QString token;
     {
-      std::lock_guard<std::mutex> lk(m_auth_mu);
+      QMutexLocker lk(&m_auth_mu);
       token = m_access_token;
     }
 
@@ -457,7 +461,7 @@ namespace mcp
     {
       bool first_set = false;
       {
-        std::lock_guard<std::mutex> lk(m_session_id_mu);
+        QMutexLocker lk(&m_session_id_mu);
         first_set = m_session_id.isNull();
         m_session_id = sid_hdr;
       }
@@ -528,7 +532,7 @@ namespace mcp
         // Last-Event-ID.
         if(!se.id.isNull() && !se.id.isEmpty())
         {
-          std::lock_guard<std::mutex> lk(m_get_mu_state);
+          QMutexLocker lk(&m_get_mu_state);
           m_last_event_id = se.id;
         }
         if(!se.data.isEmpty())
@@ -559,11 +563,11 @@ namespace mcp
     {
       QString sid;
       {
-        std::unique_lock<std::mutex> lk(m_session_id_mu);
-        m_session_id_cv.wait(lk, [this] {
-          return !m_session_id.isNull()
-                 || m_closed.load(std::memory_order_acquire);
-        });
+        QMutexLocker lk(&m_session_id_mu);
+        while(m_session_id.isNull() && !m_closed.load(std::memory_order_acquire))
+        {
+          m_session_id_cv.wait(&m_session_id_mu);
+        }
         if(m_closed.load(std::memory_order_acquire))
           return;
         sid = m_session_id;
@@ -573,7 +577,7 @@ namespace mcp
 
       QString token;
       {
-        std::lock_guard<std::mutex> lk(m_auth_mu);
+        QMutexLocker lk(&m_auth_mu);
         token = m_access_token;
       }
       // Resumability: hand back the last event id we saw on this
@@ -581,7 +585,7 @@ namespace mcp
       // the disconnect.
       QString last_event_id;
       {
-        std::lock_guard<std::mutex> lk(m_get_mu_state);
+        QMutexLocker lk(&m_get_mu_state);
         last_event_id = m_last_event_id;
       }
 
@@ -599,7 +603,7 @@ namespace mcp
         buf += QString::fromUtf8(reply->readAll());
         drain_sse(buf, [this](SseEvent se) {
           {
-            std::lock_guard<std::mutex> lk(m_get_mu_state);
+            QMutexLocker lk(&m_get_mu_state);
             if(!se.id.isNull() && !se.id.isEmpty())
               m_last_event_id = se.id;
             if(se.retry_ms.has_value())
@@ -617,7 +621,7 @@ namespace mcp
       buf += QString::fromUtf8(reply->readAll());
       drain_sse(buf, [this](SseEvent se) {
         {
-          std::lock_guard<std::mutex> lk(m_get_mu_state);
+          QMutexLocker lk(&m_get_mu_state);
           if(!se.id.isNull() && !se.id.isEmpty())
             m_last_event_id = se.id;
           if(se.retry_ms.has_value())
@@ -667,7 +671,7 @@ namespace mcp
       if(status == 404)
       {
         {
-          std::lock_guard<std::mutex> lk(m_session_id_mu);
+          QMutexLocker lk(&m_session_id_mu);
           m_session_id = QString();
         }
         return;
@@ -683,7 +687,7 @@ namespace mcp
       // otherwise.
       std::chrono::milliseconds delay{ 200 };
       {
-        std::lock_guard<std::mutex> lk(m_get_mu_state);
+        QMutexLocker lk(&m_get_mu_state);
         if(m_next_retry_ms.has_value())
         {
           int v = *m_next_retry_ms;
@@ -704,13 +708,13 @@ namespace mcp
 
   void HttpClientTransport::set_access_token(QString token)
   {
-    std::lock_guard<std::mutex> lk(m_auth_mu);
+    QMutexLocker lk(&m_auth_mu);
     m_access_token = std::move(token);
   }
 
   QString HttpClientTransport::access_token(void) const
   {
-    std::lock_guard<std::mutex> lk(m_auth_mu);
+    QMutexLocker lk(&m_auth_mu);
     return m_access_token;
   }
 

@@ -238,9 +238,9 @@ namespace mcp
 
     Implementation m_client_info;
     std::shared_ptr<Session> m_session;
-    mutable std::mutex m_session_mu;
+    mutable QMutex m_session_mu;
     std::optional<InitializeResult> m_server;
-    mutable std::mutex m_server_mu;
+    mutable QMutex m_server_mu;
     std::atomic<bool> m_connected = false;
 
     SamplingHandler m_sampling_handler;
@@ -249,7 +249,7 @@ namespace mcp
     ElicitationCompleteHandler m_elicitation_complete_handler;
     TaskStatusHandler m_task_status_handler;
     std::optional<ClientCapabilities> m_capabilities_override;
-    std::mutex m_handlers_mu;
+    QMutex m_handlers_mu;
   };
 
 } // namespace mcp

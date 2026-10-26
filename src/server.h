@@ -28,10 +28,10 @@
 #include <QList>
 #include <QString>
 #include <atomic>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <functional>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -291,12 +291,12 @@ namespace mcp
     QString m_instructions;
     std::size_t m_page_size{ 0 };
     QHash<QString, ToolEntry> m_tools;
-    std::mutex m_tools_mu;
+    QMutex m_tools_mu;
 
     QHash<QString, ResourceEntry> m_resources;
     QList<ResourceTemplate> m_resource_templates;
     ResourceReadHandler m_fallback_resource_handler;
-    std::mutex m_resources_mu;
+    QMutex m_resources_mu;
 
     struct PromptEntry
     {
@@ -304,13 +304,13 @@ namespace mcp
       PromptGetHandler handler;
     };
     QHash<QString, PromptEntry> m_prompts;
-    std::mutex m_prompts_mu;
+    QMutex m_prompts_mu;
 
     std::atomic<bool> m_logging_enabled{ false };
     std::atomic<LoggingLevel> m_log_level{ LoggingLevel::info };
 
     CompletionHandler m_completion_handler;
-    std::mutex m_completion_mu;
+    QMutex m_completion_mu;
 
     /// Inbound `notifications/elicitation/complete` from the client.
     /// Set via set_elicitation_complete_handler(); guards live under
@@ -333,7 +333,7 @@ namespace mcp
     [[nodiscard]] std::shared_ptr<Session> acquire_session(void) const;
 
     std::shared_ptr<Session> m_session;
-    mutable std::mutex m_session_mu;
+    mutable QMutex m_session_mu;
     std::atomic<bool> m_initialized = false;
 
     /// Client capabilities captured at initialize, readable any-thread.
@@ -341,10 +341,10 @@ namespace mcp
     /// registration mutexes above) rather than piggy-backing on
     /// m_session_mu.
     std::optional<ClientCapabilities> m_client_capabilities;
-    mutable std::mutex m_client_capabilities_mu;
+    mutable QMutex m_client_capabilities_mu;
     std::atomic<bool> m_stop_requested = false;
-    std::mutex m_stop_mu;
-    std::condition_variable m_stop_cv;
+    QMutex m_stop_mu;
+    QWaitCondition m_stop_cv;
   };
 
 } // namespace mcp

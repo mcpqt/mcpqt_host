@@ -11,6 +11,7 @@
 #include <QtTest/QtTest>
 
 #include <QCoreApplication>
+#include <QDeadlineTimer>
 
 #include <fcntl.h>
 #include <poll.h>
@@ -18,9 +19,9 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <cstring>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -108,40 +109,48 @@ namespace
   // Captures messages, errors, close events for a transport.
   struct Sink
   {
-    std::mutex mu;
-    std::condition_variable cv;
+    QMutex mu;
+    QWaitCondition cv;
     QList<QByteArray> messages;
     QList<std::error_code> errors;
     bool closed = false;
 
     void on_message(QByteArray m)
     {
-      std::lock_guard<std::mutex> lk(mu);
+      QMutexLocker lk(&mu);
       messages.push_back(std::move(m));
       cv.notify_all();
     }
     void on_error(std::error_code ec)
     {
-      std::lock_guard<std::mutex> lk(mu);
+      QMutexLocker lk(&mu);
       errors.push_back(ec);
       cv.notify_all();
     }
     void on_close(void)
     {
-      std::lock_guard<std::mutex> lk(mu);
+      QMutexLocker lk(&mu);
       closed = true;
       cv.notify_all();
     }
 
     bool wait_for_messages(qsizetype want, std::chrono::milliseconds t = 2s)
     {
-      std::unique_lock<std::mutex> lk(mu);
-      return cv.wait_for(lk, t, [&] { return messages.size() >= want; });
+      QMutexLocker lk(&mu);
+      QDeadlineTimer deadline(t.count());
+      while (messages.size() < want) {
+        if (!cv.wait(&mu, deadline)) return false;
+      }
+      return true;
     }
     bool wait_for_close(std::chrono::milliseconds t = 2s)
     {
-      std::unique_lock<std::mutex> lk(mu);
-      return cv.wait_for(lk, t, [&] { return closed; });
+      QMutexLocker lk(&mu);
+      QDeadlineTimer deadline(t.count());
+      while (!closed) {
+        if (!cv.wait(&mu, deadline)) return false;
+      }
+      return true;
     }
   };
 
@@ -401,9 +410,11 @@ void StdioTransport::OversizedFrameTriggersErrorAndClose(void)
   QCOMPARE(static_cast<std::size_t>(n), oversized.size());
 
   {
-    std::unique_lock<std::mutex> lk(sink.mu);
-    sink.cv.wait_for(lk, 2s,
-                     [&] { return !sink.errors.empty() || sink.closed; });
+    QMutexLocker lk(&sink.mu);
+    QDeadlineTimer deadline(2000);
+    while (sink.errors.empty() && !sink.closed) {
+      if (!sink.cv.wait(&sink.mu, deadline)) break;
+    }
   }
   QVERIFY(!sink.errors.empty());
   QCOMPARE(sink.errors.front(), std::make_error_code(std::errc::message_size));

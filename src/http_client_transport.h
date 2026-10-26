@@ -41,11 +41,11 @@
 #include <QString>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <deque>
 #include <functional>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -164,14 +164,14 @@ namespace mcp
     // many POSTs can be in flight simultaneously without serialising
     // (a long-blocked POST awaiting a server-initiated sampling
     // round-trip would otherwise wedge later sends).
-    std::mutex m_out_mu;
-    std::condition_variable m_out_cv;
+    QMutex m_out_mu;
+    QWaitCondition m_out_cv;
     std::deque<QByteArray> m_out;
     std::thread m_worker;
 
     // Track in-flight per-send threads so close() can drain.
-    std::mutex m_inflight_mu;
-    std::condition_variable m_inflight_cv;
+    QMutex m_inflight_mu;
+    QWaitCondition m_inflight_cv;
     int m_inflight = 0;
 
     // GET-stream worker (optional).
@@ -180,15 +180,15 @@ namespace mcp
     // Negotiated session id, captured from any inbound
     // `Mcp-Session-Id` response header. The GET worker waits on this
     // cv until a session id has been negotiated (or close fires).
-    mutable std::mutex m_session_id_mu;
-    std::condition_variable m_session_id_cv;
+    mutable QMutex m_session_id_mu;
+    QWaitCondition m_session_id_cv;
     QString m_session_id;
 
     // SSE resumability state (spec: server emits `id:` lines, client
     // sends `Last-Event-ID` on reconnect and honours `retry:` for
     // backoff). Updated by drain_sse on every event; read by the GET
     // worker on reconnect.
-    mutable std::mutex m_get_mu_state;
+    mutable QMutex m_get_mu_state;
     QString m_last_event_id;
     std::optional<int> m_next_retry_ms;
 
@@ -196,7 +196,7 @@ namespace mcp
     // Options::access_token; set_access_token() rotates it. Reads are
     // taken on every outbound request, so this is hot-ish — but
     // contention is bounded by the number of in-flight POSTs.
-    mutable std::mutex m_auth_mu;
+    mutable QMutex m_auth_mu;
     QString m_access_token;
 
     // on_unauthorized firing-flag. Multiple in-flight POSTs that all

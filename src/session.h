@@ -35,12 +35,12 @@
 #include <QString>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <QWaitCondition>
 #include <exception>
 #include <functional>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -211,28 +211,28 @@ namespace mcp
 
     // Pending outbound requests awaiting a response. Keyed by canonical
     // RequestId string so int and string ids never collide.
-    std::mutex m_pending_mu;
+    QMutex m_pending_mu;
     QHash<RequestId, Pending> m_pending;
-    std::condition_variable m_timeout_cv;
+    QWaitCondition m_timeout_cv;
     std::thread m_timeout_thread;
 
     // Handler tables. Read-mostly; protected by m_handlers_mu so they can
     // be modified after start() without UB.
-    std::mutex m_handlers_mu;
+    QMutex m_handlers_mu;
     QHash<QString, RequestHandler> m_req_handlers;
     QHash<QString, NotificationHandler> m_note_handlers;
     RequestHandler m_fallback_req;
     NotificationHandler m_fallback_note;
 
-    std::mutex m_closed_cb_mu;
+    QMutex m_closed_cb_mu;
     ClosedCallback m_on_closed;
     std::atomic<bool> m_closed_cb_fired = false;
 
     // Tracks live request-dispatch workers so close() can wait for
     // them to finish before any member they touch (m_transport,
     // handler functions) is destroyed.
-    std::mutex m_workers_mu;
-    std::condition_variable m_workers_cv;
+    QMutex m_workers_mu;
+    QWaitCondition m_workers_cv;
     int m_workers_running = 0;
   };
 

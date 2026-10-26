@@ -20,7 +20,7 @@
 #include <chrono>
 #include <future>
 #include <memory>
-#include <mutex>
+#include <QMutex>
 #include <string>
 #include <utility>
 
@@ -269,10 +269,10 @@ void Session::IdsForDifferentRequestsAreDistinct(void)
   // Two requests are dispatched on detached workers, so the handler
   // can run on either thread first — the bookkeeping must be
   // thread-safe.
-  std::mutex ids_mu;
+  QMutex ids_mu;
   QList<QString> ids;
   sp.b->set_request_handler("tag", [&](const QJsonValue& p) -> QJsonValue {
-    std::lock_guard<std::mutex> lk(ids_mu);
+    QMutexLocker lk(&ids_mu);
     ids.push_back(mcp::from_json<QString>(p["id"]));
     return {};
   });
@@ -281,7 +281,7 @@ void Session::IdsForDifferentRequestsAreDistinct(void)
   f1.get();
   f2.get();
   {
-    std::lock_guard<std::mutex> lk(ids_mu);
+    QMutexLocker lk(&ids_mu);
     QCOMPARE(ids.size(), std::size_t{ 2 });
   }
 
