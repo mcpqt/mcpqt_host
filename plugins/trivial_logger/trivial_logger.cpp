@@ -8,8 +8,9 @@
 // Destination: $MCP_LOG_FILE if set (opened in append mode), else stderr.
 //
 // Once loaded, this plugin owns logging: no other plugin can replace the sink
-// (the core rejects replacement after a claim), and the host pins this plugin
-// so its sink code is never detached while in use.
+// (the core rejects replacement after a claim). The host releases the sink back
+// to its fallback when this plugin is unloaded, so its sink code is never
+// detached while in use.
 
 #include "plugin.h"
 
@@ -73,7 +74,7 @@ namespace
 
       // Publish our functions, then claim logging by handing the host the
       // canonical signature of our log sink slot. A plugin can only claim
-      // once; the host pins the plugin that owns the sink.
+      // once; the host releases the sink when the owning plugin unloads.
       registerPublicSlots();
       const QVariant ok = m_host.callFunc(
           "bool mcp::Host::registerLogger(QString)",

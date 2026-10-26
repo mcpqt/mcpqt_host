@@ -196,10 +196,16 @@ namespace mcp
     }
     owner->owns_log_sink = true;
 
-    // Alias the claimed sink as the host log service. Ordinary plugins depend
-    // on this signature, so making it available is what lets them load once
-    // logging has been established.
-    install_log_service();
+    // Register the host log service as an alias of the plugin's sink slot so
+    // "void mcp::Host::log(int,QString)" and the plugin's own log signature
+    // resolve to the same function. Ordinary plugins depend on the host
+    // signature, so this also makes the logging provider satisfy that
+    // dependency and keeps it loaded until its dependents are gone.
+    const QString host_signature
+        = QStringLiteral("void mcp::Host::log(int,QString)");
+    m_registry.insert(host_signature, FunctionEntry{ owner, method, {} });
+    if(!owner->signatures.contains(host_signature))
+      owner->signatures.append(host_signature);
     return true;
   }
 
@@ -600,7 +606,8 @@ namespace mcp
 
   void PluginManager::unload_instance(const std::shared_ptr<Instance>& inst)
   {
-    if(inst->owns_log_sink)
+    const bool owns_sink = inst->owns_log_sink;
+    if(owns_sink)
     {
       // The claimed sink invokes code in this plugin's library. Restore the
       // core fallback before detaching so later log calls cannot jump into
@@ -613,6 +620,13 @@ namespace mcp
       m_registry.remove(signature);
     }
     inst->signatures.clear();
+
+    if(owns_sink)
+    {
+      // Keep the host log service available after its owner goes away; it now
+      // forwards to the core fallback sink.
+      install_log_service();
+    }
 
     if(inst->iface)
     {

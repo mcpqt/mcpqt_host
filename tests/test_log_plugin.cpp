@@ -3,7 +3,7 @@
 // Test logging plugin (Scope A). Claims the process-wide log sink so the test
 // can verify that (a) the plugin receives the core's log events and decides
 // what to do with them, (b) other plugins/embedders cannot replace it once
-// claimed, and (c) the host pins it against unloading.
+// claimed, and (c) the host releases the sink when the plugin is unloaded.
 
 #include "plugin.h"
 

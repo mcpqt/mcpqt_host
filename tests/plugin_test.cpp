@@ -448,6 +448,29 @@ void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced(void)
           .call_function("bool TestLogPlugin::claimed()", {})
           .toBool());
 
+  // The plugin's own sink signature and the host log service are both
+  // registered and resolve to the same plugin method.
+  QVERIFY(plugins.has_function(
+      QStringLiteral("void TestLogPlugin::log(int,QString)")));
+  QVERIFY(plugins.has_function(
+      QStringLiteral("void mcp::Host::log(int,QString)")));
+
+  const int alias_before
+      = plugins.call_function("int TestLogPlugin::count()", {})
+            .toInt();
+  (void)plugins.call_function("void mcp::Host::log(int,QString)",
+                              { 2, QStringLiteral("alias-probe-line") });
+  const int alias_after
+      = plugins.call_function("int TestLogPlugin::count()", {})
+            .toInt();
+  QVERIFY2(alias_after >= alias_before + 1,
+           "host log alias did not reach the plugin's sink");
+  QVERIFY(
+      plugins
+          .call_function("QString TestLogPlugin::last()", {})
+          .toString()
+          .contains("alias-probe-line"));
+
   const int before
       = plugins.call_function("int TestLogPlugin::count()", {})
             .toInt();
@@ -476,6 +499,12 @@ void PluginManagerTest::LoggingPluginClaimsAndCannotBeReplaced(void)
   QVERIFY(plugins.unload_plugin("test-logger"));
   QCOMPARE(plugins.plugin_count(), std::size_t{ 0 });
   QVERIFY(!mcp::log_sink_claimed());
+  // The fallback host log service remains registered, but the plugin's own
+  // sink signature is gone with the plugin.
+  QVERIFY(plugins.has_function(
+      QStringLiteral("void mcp::Host::log(int,QString)")));
+  QVERIFY(!plugins.has_function(
+      QStringLiteral("void TestLogPlugin::log(int,QString)")));
 }
 
 int main(int argc, char** argv)

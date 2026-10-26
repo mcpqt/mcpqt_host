@@ -248,8 +248,10 @@ namespace mcp
     /// Register the built-in host services (registerLogger, elicit).
     void register_host_function(const QString& signature, HostFunction fn);
 
-    /// Register (or replace) the host log service
+    /// Register the fallback host log service
     /// `void mcp::Host::log(int,QString)`, which forwards to the current sink.
+    /// A plugin that claims logging replaces this entry with an alias to its
+    /// own log slot.
     void install_log_service(void);
 
     bool host_reg_func(const std::shared_ptr<Instance>& inst,

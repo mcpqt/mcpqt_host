@@ -33,15 +33,15 @@ namespace mcp
   /// to `stderr`.
   using LogSink = std::function<void(LogLevel, const QString&)>;
 
-  /// Install `sink` and take exclusive ownership of process-wide logging for
-  /// the remainder of the process. The first successful claim wins: subsequent
-  /// `claim_log_sink()` calls fail, so one logging provider (typically a
-  /// plugin) cannot be displaced by another. A null sink is rejected.
-  /// Thread-safe.
+  /// Install `sink` and take exclusive ownership of process-wide logging. The
+  /// first successful claim wins: subsequent `claim_log_sink()` calls fail, so
+  /// one logging provider (typically a plugin) cannot be displaced by another.
+  /// A null sink is rejected. Thread-safe.
   ///
-  /// The claimed sink executes code owned by the caller, so the caller must
-  /// stay loaded for the process lifetime; `PluginManager` enforces this by
-  /// pinning the plugin that claims logging.
+  /// The claimed sink executes code owned by the caller. Before that caller is
+  /// unloaded, release the sink with `release_log_sink()` so no dangling call
+  /// target remains; `PluginManager` does this automatically when the owning
+  /// plugin is unloaded.
   [[nodiscard]] bool claim_log_sink(LogSink sink);
 
   /// Release a claimed sink and restore the core's default fallback sink.
