@@ -1,155 +1,338 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// mcp_tester: a small interactive MCP client.
+// mcp_tester: an interactive MCP client built entirely on Qt.
 //
-// Spawns an MCP server as a child process (argv[1] is the server binary; any
-// following arguments are passed to it), connects over stdio, initializes the
-// session, and then presents a simple command menu for inspecting and calling
-// the server's tools.
+// Connects to an MCP server over either Streamable HTTP or stdio (by
+// spawning a child process with QProcess), initializes the session, and
+// presents a command menu for inspecting and calling the server's tools.
 //
-//   ./mcp_tester /path/to/server [server args...]
+//   mcp_tester --http http://127.0.0.1:8848/mcp
+//   mcp_tester --stdio ./mcp_stdio_server -- ./plugins
 //
-// Commands (also see `help`):
-//   list                 list the server's tools (name, description, schema)
-//   call                 pick a tool and call it with JSON arguments, then
-//                        display the returned content / structured result
-//   info                 show server info, instructions, and capabilities
-//   ping                 send a ping and wait for the response
-//   help                 show this help
-//   quit                 disconnect and exit
+// See `mcp_tester --help` for the complete option list.
 
 #include "mcp.h"
 
-#include <fcntl.h>
-#include <signal.h>
-#include <spawn.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#if defined(MCP_ENABLE_HTTP)
+#include "http_client_transport.h"
+#endif
 
-#include <cstdio>
-#include <iostream>
+#include <QCommandLineOption>
+#include <QCommandLineParser>
+#include <QCoreApplication>
+#include <QFile>
+#include <QFileInfo>
+#include <QMetaObject>
+#include <QProcess>
+#include <QStandardPaths>
+#include <QTextStream>
+#include <QThread>
+#include <QUrl>
+
+#include <atomic>
+#include <exception>
 #include <memory>
-#include <string>
-#include <vector>
-
-extern char** environ;
+#include <optional>
+#include <system_error>
+#include <thread>
+#include <utility>
 
 namespace
 {
 
-  struct Subprocess
+  using OutStream = QTextStream;
+  using InStream = QTextStream;
+
+  // -------------------------------------------------------------------------
+  // QProcess-backed stdio transport
+  //
+  // QProcess lives on the application's main thread and is driven by the Qt
+  // event loop. mcp::Client may call send()/close() from the interactive
+  // worker thread, so those operations are marshalled onto the main thread.
+  // Inbound frames are delivered from the main thread, which is safe for
+  // Session's callback contract.
+  // -------------------------------------------------------------------------
+
+  class ProcessTransport final : public QObject, public mcp::Transport
   {
-    pid_t pid = -1;
-    int read_fd = -1;
-    int write_fd = -1;
-    ~Subprocess()
+  public:
+    struct Options
     {
-      if(write_fd >= 0)
-        ::close(write_fd);
-      if(read_fd >= 0)
-        ::close(read_fd);
-      if(pid > 0)
+      QString program;
+      QStringList arguments;
+    };
+
+    explicit ProcessTransport(Options opts, QObject* parent = nullptr)
+        : QObject(parent), m_opts(std::move(opts))
+    {
+    }
+
+    ~ProcessTransport() override { close(); }
+
+    void on_message(MessageCallback cb) override
+    {
+      m_on_message = std::move(cb);
+    }
+
+    void on_error(ErrorCallback cb) override { m_on_error = std::move(cb); }
+
+    void on_close(CloseCallback cb) override { m_on_close = std::move(cb); }
+
+    void start(void) override
+    {
+      bool expected = false;
+      if(!m_started.compare_exchange_strong(expected, true,
+                                            std::memory_order_acq_rel))
       {
-        ::kill(pid, SIGTERM);
-        int status = 0;
-        ::waitpid(pid, &status, 0);
+        return;
+      }
+      run_on_owner([this] { do_start(); });
+    }
+
+    void close(void) override
+    {
+      if(m_closed.load(std::memory_order_acquire))
+      {
+        return;
+      }
+      run_on_owner([this] { do_close(); });
+    }
+
+    [[nodiscard]] std::error_code send(QByteArrayView frame) override
+    {
+      if(!is_open())
+      {
+        return std::make_error_code(std::errc::not_connected);
+      }
+      auto data = QByteArray(frame.data(), static_cast<qsizetype>(frame.size()));
+      QMetaObject::invokeMethod(
+          this, [this, data = std::move(data)] { do_send(data); },
+          Qt::QueuedConnection);
+      return {};
+    }
+
+    [[nodiscard]] bool is_open(void) const noexcept override
+    {
+      return m_open.load(std::memory_order_acquire)
+             && !m_closed.load(std::memory_order_acquire);
+    }
+
+  private:
+    bool on_owner_thread(void) const
+    {
+      return QThread::currentThread() == thread();
+    }
+
+    template<typename Fn>
+    void run_on_owner(Fn&& fn)
+    {
+      if(on_owner_thread())
+      {
+        fn();
+      }
+      else
+      {
+        QMetaObject::invokeMethod(this, std::forward<Fn>(fn),
+                                  Qt::BlockingQueuedConnection);
       }
     }
+
+    void do_start(void)
+    {
+      m_proc = new QProcess(this);
+      m_proc->setProgram(m_opts.program);
+      m_proc->setArguments(m_opts.arguments);
+      m_proc->setProcessChannelMode(QProcess::SeparateChannels);
+
+      connect(m_proc, &QProcess::readyReadStandardOutput, this,
+              [this] { do_read_stdout(); });
+      connect(m_proc, &QProcess::readyReadStandardError, this, [this] {
+        const QByteArray data = m_proc->readAllStandardError();
+        if(data.isEmpty())
+        {
+          return;
+        }
+        QTextStream err(stderr);
+        err << "[server stderr] " << QString::fromUtf8(data);
+        if(!data.endsWith('\n'))
+        {
+          err << '\n';
+        }
+        err.flush();
+      });
+      connect(m_proc, &QProcess::errorOccurred, this,
+              [this](QProcess::ProcessError error) {
+                if(error == QProcess::FailedToStart)
+                {
+                  m_open.store(false, std::memory_order_release);
+                  report_error(std::make_error_code(std::errc::io_error));
+                  fire_close();
+                }
+              });
+      connect(m_proc, &QProcess::finished, this,
+              [this](int, QProcess::ExitStatus) {
+                do_read_stdout();
+                m_open.store(false, std::memory_order_release);
+                fire_close();
+              });
+
+      m_proc->start();
+      if(!m_proc->waitForStarted(10'000))
+      {
+        m_open.store(false, std::memory_order_release);
+        report_error(std::make_error_code(std::errc::io_error));
+        fire_close();
+        return;
+      }
+      m_open.store(true, std::memory_order_release);
+    }
+
+    void do_send(const QByteArray& data)
+    {
+      if(!m_proc || m_proc->state() != QProcess::Running)
+      {
+        report_error(std::make_error_code(std::errc::not_connected));
+        return;
+      }
+      QByteArray line = data;
+      line.append('\n');
+      const qint64 written = m_proc->write(line);
+      if(written != line.size())
+      {
+        report_error(std::make_error_code(std::errc::io_error));
+      }
+    }
+
+    void do_read_stdout(void)
+    {
+      if(!m_proc)
+      {
+        return;
+      }
+      m_rx.append(m_proc->readAllStandardOutput());
+      while(true)
+      {
+        const qsizetype newline = m_rx.indexOf('\n');
+        if(newline < 0)
+        {
+          break;
+        }
+        QByteArray line = m_rx.left(newline);
+        m_rx.remove(0, newline + 1);
+        if(line.endsWith('\r'))
+        {
+          line.chop(1);
+        }
+        if(line.isEmpty())
+        {
+          continue;
+        }
+        if(m_on_message)
+        {
+          m_on_message(std::move(line));
+        }
+      }
+    }
+
+    void do_close(void)
+    {
+      if(m_closed.exchange(true, std::memory_order_acq_rel))
+      {
+        return;
+      }
+      m_open.store(false, std::memory_order_release);
+      if(m_proc && m_proc->state() != QProcess::NotRunning)
+      {
+        m_proc->terminate();
+        if(!m_proc->waitForFinished(2'000))
+        {
+          m_proc->kill();
+          (void)m_proc->waitForFinished(1'000);
+        }
+      }
+      fire_close();
+    }
+
+    void report_error(std::error_code ec) noexcept
+    {
+      if(m_on_error)
+      {
+        m_on_error(ec);
+      }
+    }
+
+    void fire_close(void) noexcept
+    {
+      if(m_close_fired.exchange(true, std::memory_order_acq_rel))
+      {
+        return;
+      }
+      if(m_on_close)
+      {
+        m_on_close();
+      }
+    }
+
+    Options m_opts;
+    QProcess* m_proc = nullptr;
+    QByteArray m_rx;
+
+    std::atomic<bool> m_started = false;
+    std::atomic<bool> m_open = false;
+    std::atomic<bool> m_closed = false;
+    std::atomic<bool> m_close_fired = false;
+
+    MessageCallback m_on_message;
+    ErrorCallback m_on_error;
+    CloseCallback m_on_close;
   };
 
-  std::unique_ptr<Subprocess> spawn_server(char** argv)
+  // -------------------------------------------------------------------------
+  // Output helpers
+  // -------------------------------------------------------------------------
+
+  void print_help(OutStream& out)
   {
-    int in_pipe[2];
-    int out_pipe[2];
-    if(::pipe(in_pipe) != 0)
-    {
-      return nullptr;
-    }
-    if(::pipe(out_pipe) != 0)
-    {
-      ::close(in_pipe[0]);
-      ::close(in_pipe[1]);
-      return nullptr;
-    }
-
-    posix_spawn_file_actions_t act;
-    posix_spawn_file_actions_init(&act);
-    posix_spawn_file_actions_adddup2(&act, in_pipe[0], STDIN_FILENO);
-    posix_spawn_file_actions_adddup2(&act, out_pipe[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addclose(&act, in_pipe[0]);
-    posix_spawn_file_actions_addclose(&act, in_pipe[1]);
-    posix_spawn_file_actions_addclose(&act, out_pipe[0]);
-    posix_spawn_file_actions_addclose(&act, out_pipe[1]);
-
-    std::vector<char*> child_argv;
-    for(char** p = argv; *p != nullptr; ++p)
-    {
-      child_argv.push_back(*p);
-    }
-    child_argv.push_back(nullptr);
-
-    pid_t pid = -1;
-    const int rc = ::posix_spawn(&pid, argv[0], &act, nullptr,
-                                 child_argv.data(), environ);
-    posix_spawn_file_actions_destroy(&act);
-    ::close(in_pipe[0]);
-    ::close(out_pipe[1]);
-    if(rc != 0)
-    {
-      ::close(in_pipe[1]);
-      ::close(out_pipe[0]);
-      return nullptr;
-    }
-
-    auto sp = std::make_unique<Subprocess>();
-    sp->pid = pid;
-    sp->read_fd = out_pipe[0];
-    sp->write_fd = in_pipe[1];
-    return sp;
+    out << "commands:\n"
+        << "  list, tools, ls   list the server's tools\n"
+        << "  call              call a tool with JSON arguments\n"
+        << "  info              show server info and instructions\n"
+        << "  ping              send a ping\n"
+        << "  help, ?           show this help\n"
+        << "  quit, exit        disconnect and exit\n";
   }
 
-  void print_help(void)
-  {
-    std::cout << "commands:\n"
-              << "  list                 list the server's tools\n"
-              << "  call                 call a tool with JSON arguments\n"
-              << "  info                 show server info and instructions\n"
-              << "  ping                 send a ping\n"
-              << "  help                 show this help\n"
-              << "  quit                 disconnect and exit\n";
-  }
-
-  void print_content(const mcp::ContentBlock& block)
+  void print_content(OutStream& out, const mcp::ContentBlock& block)
   {
     if(const auto* text = std::get_if<mcp::TextContent>(&block))
     {
-      std::cout << text->text.toStdString();
+      out << text->text;
       return;
     }
     if(const auto* image = std::get_if<mcp::ImageContent>(&block))
     {
-      std::cout << "[image " << image->mime_type.toStdString() << ", "
-                << image->data.size() << " base64 bytes]";
+      out << "[image " << image->mime_type << ", " << image->data.size()
+          << " base64 bytes]";
       return;
     }
     if(const auto* audio = std::get_if<mcp::AudioContent>(&block))
     {
-      std::cout << "[audio " << audio->mime_type.toStdString() << ", "
-                << audio->data.size() << " base64 bytes]";
+      out << "[audio " << audio->mime_type << ", " << audio->data.size()
+          << " base64 bytes]";
       return;
     }
-    std::cout << mcp::dump(mcp::to_json(block)).toStdString();
+    out << mcp::dump(mcp::to_json(block));
   }
 
-  void print_result(const mcp::CallToolResult& result)
+  void print_result(OutStream& out, const mcp::CallToolResult& result)
   {
     if(result.is_error.value_or(false))
     {
-      std::cout << "error: ";
+      out << "error: ";
     }
     if(result.content.isEmpty())
     {
-      std::cout << "(no content)";
+      out << "(no content)";
     }
     else
     {
@@ -157,203 +340,343 @@ namespace
       {
         if(i != 0)
         {
-          std::cout << "\n  ";
+          out << "\n  ";
         }
-        print_content(result.content[i]);
+        print_content(out, result.content[i]);
       }
     }
-    std::cout << "\n";
+    out << "\n";
     if(!result.structured_content.isNull())
     {
-      std::cout << "structured: "
-                << mcp::dump(result.structured_content).toStdString() << "\n";
+      out << "structured: " << mcp::dump(result.structured_content) << "\n";
     }
   }
 
-  void list_tools(mcp::Client& client)
+  void list_tools(OutStream& out, mcp::Client& client)
   {
     const mcp::ListToolsResult tools = client.list_tools().get();
     if(tools.tools.isEmpty())
     {
-      std::cout << "(server exposes no tools)\n";
+      out << "(server exposes no tools)\n";
       return;
     }
     for(const mcp::Tool& tool : tools.tools)
     {
-      std::cout << "  - " << tool.name.toStdString();
+      out << "  - " << tool.name;
       if(!tool.description.isNull() && !tool.description.isEmpty())
       {
-        std::cout << " — " << tool.description.toStdString();
+        out << " — " << tool.description;
       }
-      std::cout << "\n";
+      out << "\n";
     }
   }
 
-  void show_info(const mcp::Client& client)
+  void show_info(OutStream& out, const mcp::Client& client)
   {
     const std::optional<mcp::InitializeResult> info = client.server();
     if(!info.has_value())
     {
-      std::cout << "(not initialized)\n";
+      out << "(not initialized)\n";
       return;
     }
-    std::cout << "server: " << info->server_info.name.toStdString() << " "
-              << info->server_info.version.toStdString() << "\n";
+    out << "server: " << info->server_info.name << " "
+        << info->server_info.version << "\n";
     if(!info->instructions.isNull())
     {
-      std::cout << "instructions: " << info->instructions.toStdString()
-                << "\n";
+      out << "instructions: " << info->instructions << "\n";
     }
   }
 
-  void call_tool(mcp::Client& client)
+  void call_tool(OutStream& out, InStream& in, mcp::Client& client)
   {
-    std::cout << "tool name: " << std::flush;
-    std::string name;
-    if(!std::getline(std::cin, name) || name.empty())
+    out << "tool name: ";
+    out.flush();
+    QString name = in.readLine();
+    if(name.isNull() || name.trimmed().isEmpty())
     {
-      std::cout << "no tool selected\n";
+      out << "no tool selected\n";
       return;
     }
+    name = name.trimmed();
 
-    std::cout << "arguments JSON (blank for {}): " << std::flush;
-    std::string args_text;
-    if(!std::getline(std::cin, args_text))
+    out << "arguments JSON (blank for {}): ";
+    out.flush();
+    QString args_text = in.readLine();
+    if(args_text.isNull())
     {
       return;
     }
+    args_text = args_text.trimmed();
 
     QJsonValue args = QJsonObject{};
-    if(!args_text.empty())
+    if(!args_text.isEmpty())
     {
       try
       {
-        args = mcp::parse_json(args_text);
+        args = mcp::parse_json(args_text.toUtf8());
       }
       catch(const std::exception& e)
       {
-        std::cout << "invalid JSON: " << e.what() << "\n";
+        out << "invalid JSON: " << e.what() << "\n";
         return;
       }
       if(!args.isObject())
       {
-        std::cout << "arguments must be a JSON object\n";
+        out << "arguments must be a JSON object\n";
         return;
       }
     }
 
     try
     {
-      const mcp::CallToolResult result
-          = client.call_tool(QString::fromStdString(name), args).get();
-      print_result(result);
+      const mcp::CallToolResult result = client.call_tool(name, args).get();
+      print_result(out, result);
     }
     catch(const std::exception& e)
     {
-      std::cout << "call failed: " << e.what() << "\n";
+      out << "call failed: " << e.what() << "\n";
     }
+  }
+
+  void run_interactive(mcp::Client& client, const QString& endpoint,
+                       QCoreApplication& app)
+  {
+    QFile input;
+    if(!input.open(stdin, QIODevice::ReadOnly | QIODevice::Text))
+    {
+      QTextStream(stderr) << "mcp_tester: failed to open stdin\n";
+      QMetaObject::invokeMethod(&app, "quit", Qt::QueuedConnection);
+      return;
+    }
+    InStream in(&input);
+    OutStream out(stdout);
+
+    try
+    {
+      const mcp::InitializeResult info = client.initialize().get();
+      out << "connected to " << info.server_info.name << " "
+          << info.server_info.version << "\n";
+    }
+    catch(const std::exception& e)
+    {
+      QTextStream(stderr) << "mcp_tester: initialize failed: " << e.what()
+                          << "\n";
+      client.disconnect();
+      QMetaObject::invokeMethod(&app, "quit", Qt::QueuedConnection);
+      return;
+    }
+
+    out << "mcp_tester — server: " << endpoint << "\n";
+    print_help(out);
+    out.flush();
+
+    while(true)
+    {
+      out << "mcp_tester> ";
+      out.flush();
+      QString line = in.readLine();
+      if(line.isNull())
+      {
+        break;
+      }
+      line = line.trimmed();
+      if(line.isEmpty())
+      {
+        continue;
+      }
+
+      if(line == "quit" || line == "exit")
+      {
+        break;
+      }
+      if(line == "help" || line == "?")
+      {
+        print_help(out);
+      }
+      else if(line == "list" || line == "tools" || line == "ls")
+      {
+        try
+        {
+          list_tools(out, client);
+        }
+        catch(const std::exception& e)
+        {
+          out << "list failed: " << e.what() << "\n";
+        }
+      }
+      else if(line == "call")
+      {
+        call_tool(out, in, client);
+      }
+      else if(line == "info")
+      {
+        show_info(out, client);
+      }
+      else if(line == "ping")
+      {
+        try
+        {
+          client.ping().get();
+          out << "pong\n";
+        }
+        catch(const std::exception& e)
+        {
+          out << "ping failed: " << e.what() << "\n";
+        }
+      }
+      else
+      {
+        out << "unknown command '" << line << "'; type help\n";
+      }
+      out.flush();
+    }
+
+    client.disconnect();
+    out << "bye\n";
+    out.flush();
+    QMetaObject::invokeMethod(&app, "quit", Qt::QueuedConnection);
+  }
+
+  QString resolve_program(const QString& program)
+  {
+    if(program.contains('/'))
+    {
+      const QFileInfo info(program);
+      if(info.exists() && info.isExecutable())
+      {
+        return info.absoluteFilePath();
+      }
+      return {};
+    }
+    return QStandardPaths::findExecutable(program);
   }
 
 } // namespace
 
 int main(int argc, char** argv)
 {
-  if(argc < 2)
+  QCoreApplication app(argc, argv);
+  QCoreApplication::setApplicationName("mcp_tester");
+  QCoreApplication::setApplicationVersion("0.1.0");
+
+  QCommandLineParser parser;
+  parser.setApplicationDescription(
+      "Interactive MCP client. Connects to an MCP server over Streamable HTTP "
+      "or stdio, then lets you inspect and call its tools.\n\n"
+      "Interactive commands:\n"
+      "  list, tools, ls   list the server's tools\n"
+      "  call              call a tool with JSON arguments\n"
+      "  info              show server info and instructions\n"
+      "  ping              send a ping\n"
+      "  help, ?           show the command list\n"
+      "  quit, exit        disconnect and exit\n\n"
+      "Examples:\n"
+      "  mcp_tester --http http://127.0.0.1:8848/mcp\n"
+      "  mcp_tester --stdio ./build/server/mcp_stdio_server -- ./plugins");
+  parser.addHelpOption();
+  parser.addVersionOption();
+
+  const QCommandLineOption http_option(
+      "http",
+      "Connect to an MCP server over Streamable HTTP. The value is the "
+      "endpoint URL, e.g. http://127.0.0.1:8848/mcp.",
+      "URL");
+  const QCommandLineOption stdio_option(
+      "stdio",
+      "Spawn an MCP server and connect over its stdin/stdout. Any positional "
+      "arguments are passed to the program.",
+      "PROGRAM");
+
+  parser.addOption(http_option);
+  parser.addOption(stdio_option);
+  parser.addPositionalArgument(
+      "server-args",
+      "Arguments passed to the program given with --stdio.",
+      "[-- server-args...]");
+
+  parser.process(app);
+
+  const bool use_http = parser.isSet(http_option);
+  const bool use_stdio = parser.isSet(stdio_option);
+  const QStringList server_args = parser.positionalArguments();
+
+  OutStream err(stderr);
+
+  if(use_http == use_stdio)
   {
-    std::fprintf(stderr, "usage: %s <server-binary> [server-args...]\n",
-                 argv[0]);
-    return 1;
+    err << "mcp_tester: choose exactly one transport: --http <URL> or "
+           "--stdio <PROGRAM>\n\n";
+    err.flush();
+    parser.showHelp(2);
   }
 
-  std::unique_ptr<Subprocess> server = spawn_server(argv + 1);
-  if(!server)
+  if(!use_stdio && !server_args.isEmpty())
   {
-    std::fprintf(stderr, "failed to spawn %s\n", argv[1]);
-    return 1;
+    err << "mcp_tester: positional arguments are only valid with "
+           "--stdio\n\n";
+    err.flush();
+    parser.showHelp(2);
   }
 
-  mcp::StdioTransport::Options opts;
-  opts.read_fd = server->read_fd;
-  opts.write_fd = server->write_fd;
+  mcp::Client client{ mcp::Implementation{
+      .name = "mcp_tester",
+      .version = "0.1.0",
+  } };
 
-  mcp::Client client{ mcp::Implementation{ .name = "mcp_tester",
-                                           .version = "0.1.0" } };
-  client.connect(std::make_unique<mcp::StdioTransport>(opts));
+  QString endpoint;
 
-  try
+  if(use_http)
   {
-    const mcp::InitializeResult info = client.initialize().get();
-    std::cout << "connected to " << info.server_info.name.toStdString() << " "
-              << info.server_info.version.toStdString() << "\n";
+    const QString url = parser.value(http_option);
+    const QUrl parsed(url);
+    if(!parsed.isValid() || parsed.scheme().isEmpty()
+       || (parsed.scheme() != "http" && parsed.scheme() != "https")
+       || parsed.host().isEmpty())
+    {
+      err << "mcp_tester: invalid --http URL: " << url << "\n";
+      err.flush();
+      return 2;
+    }
+#if defined(MCP_ENABLE_HTTP)
+    mcp::HttpClientTransport::Options opts;
+    opts.url = url;
+    client.connect(std::make_unique<mcp::HttpClientTransport>(std::move(opts)));
+    endpoint = url;
+#else
+    err << "mcp_tester: this build has no HTTP support (MCP_ENABLE_HTTP=OFF)\n";
+    err.flush();
+    return 2;
+#endif
   }
-  catch(const std::exception& e)
+  else
   {
-    std::fprintf(stderr, "initialize failed: %s\n", e.what());
-    return 1;
-  }
-
-  std::cout << "mcp_tester — server: " << argv[1] << "\n";
-  print_help();
-
-  std::string line;
-  while(true)
-  {
-    std::cout << "mcp_tester> " << std::flush;
-    if(!std::getline(std::cin, line))
+    const QString requested = parser.value(stdio_option);
+    const QString program = resolve_program(requested);
+    if(program.isEmpty())
     {
-      break;
-    }
-    if(line.empty())
-    {
-      continue;
+      err << "mcp_tester: could not find or execute --stdio program: "
+          << requested << "\n";
+      err.flush();
+      return 2;
     }
 
-    if(line == "quit" || line == "exit")
+    ProcessTransport::Options opts;
+    opts.program = program;
+    opts.arguments = server_args;
+    client.connect(std::make_unique<ProcessTransport>(std::move(opts)));
+    endpoint = program;
+    if(!server_args.isEmpty())
     {
-      break;
-    }
-    else if(line == "help" || line == "?")
-    {
-      print_help();
-    }
-    else if(line == "list" || line == "tools" || line == "ls")
-    {
-      try
-      {
-        list_tools(client);
-      }
-      catch(const std::exception& e)
-      {
-        std::cout << "list failed: " << e.what() << "\n";
-      }
-    }
-    else if(line == "call")
-    {
-      call_tool(client);
-    }
-    else if(line == "info")
-    {
-      show_info(client);
-    }
-    else if(line == "ping")
-    {
-      try
-      {
-        client.ping().get();
-        std::cout << "pong\n";
-      }
-      catch(const std::exception& e)
-      {
-        std::cout << "ping failed: " << e.what() << "\n";
-      }
-    }
-    else
-    {
-      std::cout << "unknown command '" << line << "'; type help\n";
+      endpoint += ' ' + server_args.join(' ');
     }
   }
 
-  client.disconnect();
-  std::cout << "bye\n";
-  return 0;
+  std::thread interactive(
+      [&client, &endpoint, &app] { run_interactive(client, endpoint, app); });
+  const int status = app.exec();
+  if(interactive.joinable())
+  {
+    interactive.join();
+  }
+  return status;
 }
