@@ -22,6 +22,9 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMetaObject>
 #include <QProcess>
 #include <QStandardPaths>
@@ -295,6 +298,8 @@ namespace
   {
     out << "commands:\n"
         << "  list, tools, ls   list the server's tools\n"
+        << "  tool <name>       show all information about one tool, including\n"
+        << "                    its input and output schemas\n"
         << "  call              call a tool with JSON arguments\n"
         << "  info              show server info and instructions\n"
         << "  ping              send a ping\n"
@@ -369,6 +374,35 @@ namespace
       }
       out << "\n";
     }
+  }
+
+  QString pretty_json(const QJsonValue& value)
+  {
+    if(value.isObject())
+    {
+      return QString::fromUtf8(
+          QJsonDocument(value.toObject()).toJson(QJsonDocument::Indented));
+    }
+    if(value.isArray())
+    {
+      return QString::fromUtf8(
+          QJsonDocument(value.toArray()).toJson(QJsonDocument::Indented));
+    }
+    return mcp::dump(value);
+  }
+
+  void show_tool(OutStream& out, mcp::Client& client, const QString& name)
+  {
+    const mcp::ListToolsResult result = client.list_tools().get();
+    for(const mcp::Tool& tool : result.tools)
+    {
+      if(tool.name == name)
+      {
+        out << pretty_json(mcp::to_json(tool));
+        return;
+      }
+    }
+    out << "unknown tool '" << name << "'; use list to see available tools\n";
   }
 
   void show_info(OutStream& out, const mcp::Client& client)
@@ -504,6 +538,25 @@ namespace
           out << "list failed: " << e.what() << "\n";
         }
       }
+      else if(line == "tool" || line.startsWith("tool "))
+      {
+        const QString name = line.mid(4).trimmed();
+        if(name.isEmpty())
+        {
+          out << "usage: tool <name>\n";
+        }
+        else
+        {
+          try
+          {
+            show_tool(out, client, name);
+          }
+          catch(const std::exception& e)
+          {
+            out << "tool lookup failed: " << e.what() << "\n";
+          }
+        }
+      }
       else if(line == "call")
       {
         call_tool(out, in, client);
@@ -565,6 +618,8 @@ int main(int argc, char** argv)
       "or stdio, then lets you inspect and call its tools.\n\n"
       "Interactive commands:\n"
       "  list, tools, ls   list the server's tools\n"
+      "  tool <name>       show all information about one tool, including\n"
+      "                    its input and output schemas\n"
       "  call              call a tool with JSON arguments\n"
       "  info              show server info and instructions\n"
       "  ping              send a ping\n"
