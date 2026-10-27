@@ -145,8 +145,11 @@ int main(int argc, char** argv)
   std::signal(SIGQUIT, on_signal);
 
   server_host.start();
-  qInfo().noquote() << "[mcp_http_server] listening on http://" + host
-                           + ":" + QString::number(server_host.port()) + path;
+  qInfo().noquote() << QString(
+                           "[mcp_http_server] listening on http://%1:%2%3")
+                           .arg(host)
+                           .arg(server_host.port())
+                           .arg(path);
 
   // Run the main-thread Qt event loop. Plugins such as webio marshal work
   // (network operations) onto the thread that created them; that thread is
@@ -162,10 +165,10 @@ int main(int argc, char** argv)
   const int event_loop_status = app.exec();
   (void)event_loop_status;
 
-  qInfo().noquote() << "[mcp_http_server] shutting down ("
-                           + QString::number(static_cast<qulonglong>(
-                               server_host.active_sessions()))
-                           + " sessions)";
+  qInfo().noquote() << QString(
+                           "[mcp_http_server] shutting down (%1 sessions)")
+                           .arg(static_cast<qulonglong>(
+                               server_host.active_sessions()));
   server_host.stop();
   return 0;
 }
