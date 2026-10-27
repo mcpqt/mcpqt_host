@@ -14,7 +14,9 @@
 #include "mcp.h"
 #include "plugin_manager.h"
 
+#include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QFileInfo>
 #include <QString>
 #include <QTimer>
@@ -22,8 +24,6 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
-#include <cstdio>
-#include <cstdlib>
 #include <string>
 #include <thread>
 #include <vector>
@@ -56,35 +56,49 @@ namespace
 int main(int argc, char** argv)
 {
   QCoreApplication app(argc, argv);
-  QString host = "127.0.0.1";
-  int port = 8848;
-  QString path = "/mcp";
-  QStringList plugin_paths;
+  QCoreApplication::setApplicationName("mcp_http_server");
+  QCoreApplication::setApplicationVersion("0.1.0");
 
-  for(int i = 1; i < argc; ++i)
+  QCommandLineParser parser;
+  parser.setApplicationDescription(
+      "Streamable HTTP MCP server. Loads plugins and serves "
+      "MCP over HTTP.");
+  parser.addHelpOption();
+  parser.addVersionOption();
+
+  const QCommandLineOption host_option(
+      "host", "Bind address (default: 127.0.0.1).", "H", "127.0.0.1");
+  const QCommandLineOption port_option(
+      "port", "Bind port, 0 for OS-assigned (default: 8848).", "P", "8848");
+  const QCommandLineOption path_option(
+      "path", "MCP endpoint path (default: /mcp).", "PATH", "/mcp");
+
+  parser.addOption(host_option);
+  parser.addOption(port_option);
+  parser.addOption(path_option);
+  parser.addPositionalArgument(
+      "plugin-path",
+      "Plugin file or directory to load. Defaults to "
+      "$MCP_PLUGIN_DIR or 'plugins'.",
+      "[plugin-path ...]");
+
+  parser.process(app);
+
+  const QString host = parser.value(host_option);
+  bool port_ok = false;
+  const int port = parser.value(port_option).toInt(&port_ok);
+  if(!port_ok)
   {
-    const QString arg = QString::fromLocal8Bit(argv[i]);
-    if(arg == "--host" && i + 1 < argc)
-    {
-      host = QString::fromLocal8Bit(argv[++i]);
-    }
-    else if(arg == "--port" && i + 1 < argc)
-    {
-      port = std::atoi(argv[++i]);
-    }
-    else if(arg == "--path" && i + 1 < argc)
-    {
-      path = QString::fromLocal8Bit(argv[++i]);
-    }
-    else
-    {
-      plugin_paths << QString::fromLocal8Bit(argv[i]);
-    }
+    qCritical().noquote()
+        << "[mcp_http_server] invalid --port value:"
+        << parser.value(port_option);
+    return 2;
   }
+  const QString path = parser.value(path_option);
+  QStringList plugin_paths = parser.positionalArguments();
   if(plugin_paths.isEmpty())
   {
-    plugin_paths << qEnvironmentVariable("MCP_PLUGIN_DIR",
-                                         QStringLiteral("plugins"));
+    plugin_paths << qEnvironmentVariable("MCP_PLUGIN_DIR", "plugins");
   }
 
   // The manager must outlive the host: per-session handlers reference it.
@@ -99,10 +113,10 @@ int main(int argc, char** argv)
   opts.port = port;
   opts.path = path;
 
-  if(const char* token = std::getenv("MCP_TOKEN"); token && *token)
+  if(QString token = qEnvironmentVariable("MCP_TOKEN"); !token.isNull() && !token.isEmpty())
   {
     opts.bearer_validator
-        = [expected = QString::fromLocal8Bit(token)](QStringView presented) {
+        = [expected = token](QStringView presented) {
             using Outcome = mcp::HttpServerHost::Options::BearerOutcome;
             using Status = mcp::HttpServerHost::Options::BearerStatus;
             Outcome out;
@@ -110,7 +124,7 @@ int main(int argc, char** argv)
                                                : Status::invalid_token;
             return out;
           };
-    std::fprintf(stderr, "[mcp_http_server] bearer auth ON\n");
+    qInfo().noquote() << "[mcp_http_server] bearer auth ON";
   }
 
   mcp::HttpServerHost server_host{
@@ -131,9 +145,8 @@ int main(int argc, char** argv)
   std::signal(SIGQUIT, on_signal);
 
   server_host.start();
-  std::fprintf(stderr, "[mcp_http_server] listening on http://%s:%d%s\n",
-               host.toUtf8().constData(), server_host.port(),
-               path.toUtf8().constData());
+  qInfo().noquote() << "[mcp_http_server] listening on http://" + host
+                           + ":" + QString::number(server_host.port()) + path;
 
   // Run the main-thread Qt event loop. Plugins such as webio marshal work
   // (network operations) onto the thread that created them; that thread is
@@ -149,8 +162,10 @@ int main(int argc, char** argv)
   const int event_loop_status = app.exec();
   (void)event_loop_status;
 
-  std::fprintf(stderr, "[mcp_http_server] shutting down (%zu sessions)\n",
-               server_host.active_sessions());
+  qInfo().noquote() << "[mcp_http_server] shutting down ("
+                           + QString::number(static_cast<qulonglong>(
+                               server_host.active_sessions()))
+                           + " sessions)";
   server_host.stop();
   return 0;
 }
