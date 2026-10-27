@@ -60,18 +60,13 @@ int main(int argc, char** argv)
   QCoreApplication::setApplicationVersion("0.1.0");
 
   QCommandLineParser parser;
-  parser.setApplicationDescription(
-      "Streamable HTTP MCP server. Loads plugins and serves "
-      "MCP over HTTP.");
+  parser.setApplicationDescription("Streamable HTTP MCP server. Loads plugins and serves MCP over HTTP.");
   parser.addHelpOption();
   parser.addVersionOption();
 
-  const QCommandLineOption host_option(
-      "host", "Bind address (default: 127.0.0.1).", "H", "127.0.0.1");
-  const QCommandLineOption port_option(
-      "port", "Bind port, 0 for OS-assigned (default: 8848).", "P", "8848");
-  const QCommandLineOption path_option(
-      "path", "MCP endpoint path (default: /mcp).", "PATH", "/mcp");
+  const QCommandLineOption host_option("host", "Bind address (default: 127.0.0.1).", "H", "127.0.0.1");
+  const QCommandLineOption port_option("port", "Bind port, 0 for OS-assigned (default: 8848).", "P", "8848");
+  const QCommandLineOption path_option("path", "MCP endpoint path (default: /mcp).", "PATH", "/mcp");
 
   parser.addOption(host_option);
   parser.addOption(port_option);
@@ -165,10 +160,8 @@ int main(int argc, char** argv)
   const int event_loop_status = app.exec();
   (void)event_loop_status;
 
-  qInfo().noquote() << QString(
-                           "[mcp_http_server] shutting down (%1 sessions)")
-                           .arg(static_cast<qulonglong>(
-                               server_host.active_sessions()));
+  qInfo().noquote() << QString("[mcp_http_server] shutting down (%1 sessions)")
+                           .arg(static_cast<qulonglong>(server_host.active_sessions()));
   server_host.stop();
   return 0;
 }
