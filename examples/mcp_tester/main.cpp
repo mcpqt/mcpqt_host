@@ -1,32 +1,39 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// mcp_tester: an interactive MCP client built entirely on Qt.
+// mcp_tester: an interactive MCP client built on Qt and libqjsonrpc.
 //
-// Connects to an MCP server over either Streamable HTTP or stdio (by
-// spawning a child process with QProcess), initializes the session, and
-// presents a command menu for inspecting and calling the server's tools.
+// The command interface is discovered at runtime from the server's
+// initialize result and the entities it returns from tools/list,
+// resources/list, resources/templates/list, and prompts/list. Tool and
+// prompt arguments are prompted for using the schemas the server supplies.
 //
 //   mcp_tester --http http://127.0.0.1:8848/mcp
 //   mcp_tester --stdio ./mcp_stdio_server -- ./plugins
-//
-// See `mcp_tester --help` for the complete option list.
-
-#include "mcp.h"
 
 #if defined(MCP_ENABLE_HTTP)
-#include "http_client_transport.h"
+#include "mcp/http_client_transport.h"
 #endif
+
+#include "src/jsonrpc.h"
+#include "src/session.h"
+#include "src/transport.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
@@ -34,8 +41,10 @@
 
 #include <atomic>
 #include <exception>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -46,17 +55,73 @@ namespace
   using OutStream = QTextStream;
   using InStream = QTextStream;
 
+  std::atomic<bool> g_refresh_requested{ false };
+
+  QString pretty_json(const QJsonValue& value)
+  {
+    if(value.isObject())
+    {
+      return QString::fromUtf8(
+          QJsonDocument(value.toObject()).toJson(QJsonDocument::Indented));
+    }
+    if(value.isArray())
+    {
+      return QString::fromUtf8(
+          QJsonDocument(value.toArray()).toJson(QJsonDocument::Indented));
+    }
+    if(value.isString())
+    {
+      return value.toString();
+    }
+    if(value.isNull() || value.isUndefined())
+    {
+      return "null";
+    }
+    if(value.isBool())
+    {
+      return value.toBool() ? "true" : "false";
+    }
+    if(value.isDouble())
+    {
+      const qint64 integer = value.toInteger();
+      if(static_cast<double>(integer) == value.toDouble())
+      {
+        return QString::number(integer);
+      }
+      return QString::number(value.toDouble());
+    }
+    return {};
+  }
+
+  QString compact_json(const QJsonValue& value)
+  {
+    if(value.isObject())
+    {
+      return QString::fromUtf8(
+          QJsonDocument(value.toObject()).toJson(QJsonDocument::Compact));
+    }
+    if(value.isArray())
+    {
+      return QString::fromUtf8(
+          QJsonDocument(value.toArray()).toJson(QJsonDocument::Compact));
+    }
+    return pretty_json(value);
+  }
+
+  void print_notification(const QString& kind, const QJsonValue& value)
+  {
+    static QMutex mutex;
+    QMutexLocker lock(&mutex);
+    QTextStream err(stderr);
+    err << "[notification] " << kind << ": " << pretty_json(value) << "\n";
+    err.flush();
+  }
+
   // -------------------------------------------------------------------------
-  // QProcess-backed stdio transport
-  //
-  // QProcess lives on the application's main thread and is driven by the Qt
-  // event loop. mcp::Client may call send()/close() from the interactive
-  // worker thread, so those operations are marshalled onto the main thread.
-  // Inbound frames are delivered from the main thread, which is safe for
-  // Session's callback contract.
+  // QProcess-backed stdio transport for libqjsonrpc
   // -------------------------------------------------------------------------
 
-  class ProcessTransport final : public QObject, public mcp::Transport
+  class ProcessTransport final : public QObject, public jsonrpc::Transport
   {
   public:
     struct Options
@@ -290,305 +355,1049 @@ namespace
     CloseCallback m_on_close;
   };
 
+#if defined(MCP_ENABLE_HTTP)
+  class HttpTransportAdapter final : public jsonrpc::Transport
+  {
+  public:
+    explicit HttpTransportAdapter(std::unique_ptr<mcp::Transport> inner)
+        : m_inner(std::move(inner))
+    {
+    }
+
+    void on_message(MessageCallback cb) override
+    {
+      m_inner->on_message(std::move(cb));
+    }
+    void on_error(ErrorCallback cb) override { m_inner->on_error(std::move(cb)); }
+    void on_close(CloseCallback cb) override { m_inner->on_close(std::move(cb)); }
+
+    void start(void) override { m_inner->start(); }
+    void close(void) override { m_inner->close(); }
+
+    [[nodiscard]] std::error_code send(QByteArrayView frame) override
+    {
+      return m_inner->send(frame);
+    }
+
+    [[nodiscard]] bool is_open(void) const noexcept override
+    {
+      return m_inner->is_open();
+    }
+
+  private:
+    std::unique_ptr<mcp::Transport> m_inner;
+  };
+#endif
+
   // -------------------------------------------------------------------------
-  // Output helpers
+  // Schema-driven argument handling
   // -------------------------------------------------------------------------
 
-  void print_help(OutStream& out)
+  QString schema_type(const QJsonObject& schema)
   {
-    out << "commands:\n"
-        << "  list, tools, ls   list the server's tools\n"
-        << "  tool <name>       show all information about one tool, including\n"
-        << "                    its input and output schemas\n"
-        << "  call              call a tool with JSON arguments\n"
-        << "  info              show server info and instructions\n"
-        << "  ping              send a ping\n"
-        << "  help, ?           show this help\n"
-        << "  quit, exit        disconnect and exit\n";
-  }
-
-  void print_content(OutStream& out, const mcp::ContentBlock& block)
-  {
-    if(const auto* text = std::get_if<mcp::TextContent>(&block))
+    const QJsonValue type = schema.value("type");
+    if(type.isString())
     {
-      out << text->text;
-      return;
+      return type.toString();
     }
-    if(const auto* image = std::get_if<mcp::ImageContent>(&block))
+    if(type.isArray())
     {
-      out << "[image " << image->mime_type << ", " << image->data.size()
-          << " base64 bytes]";
-      return;
-    }
-    if(const auto* audio = std::get_if<mcp::AudioContent>(&block))
-    {
-      out << "[audio " << audio->mime_type << ", " << audio->data.size()
-          << " base64 bytes]";
-      return;
-    }
-    out << mcp::dump(mcp::to_json(block));
-  }
-
-  void print_result(OutStream& out, const mcp::CallToolResult& result)
-  {
-    if(result.is_error.value_or(false))
-    {
-      out << "error: ";
-    }
-    if(result.content.isEmpty())
-    {
-      out << "(no content)";
-    }
-    else
-    {
-      for(qsizetype i = 0; i < result.content.size(); ++i)
+      QStringList parts;
+      for(const QJsonValue& item : type.toArray())
       {
-        if(i != 0)
+        if(item.isString())
         {
-          out << "\n  ";
+          parts << item.toString();
         }
-        print_content(out, result.content[i]);
       }
-    }
-    out << "\n";
-    if(!result.structured_content.isNull())
-    {
-      out << "structured: " << mcp::dump(result.structured_content) << "\n";
-    }
-  }
-
-  void list_tools(OutStream& out, mcp::Client& client)
-  {
-    const mcp::ListToolsResult tools = client.list_tools().get();
-    if(tools.tools.isEmpty())
-    {
-      out << "(server exposes no tools)\n";
-      return;
-    }
-    for(const mcp::Tool& tool : tools.tools)
-    {
-      out << "  - " << tool.name;
-      if(!tool.description.isNull() && !tool.description.isEmpty())
+      if(!parts.isEmpty())
       {
-        out << " — " << tool.description;
+        return parts.join("|");
       }
-      out << "\n";
     }
+    return {};
   }
 
-  QString pretty_json(const QJsonValue& value)
+  QJsonValue parse_json_value(const QString& text, const QString& context)
   {
-    if(value.isObject())
+    QJsonParseError error{};
+    const QJsonDocument doc = QJsonDocument::fromJson(
+        text.toUtf8(), &error);
+    if(error.error != QJsonParseError::NoError)
     {
-      return QString::fromUtf8(
-          QJsonDocument(value.toObject()).toJson(QJsonDocument::Indented));
+      throw std::runtime_error(
+          context.toStdString() + ": " + error.errorString().toStdString());
     }
-    if(value.isArray())
+    if(doc.isObject())
     {
-      return QString::fromUtf8(
-          QJsonDocument(value.toArray()).toJson(QJsonDocument::Indented));
+      return doc.object();
     }
-    return mcp::dump(value);
+    if(doc.isArray())
+    {
+      return doc.array();
+    }
+    throw std::runtime_error(
+        context.toStdString() + ": expected a JSON object or array");
   }
 
-  void show_tool(OutStream& out, mcp::Client& client, const QString& name)
+  QJsonValue convert_value(const QString& text, const QJsonObject& schema)
   {
-    const mcp::ListToolsResult result = client.list_tools().get();
-    for(const mcp::Tool& tool : result.tools)
+    const QString type = schema_type(schema);
+    if(type == "string" || type.isEmpty())
     {
-      if(tool.name == name)
+      return text;
+    }
+    if(type == "integer")
+    {
+      bool ok = false;
+      const qint64 value = text.toLongLong(&ok);
+      if(!ok)
       {
-        out << pretty_json(mcp::to_json(tool));
-        return;
+        throw std::runtime_error("expected an integer");
       }
+      return value;
     }
-    out << "unknown tool '" << name << "'; use list to see available tools\n";
+    if(type == "number")
+    {
+      bool ok = false;
+      const double value = text.toDouble(&ok);
+      if(!ok)
+      {
+        throw std::runtime_error("expected a number");
+      }
+      return value;
+    }
+    if(type == "boolean")
+    {
+      const QString v = text.toLower();
+      if(v == "true" || v == "1")
+      {
+        return true;
+      }
+      if(v == "false" || v == "0")
+      {
+        return false;
+      }
+      throw std::runtime_error("expected true or false");
+    }
+    if(type == "object" || type == "array")
+    {
+      return parse_json_value(text, type);
+    }
+    if(type == "null")
+    {
+      return QJsonValue(QJsonValue::Null);
+    }
+    return text;
   }
 
-  void show_info(OutStream& out, const mcp::Client& client)
+  QHash<QString, QString> parse_inline_arguments(const QString& text)
   {
-    const std::optional<mcp::InitializeResult> info = client.server();
-    if(!info.has_value())
+    QHash<QString, QString> values;
+    if(text.trimmed().isEmpty())
     {
-      out << "(not initialized)\n";
-      return;
+      return values;
     }
-    out << "server: " << info->server_info.name << " "
-        << info->server_info.version << "\n";
-    if(!info->instructions.isNull())
+    const QStringList tokens = text.split(' ', Qt::SkipEmptyParts);
+    for(const QString& token : tokens)
     {
-      out << "instructions: " << info->instructions << "\n";
+      const qsizetype equals = token.indexOf('=');
+      if(equals <= 0)
+      {
+        throw std::runtime_error(
+            "expected key=value arguments, got '" + token.toStdString() + "'");
+      }
+      values.insert(token.left(equals), token.mid(equals + 1));
     }
+    return values;
   }
 
-  void call_tool(OutStream& out, InStream& in, mcp::Client& client)
+  QString schema_usage(const QJsonObject& schema)
   {
-    out << "tool name: ";
-    out.flush();
-    QString name = in.readLine();
-    if(name.isNull() || name.trimmed().isEmpty())
+    const QJsonObject properties = schema.value("properties").toObject();
+    if(properties.isEmpty())
     {
-      out << "no tool selected\n";
-      return;
+      return "[json]";
     }
-    name = name.trimmed();
 
-    out << "arguments JSON (blank for {}): ";
-    out.flush();
-    QString args_text = in.readLine();
-    if(args_text.isNull())
+    QSet<QString> required;
+    for(const QJsonValue& value : schema.value("required").toArray())
     {
-      return;
-    }
-    args_text = args_text.trimmed();
-
-    QJsonValue args = QJsonObject{};
-    if(!args_text.isEmpty())
-    {
-      try
+      if(value.isString())
       {
-        args = mcp::parse_json(args_text.toUtf8());
-      }
-      catch(const std::exception& e)
-      {
-        out << "invalid JSON: " << e.what() << "\n";
-        return;
-      }
-      if(!args.isObject())
-      {
-        out << "arguments must be a JSON object\n";
-        return;
+        required.insert(value.toString());
       }
     }
 
-    try
+    QStringList parts;
+    for(auto it = properties.constBegin(); it != properties.constEnd(); ++it)
     {
-      const mcp::CallToolResult result = client.call_tool(name, args).get();
-      print_result(out, result);
+      const QJsonObject property = it.value().toObject();
+      QString part = it.key();
+      const QString type = schema_type(property);
+      if(!type.isEmpty())
+      {
+        part += "=<" + type + ">";
+      }
+      if(!required.contains(it.key()))
+      {
+        part = "[" + part + "]";
+      }
+      parts << part;
     }
-    catch(const std::exception& e)
-    {
-      out << "call failed: " << e.what() << "\n";
-    }
+    return parts.join(' ');
   }
 
-  void run_interactive(mcp::Client& client, const QString& endpoint,
-                       QCoreApplication& app)
+  QStringList uri_template_variables(const QString& uri)
   {
-    QFile input;
-    if(!input.open(stdin, QIODevice::ReadOnly | QIODevice::Text))
+    static const QRegularExpression variable(R"(\{([^}]+)\})");
+    QStringList names;
+    QRegularExpressionMatchIterator it = variable.globalMatch(uri);
+    while(it.hasNext())
     {
-      QTextStream(stderr) << "mcp_tester: failed to open stdin\n";
-      QMetaObject::invokeMethod(&app, "quit", Qt::QueuedConnection);
-      return;
+      const QRegularExpressionMatch match = it.next();
+      QString name = match.captured(1);
+      if(!name.isEmpty() && (name.startsWith('+') || name.startsWith('#')))
+      {
+        name.remove(0, 1);
+      }
+      if(!names.contains(name))
+      {
+        names << name;
+      }
     }
-    InStream in(&input);
-    OutStream out(stdout);
+    return names;
+  }
 
-    try
+  // -------------------------------------------------------------------------
+  // Interactive, data-driven client
+  // -------------------------------------------------------------------------
+
+  class Tester
+  {
+  public:
+    Tester(jsonrpc::Session& session, InStream& in, OutStream& out,
+           QString endpoint)
+        : m_session(session), m_in(in), m_out(out),
+          m_endpoint(std::move(endpoint))
     {
-      const mcp::InitializeResult info = client.initialize().get();
-      out << "connected to " << info.server_info.name << " "
-          << info.server_info.version << "\n";
     }
-    catch(const std::exception& e)
+
+    void run(void)
     {
-      QTextStream(stderr) << "mcp_tester: initialize failed: " << e.what()
-                          << "\n";
-      client.disconnect();
-      QMetaObject::invokeMethod(&app, "quit", Qt::QueuedConnection);
-      return;
+      initialize();
+      discover();
+      print_help();
+      loop();
     }
 
-    out << "mcp_tester — server: " << endpoint << "\n";
-    print_help(out);
-    out.flush();
-
-    while(true)
+    void refresh(void)
     {
-      out << "mcp_tester> ";
-      out.flush();
-      QString line = in.readLine();
+      discover();
+      print_help();
+    }
+
+  private:
+    struct Command
+    {
+      QString name;
+      QString usage;
+      QString description;
+      QJsonValue details;
+      std::function<void(const QString&)> run;
+    };
+
+    void initialize(void)
+    {
+      QJsonObject capabilities{
+        { "roots", QJsonObject{ { "listChanged", false } } },
+      };
+      QJsonObject params{
+        { "protocolVersion", "2025-11-25" },
+        { "capabilities", capabilities },
+        { "clientInfo",
+          QJsonObject{ { "name", "mcp_tester" },
+                       { "version", "0.1.0" } } },
+      };
+
+      const QJsonObject result = request("initialize", params).toObject();
+      m_server = result;
+
+      const std::error_code ec
+          = m_session.send_notification("notifications/initialized");
+      if(ec)
+      {
+        throw std::runtime_error("failed to send notifications/initialized: "
+                                 + ec.message());
+      }
+
+      m_out << "connected to "
+            << result.value("serverInfo").toObject().value("name").toString()
+            << " "
+            << result.value("serverInfo")
+                   .toObject()
+                   .value("version")
+                   .toString()
+            << "\n";
+    }
+
+    QJsonValue request(const QString& method, const QJsonValue& params = {})
+    {
+      return m_session.send_request(method, params).get();
+    }
+
+    void print_json(const QJsonValue& value)
+    {
+      const QString text = pretty_json(value);
+      m_out << text;
+      if(!text.endsWith('\n'))
+      {
+        m_out << "\n";
+      }
+    }
+
+    QString read_line(void)
+    {
+      const QString line = m_in.readLine();
       if(line.isNull())
       {
-        break;
+        throw std::runtime_error("input closed");
       }
-      line = line.trimmed();
-      if(line.isEmpty())
+      return line.trimmed();
+    }
+
+    QJsonObject collect_arguments(const QJsonObject& schema,
+                                  const QString& inline_arguments)
+    {
+      const QJsonObject properties = schema.value("properties").toObject();
+      const bool interactive = inline_arguments.trimmed().isEmpty();
+      const QHash<QString, QString> inline_values
+          = parse_inline_arguments(inline_arguments);
+
+      if(properties.isEmpty())
       {
-        continue;
+        if(!interactive)
+        {
+          return parse_json_value(inline_arguments, "arguments").toObject();
+        }
+        m_out << "arguments JSON (blank for {}): ";
+        m_out.flush();
+        const QString text = read_line();
+        if(text.isEmpty())
+        {
+          return {};
+        }
+        return parse_json_value(text, "arguments").toObject();
       }
 
-      if(line == "quit" || line == "exit")
+      QSet<QString> required;
+      for(const QJsonValue& value : schema.value("required").toArray())
       {
-        break;
-      }
-      if(line == "help" || line == "?")
-      {
-        print_help(out);
-      }
-      else if(line == "list" || line == "tools" || line == "ls")
-      {
-        try
+        if(value.isString())
         {
-          list_tools(out, client);
-        }
-        catch(const std::exception& e)
-        {
-          out << "list failed: " << e.what() << "\n";
+          required.insert(value.toString());
         }
       }
-      else if(line == "tool" || line.startsWith("tool "))
+
+      QJsonObject arguments;
+      for(auto it = properties.constBegin(); it != properties.constEnd(); ++it)
       {
-        const QString name = line.mid(4).trimmed();
+        const QString name = it.key();
+        const QJsonObject property = it.value().toObject();
+        const QString type = schema_type(property);
+        const bool is_required = required.contains(name);
+
+        QString text;
+        bool supplied = false;
+
+        if(inline_values.contains(name))
+        {
+          text = inline_values.value(name);
+          supplied = true;
+        }
+        else if(interactive)
+        {
+          m_out << name;
+          if(!type.isEmpty())
+          {
+            m_out << " (" << type << ")";
+          }
+          if(is_required)
+          {
+            m_out << " [required]";
+          }
+          const QString description
+              = property.value("description").toString();
+          if(!description.isEmpty())
+          {
+            m_out << " — " << description;
+          }
+          if(property.contains("default"))
+          {
+            m_out << " [default: "
+                  << compact_json(property.value("default")) << "]";
+          }
+          m_out << ": ";
+          m_out.flush();
+          text = read_line();
+          supplied = !text.isEmpty();
+        }
+
+        if(!supplied)
+        {
+          if(is_required)
+          {
+            throw std::runtime_error("missing required argument '" +
+                                     name.toStdString() + "'");
+          }
+          continue;
+        }
+
+        arguments.insert(name, convert_value(text, property));
+      }
+
+      for(auto it = inline_values.constBegin();
+          it != inline_values.constEnd(); ++it)
+      {
+        if(properties.contains(it.key()))
+        {
+          continue;
+        }
+        QJsonValue value(it.value());
+        if(it.value().startsWith('{') || it.value().startsWith('['))
+        {
+          value = parse_json_value(it.value(), it.key());
+        }
+        arguments.insert(it.key(), value);
+      }
+
+      return arguments;
+    }
+
+    QJsonObject collect_prompt_arguments(const QJsonObject& prompt,
+                                         const QString& inline_arguments)
+    {
+      const QJsonArray arguments = prompt.value("arguments").toArray();
+      const bool interactive = inline_arguments.trimmed().isEmpty();
+      const QHash<QString, QString> inline_values
+          = parse_inline_arguments(inline_arguments);
+
+      if(arguments.isEmpty())
+      {
+        if(!interactive)
+        {
+          return parse_json_value(inline_arguments, "arguments").toObject();
+        }
+        return {};
+      }
+
+      QJsonObject values;
+      for(const QJsonValue& value : arguments)
+      {
+        const QJsonObject argument = value.toObject();
+        const QString name = argument.value("name").toString();
         if(name.isEmpty())
         {
-          out << "usage: tool <name>\n";
+          continue;
+        }
+        const bool required = argument.value("required").toBool(false);
+
+        QString text;
+        bool supplied = false;
+        if(inline_values.contains(name))
+        {
+          text = inline_values.value(name);
+          supplied = true;
+        }
+        else if(interactive)
+        {
+          m_out << name;
+          if(required)
+          {
+            m_out << " [required]";
+          }
+          const QString description
+              = argument.value("description").toString();
+          if(!description.isEmpty())
+          {
+            m_out << " — " << description;
+          }
+          m_out << ": ";
+          m_out.flush();
+          text = read_line();
+          supplied = !text.isEmpty();
+        }
+
+        if(!supplied)
+        {
+          if(required)
+          {
+            throw std::runtime_error("missing required argument '" +
+                                     name.toStdString() + "'");
+          }
+          continue;
+        }
+        values.insert(name, text);
+      }
+
+      for(auto it = inline_values.constBegin();
+          it != inline_values.constEnd(); ++it)
+      {
+        if(!values.contains(it.key()))
+        {
+          values.insert(it.key(), it.value());
+        }
+      }
+      return values;
+    }
+
+    void run_tool(const QJsonObject& tool, const QString& inline_arguments)
+    {
+      const QJsonObject schema = tool.value("inputSchema").toObject();
+      QJsonObject params{
+        { "name", tool.value("name") },
+        { "arguments", collect_arguments(schema, inline_arguments) },
+      };
+      print_json(request("tools/call", params));
+    }
+
+    void run_prompt(const QJsonObject& prompt, const QString& inline_arguments)
+    {
+      QJsonObject params{
+        { "name", prompt.value("name") },
+        { "arguments", collect_prompt_arguments(prompt, inline_arguments) },
+      };
+      print_json(request("prompts/get", params));
+    }
+
+    void run_template(const QJsonObject& resource_template,
+                      const QString& inline_arguments)
+    {
+      QString uri = resource_template.value("uriTemplate").toString();
+      const QHash<QString, QString> inline_values
+          = parse_inline_arguments(inline_arguments);
+
+      for(const QString& name : uri_template_variables(uri))
+      {
+        QString value;
+        if(inline_values.contains(name))
+        {
+          value = inline_values.value(name);
         }
         else
         {
-          try
-          {
-            show_tool(out, client, name);
-          }
-          catch(const std::exception& e)
-          {
-            out << "tool lookup failed: " << e.what() << "\n";
-          }
+          m_out << name << " (URI variable): ";
+          m_out.flush();
+          value = read_line();
         }
+        const QString encoded
+            = QString::fromLatin1(QUrl::toPercentEncoding(value));
+        uri.replace("{" + name + "}", encoded);
+        uri.replace("{+" + name + "}", value);
       }
-      else if(line == "call")
+
+      print_json(request("resources/read", QJsonObject{ { "uri", uri } }));
+    }
+
+    QString unique_name(QString name)
+    {
+      if(name == "quit" || name == "exit" || name == "help" || name == "?")
       {
-        call_tool(out, in, client);
+        name.prepend("tool:");
       }
-      else if(line == "info")
+      QString candidate = name;
+      int suffix = 2;
+      while(m_index.contains(candidate))
       {
-        show_info(out, client);
+        candidate = name + "#" + QString::number(suffix++);
       }
-      else if(line == "ping")
+      return candidate;
+    }
+
+    void add_command(QString name, QString usage, QString description,
+                     QJsonValue details,
+                     std::function<void(const QString&)> run)
+    {
+      Command command;
+      command.name = unique_name(std::move(name));
+      command.usage = std::move(usage);
+      command.description = std::move(description);
+      command.details = std::move(details);
+      command.run = std::move(run);
+      m_index.insert(command.name, m_commands.size());
+      m_commands.append(std::move(command));
+    }
+
+    QList<QJsonObject> fetch_all(const QString& method, const QString& key)
+    {
+      QList<QJsonObject> items;
+      QString cursor;
+      do
+      {
+        QJsonObject params;
+        if(!cursor.isEmpty())
+        {
+          params.insert("cursor", cursor);
+        }
+        const QJsonObject result = request(method, params).toObject();
+        for(const QJsonValue& value : result.value(key).toArray())
+        {
+          items.append(value.toObject());
+        }
+        cursor = result.value("nextCursor").toString();
+      } while(!cursor.isEmpty());
+      return items;
+    }
+
+    QJsonObject cursor_params(const QString& tail)
+    {
+      if(tail.isEmpty())
+      {
+        return {};
+      }
+      if(tail.startsWith('{'))
+      {
+        return parse_json_value(tail, "params").toObject();
+      }
+      return { { "cursor", tail } };
+    }
+
+    QJsonObject single_param(const QString& tail, const QString& key)
+    {
+      if(tail.startsWith('{'))
+      {
+        return parse_json_value(tail, "params").toObject();
+      }
+      return { { key, tail } };
+    }
+
+    void add_protocol_commands(const QJsonObject& capabilities)
+    {
+      add_command(
+          "ping", "", "Send a ping.", {},
+          [this](const QString&) { print_json(request("ping")); });
+
+      if(capabilities.contains("tools"))
+      {
+        add_command(
+            "tools/list", "[cursor]",
+            "List tools as returned by the server.", {},
+            [this](const QString& tail) {
+              print_json(request("tools/list", cursor_params(tail)));
+            });
+        add_command(
+            "tools/call", "<name> [key=value ...] | <json>",
+            "Call a tool using its schema or raw tools/call parameters.", {},
+            [this](const QString& tail) {
+              if(tail.trimmed().isEmpty())
+              {
+                throw std::runtime_error(
+                    "usage: tools/call <name> [key=value ...] | <json>");
+              }
+              if(tail.startsWith('{'))
+              {
+                print_json(
+                    request("tools/call", parse_json_value(tail, "params")));
+                return;
+              }
+              const QString name = tail.split(' ').value(0);
+              auto it = m_tools.find(name);
+              if(it == m_tools.end())
+              {
+                throw std::runtime_error("unknown tool: " + name.toStdString());
+              }
+              qsizetype space = tail.indexOf(' ');
+              const QString rest
+                  = space < 0 ? QString{} : tail.mid(space + 1).trimmed();
+              run_tool(it.value(), rest);
+            });
+      }
+
+      if(capabilities.contains("resources"))
+      {
+        add_command(
+            "resources/list", "[cursor]",
+            "List resources as returned by the server.", {},
+            [this](const QString& tail) {
+              print_json(request("resources/list", cursor_params(tail)));
+            });
+        add_command(
+            "resources/templates/list", "[cursor]",
+            "List resource templates as returned by the server.", {},
+            [this](const QString& tail) {
+              print_json(
+                  request("resources/templates/list", cursor_params(tail)));
+            });
+        add_command(
+            "resources/read", "<uri>",
+            "Read a resource by URI.", {},
+            [this](const QString& tail) {
+              print_json(request("resources/read",
+                                 single_param(tail, "uri")));
+            });
+        add_command(
+            "resources/subscribe", "<uri>",
+            "Subscribe to updates for a resource URI.", {},
+            [this](const QString& tail) {
+              print_json(request("resources/subscribe",
+                                 single_param(tail, "uri")));
+            });
+        add_command(
+            "resources/unsubscribe", "<uri>",
+            "Unsubscribe from updates for a resource URI.", {},
+            [this](const QString& tail) {
+              print_json(request("resources/unsubscribe",
+                                 single_param(tail, "uri")));
+            });
+      }
+
+      if(capabilities.contains("prompts"))
+      {
+        add_command(
+            "prompts/list", "[cursor]",
+            "List prompts as returned by the server.", {},
+            [this](const QString& tail) {
+              print_json(request("prompts/list", cursor_params(tail)));
+            });
+        add_command(
+            "prompts/get", "<name> <json>",
+            "Get a prompt using raw prompts/get parameters.", {},
+            [this](const QString& tail) {
+              if(tail.startsWith('{'))
+              {
+                print_json(
+                    request("prompts/get", parse_json_value(tail, "params")));
+                return;
+              }
+              const qsizetype space = tail.indexOf(' ');
+              if(space < 0)
+              {
+                throw std::runtime_error(
+                    "usage: prompts/get <name> <json>");
+              }
+              QJsonObject params{
+                { "name", tail.left(space) },
+                { "arguments",
+                  parse_json_value(tail.mid(space + 1).trimmed(), "arguments") },
+              };
+              print_json(request("prompts/get", params));
+            });
+      }
+
+      if(capabilities.contains("logging"))
+      {
+        add_command(
+            "logging/setLevel", "<level>",
+            "Set the server log level using an RFC 5424 level name.", {},
+            [this](const QString& tail) {
+              print_json(request("logging/setLevel",
+                                 QJsonObject{ { "level", tail } }));
+            });
+      }
+
+      if(capabilities.contains("completions"))
+      {
+        add_command(
+            "completion/complete", "<json>",
+            "Request completion suggestions using raw "
+            "completion/complete parameters.", {},
+            [this](const QString& tail) {
+              print_json(request(
+                  "completion/complete",
+                  parse_json_value(tail, "params")));
+            });
+      }
+
+      if(capabilities.contains("tasks"))
+      {
+        add_command(
+            "tasks/list", "[cursor]",
+            "List tasks as returned by the server.", {},
+            [this](const QString& tail) {
+              print_json(request("tasks/list", cursor_params(tail)));
+            });
+        add_command(
+            "tasks/get", "<task-id>", "Get a task envelope.", {},
+            [this](const QString& tail) {
+              print_json(request("tasks/get",
+                                 single_param(tail, "taskId")));
+            });
+        add_command(
+            "tasks/result", "<task-id>",
+            "Wait for and return a task's result.", {},
+            [this](const QString& tail) {
+              print_json(request("tasks/result",
+                                 single_param(tail, "taskId")));
+            });
+        add_command(
+            "tasks/cancel", "<task-id>", "Cancel a task.", {},
+            [this](const QString& tail) {
+              print_json(request("tasks/cancel",
+                                 single_param(tail, "taskId")));
+            });
+      }
+    }
+
+    void discover(void)
+    {
+      m_commands.clear();
+      m_index.clear();
+      m_tools.clear();
+
+      const QJsonObject capabilities
+          = m_server.value("capabilities").toObject();
+
+      add_protocol_commands(capabilities);
+
+      if(capabilities.contains("tools"))
       {
         try
         {
-          client.ping().get();
-          out << "pong\n";
+          for(const QJsonObject& tool : fetch_all("tools/list", "tools"))
+          {
+            const QString name = tool.value("name").toString();
+            if(name.isEmpty())
+            {
+              continue;
+            }
+            m_tools.insert(name, tool);
+            add_command(
+                name, schema_usage(tool.value("inputSchema").toObject()),
+                tool.value("description").toString(), tool,
+                [this, tool](const QString& tail) { run_tool(tool, tail); });
+          }
         }
         catch(const std::exception& e)
         {
-          out << "ping failed: " << e.what() << "\n";
+          m_out << "warning: tools/list failed: " << e.what() << "\n";
         }
       }
-      else
+
+      if(capabilities.contains("resources"))
       {
-        out << "unknown command '" << line << "'; type help\n";
+        try
+        {
+          for(const QJsonObject& resource :
+              fetch_all("resources/list", "resources"))
+          {
+            QString label = resource.value("name").toString();
+            if(label.isEmpty())
+            {
+              label = resource.value("uri").toString();
+            }
+            add_command(
+                "resource:" + label, "",
+                resource.value("description").toString(), resource,
+                [this, resource](const QString&) {
+                  print_json(request(
+                      "resources/read",
+                      QJsonObject{ { "uri", resource.value("uri") } }));
+                });
+          }
+        }
+        catch(const std::exception& e)
+        {
+          m_out << "warning: resources/list failed: " << e.what() << "\n";
+        }
+
+        try
+        {
+          for(const QJsonObject& resource_template :
+              fetch_all("resources/templates/list", "resourceTemplates"))
+          {
+            QString label = resource_template.value("name").toString();
+            if(label.isEmpty())
+            {
+              label = resource_template.value("uriTemplate").toString();
+            }
+            QStringList usage;
+            for(const QString& variable : uri_template_variables(
+                    resource_template.value("uriTemplate").toString()))
+            {
+              usage << variable + "=<value>";
+            }
+            add_command(
+                "template:" + label, usage.join(' '),
+                resource_template.value("description").toString(),
+                resource_template,
+                [this, resource_template](const QString& tail) {
+                  run_template(resource_template, tail);
+                });
+          }
+        }
+        catch(const std::exception& e)
+        {
+          m_out << "warning: resources/templates/list failed: " << e.what()
+                << "\n";
+        }
       }
-      out.flush();
+
+      if(capabilities.contains("prompts"))
+      {
+        try
+        {
+          for(const QJsonObject& prompt : fetch_all("prompts/list", "prompts"))
+          {
+            QStringList usage;
+            for(const QJsonValue& value :
+                prompt.value("arguments").toArray())
+            {
+              const QJsonObject argument = value.toObject();
+              QString part = argument.value("name").toString();
+              if(!argument.value("required").toBool(false))
+              {
+                part = "[" + part + "]";
+              }
+              usage << part;
+            }
+            add_command(
+                "prompt:" + prompt.value("name").toString(),
+                usage.join(' '), prompt.value("description").toString(),
+                prompt, [this, prompt](const QString& tail) {
+                  run_prompt(prompt, tail);
+                });
+          }
+        }
+        catch(const std::exception& e)
+        {
+          m_out << "warning: prompts/list failed: " << e.what() << "\n";
+        }
+      }
     }
 
-    client.disconnect();
-    out << "bye\n";
-    out.flush();
-    QMetaObject::invokeMethod(&app, "quit", Qt::QueuedConnection);
-  }
+    void print_help(void)
+    {
+      const QJsonObject server_info = m_server.value("serverInfo").toObject();
+      m_out << "server: " << server_info.value("name").toString() << " "
+            << server_info.value("version").toString() << "\n";
+      const QString instructions = m_server.value("instructions").toString();
+      if(!instructions.isEmpty())
+      {
+        m_out << "instructions: " << instructions << "\n";
+      }
+      m_out << "protocol: " << m_server.value("protocolVersion").toString()
+            << "\n";
+      m_out << "\ncommands generated from server data:\n";
+      for(const Command& command : m_commands)
+      {
+        m_out << "  " << command.name;
+        if(!command.usage.isEmpty())
+        {
+          m_out << " " << command.usage;
+        }
+        if(!command.description.isEmpty())
+        {
+          m_out << " — " << command.description;
+        }
+        m_out << "\n";
+      }
+      m_out << "  help [command] — show this list or full command details\n"
+            << "  quit, exit — disconnect and exit\n";
+    }
+
+    void show_command_details(const QString& name)
+    {
+      auto it = m_index.find(name);
+      if(it == m_index.end())
+      {
+        m_out << "unknown command '" << name << "'\n";
+        return;
+      }
+      const Command& command = m_commands.at(it.value());
+      m_out << command.name;
+      if(!command.usage.isEmpty())
+      {
+        m_out << " " << command.usage;
+      }
+      m_out << "\n";
+      if(!command.description.isEmpty())
+      {
+        m_out << command.description << "\n";
+      }
+      if(!command.details.isNull() && !command.details.isUndefined())
+      {
+        print_json(command.details);
+      }
+    }
+
+    void loop(void)
+    {
+      while(true)
+      {
+        if(g_refresh_requested.exchange(false))
+        {
+          refresh();
+        }
+
+        m_out << "mcp_tester> ";
+        m_out.flush();
+
+        const QString line = m_in.readLine();
+        if(line.isNull())
+        {
+          break;
+        }
+        const QString trimmed = line.trimmed();
+        if(trimmed.isEmpty())
+        {
+          continue;
+        }
+
+        const qsizetype space = trimmed.indexOf(' ');
+        const QString name
+            = space < 0 ? trimmed : trimmed.left(space);
+        const QString tail
+            = space < 0 ? QString{} : trimmed.mid(space + 1).trimmed();
+
+        if(name == "quit" || name == "exit")
+        {
+          break;
+        }
+        if(name == "help" || name == "?")
+        {
+          if(tail.isEmpty())
+          {
+            print_help();
+          }
+          else
+          {
+            show_command_details(tail.split(' ').value(0));
+          }
+          continue;
+        }
+
+        auto it = m_index.find(name);
+        if(it == m_index.end())
+        {
+          m_out << "unknown command '" << name << "'; type help\n";
+          continue;
+        }
+
+        try
+        {
+          m_commands.at(it.value()).run(tail);
+        }
+        catch(const std::exception& e)
+        {
+          m_out << name << " failed: " << e.what() << "\n";
+        }
+        m_out.flush();
+      }
+
+      m_session.close();
+      m_out << "bye\n";
+      m_out.flush();
+    }
+
+    jsonrpc::Session& m_session;
+    InStream& m_in;
+    OutStream& m_out;
+    QString m_endpoint;
+    QJsonObject m_server;
+    QList<Command> m_commands;
+    QHash<QString, qsizetype> m_index;
+    QHash<QString, QJsonObject> m_tools;
+  };
 
   QString resolve_program(const QString& program)
   {
@@ -604,6 +1413,66 @@ namespace
     return QStandardPaths::findExecutable(program);
   }
 
+  void configure_notifications(jsonrpc::Session& session)
+  {
+    session.set_notification_handler(
+        "notifications/message",
+        [](const QJsonValue& params) {
+          print_notification("message", params);
+        });
+    session.set_notification_handler(
+        "notifications/progress",
+        [](const QJsonValue& params) {
+          print_notification("progress", params);
+        });
+    session.set_notification_handler(
+        "notifications/tasks/status",
+        [](const QJsonValue& params) {
+          print_notification("tasks/status", params);
+        });
+    session.set_notification_handler(
+        "notifications/resources/updated",
+        [](const QJsonValue& params) {
+          print_notification("resources/updated", params);
+        });
+    session.set_notification_handler(
+        "notifications/resources/list_changed",
+        [](const QJsonValue&) {
+          print_notification("resources/list_changed", QJsonObject{});
+          g_refresh_requested.store(true);
+        });
+    session.set_notification_handler(
+        "notifications/prompts/list_changed",
+        [](const QJsonValue&) {
+          print_notification("prompts/list_changed", QJsonObject{});
+          g_refresh_requested.store(true);
+        });
+    session.set_notification_handler(
+        "notifications/tools/list_changed",
+        [](const QJsonValue&) {
+          print_notification("tools/list_changed", QJsonObject{});
+          g_refresh_requested.store(true);
+        });
+    session.set_notification_handler(
+        "notifications/elicitation/complete",
+        [](const QJsonValue& params) {
+          print_notification("elicitation/complete", params);
+        });
+
+    session.set_request_handler("roots/list", [](const QJsonValue&) {
+      const QString cwd = QDir::currentPath();
+      QJsonObject root{
+        { "uri", QUrl::fromLocalFile(cwd).toString() },
+        { "name", QFileInfo(cwd).fileName().isEmpty() ? cwd
+                                                      : QFileInfo(cwd).fileName() },
+      };
+      return QJsonObject{ { "roots", QJsonArray{ root } } };
+    });
+    session.set_request_handler("elicitation/create", [](const QJsonValue&) {
+      return QJsonObject{ { "action", "decline" } };
+    });
+  }
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -615,19 +1484,8 @@ int main(int argc, char** argv)
   QCommandLineParser parser;
   parser.setApplicationDescription(
       "Interactive MCP client. Connects to an MCP server over Streamable HTTP "
-      "or stdio, then lets you inspect and call its tools.\n\n"
-      "Interactive commands:\n"
-      "  list, tools, ls   list the server's tools\n"
-      "  tool <name>       show all information about one tool, including\n"
-      "                    its input and output schemas\n"
-      "  call              call a tool with JSON arguments\n"
-      "  info              show server info and instructions\n"
-      "  ping              send a ping\n"
-      "  help, ?           show the command list\n"
-      "  quit, exit        disconnect and exit\n\n"
-      "Examples:\n"
-      "  mcp_tester --http http://127.0.0.1:8848/mcp\n"
-      "  mcp_tester --stdio ./build/server/mcp_stdio_server -- ./plugins");
+      "or stdio. After initialize, the command interface is generated from "
+      "the server's capabilities and its tools, resources, and prompts.");
   parser.addHelpOption();
   parser.addVersionOption();
 
@@ -673,11 +1531,7 @@ int main(int argc, char** argv)
     parser.showHelp(2);
   }
 
-  mcp::Client client{ mcp::Implementation{
-      .name = "mcp_tester",
-      .version = "0.1.0",
-  } };
-
+  std::unique_ptr<jsonrpc::Transport> transport;
   QString endpoint;
 
   if(use_http)
@@ -695,7 +1549,8 @@ int main(int argc, char** argv)
 #if defined(MCP_ENABLE_HTTP)
     mcp::HttpClientTransport::Options opts;
     opts.url = url;
-    client.connect(std::make_unique<mcp::HttpClientTransport>(std::move(opts)));
+    transport = std::make_unique<HttpTransportAdapter>(
+        std::make_unique<mcp::HttpClientTransport>(std::move(opts)));
     endpoint = url;
 #else
     err << "mcp_tester: this build has no HTTP support (MCP_ENABLE_HTTP=OFF)\n";
@@ -718,7 +1573,7 @@ int main(int argc, char** argv)
     ProcessTransport::Options opts;
     opts.program = program;
     opts.arguments = server_args;
-    client.connect(std::make_unique<ProcessTransport>(std::move(opts)));
+    transport = std::make_unique<ProcessTransport>(std::move(opts));
     endpoint = program;
     if(!server_args.isEmpty())
     {
@@ -726,12 +1581,39 @@ int main(int argc, char** argv)
     }
   }
 
-  std::thread interactive(
-      [&client, &endpoint, &app] { run_interactive(client, endpoint, app); });
+  jsonrpc::Session session(std::move(transport));
+  configure_notifications(session);
+  session.start();
+
+  std::thread interactive([&session, &endpoint, &app] {
+    QFile input;
+    if(!input.open(stdin, QIODevice::ReadOnly | QIODevice::Text))
+    {
+      QTextStream(stderr) << "mcp_tester: failed to open stdin\n";
+      QMetaObject::invokeMethod(&app, "quit", Qt::QueuedConnection);
+      return;
+    }
+    InStream in(&input);
+    OutStream out(stdout);
+
+    try
+    {
+      Tester tester(session, in, out, endpoint);
+      tester.run();
+    }
+    catch(const std::exception& e)
+    {
+      QTextStream(stderr) << "mcp_tester: " << e.what() << "\n";
+      session.close();
+    }
+    QMetaObject::invokeMethod(&app, "quit", Qt::QueuedConnection);
+  });
+
   const int status = app.exec();
   if(interactive.joinable())
   {
     interactive.join();
   }
+  session.close();
   return status;
 }

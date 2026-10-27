@@ -360,16 +360,20 @@ plugin cannot take it over.
 ./build/examples/plugintester/plugintester /path/to/plugins
 ```
 
-`examples/mcp_tester` is a small interactive MCP client. Pass it a server
-binary (plus any server arguments); it spawns the process, connects over stdio,
-and offers `list`, `call`, `info`, `ping`, `help`, and `quit`. `call` prompts
-for a tool name and JSON arguments, then prints the returned content, error
-result, and any structured content.
+`examples/mcp_tester` is a full interactive MCP client built on Qt and
+libqjsonrpc. It connects over stdio (via `QProcess`) or Streamable HTTP, then
+builds its command interface from the server's `initialize` result and the
+entities returned by `tools/list`, `resources/list`,
+`resources/templates/list`, and `prompts/list`. Tool and prompt commands are
+generated per item, and their arguments are prompted for using the schemas the
+server supplies. Protocol methods are exposed only when the corresponding
+server capability is advertised. `help <command>` prints the full metadata and
+schema returned for that item; `quit`/`exit` disconnect.
 
 ```sh
-./build/examples/mcp_tester/mcp_tester \
-    ./build/server/mcp_stdio_server \
-    ./build/plugins/calculator/calculator_plugin.so
+./build/examples/mcp_tester/mcp_tester --stdio \
+    ./build/server/mcp_stdio_server -- ./build/plugins
+./build/examples/mcp_tester/mcp_tester --http http://127.0.0.1:8848/mcp
 ```
 
 #### Plugin-owned logging

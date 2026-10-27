@@ -1,5 +1,9 @@
 add_executable(mcp_tester main.cpp)
-target_link_libraries(mcp_tester PRIVATE mcp::mcp)
+target_link_libraries(mcp_tester PRIVATE mcp::mcp qjsonrpc)
+
+target_include_directories(mcp_tester PRIVATE
+    ${CMAKE_SOURCE_DIR}/libqjsonrpc
+)
 
 if(MCP_ENABLE_HTTP)
     target_link_libraries(mcp_tester PRIVATE mcp::http)

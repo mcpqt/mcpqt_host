@@ -59,6 +59,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Data-driven `mcp_tester`.** The interactive client now uses libqjsonrpc's
+  generic `Session` API instead of a hardcoded command menu. After
+  `initialize`, it discovers server capabilities and generates commands from
+  the returned `tools/list`, `resources/list`,
+  `resources/templates/list`, and `prompts/list` data. Tool and prompt
+  arguments are prompted from the server-supplied schemas, protocol methods
+  are exposed only when the matching capability is advertised, and
+  `help <command>` prints the full returned metadata and schemas. It supports
+  both Streamable HTTP and stdio (via `QProcess`) transports.
 - **Plugin support (`mcp::PluginManager`).** The host can load Qt plugins that
   implement `mcp::PluginInterface` (header `<mcp/plugin.h>`). `PluginManager`
   discovers plugins with `QPluginLoader` (single files or a directory) and
