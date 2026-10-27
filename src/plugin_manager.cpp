@@ -25,6 +25,7 @@
 #include <QHash>
 #include <QList>
 #include <QString>
+#include <QThread>
 #include <algorithm>
 #include <exception>
 #include <utility>
@@ -402,11 +403,20 @@ namespace mcp
                                 converted[i].constData());
     }
 
+    // Plugins often own Qt objects with thread affinity (for example a
+    // QNetworkAccessManager in webio). Invoking their slots directly from an
+    // MCP request thread violates that affinity. Run the call on the plugin
+    // object's thread and block the request thread until it completes.
+    const Qt::ConnectionType connection
+        = object->thread() == QThread::currentThread()
+              ? Qt::DirectConnection
+              : Qt::BlockingQueuedConnection;
+
     const QMetaType return_type = method.returnMetaType();
     if(return_type == QMetaType::fromType<void>())
     {
       const bool ok = method.invoke(object,
-                                    Qt::DirectConnection,
+                                    connection,
                                     gen[0],
                                     gen[1],
                                     gen[2],
@@ -442,7 +452,7 @@ namespace mcp
       }
       QGenericReturnArgument return_arg(return_type.name(), storage);
       const bool ok = method.invoke(object,
-                                    Qt::DirectConnection,
+                                    connection,
                                     return_arg,
                                     gen[0],
                                     gen[1],

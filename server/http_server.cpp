@@ -17,6 +17,7 @@
 #include <QCoreApplication>
 #include <QFileInfo>
 #include <QString>
+#include <QTimer>
 
 #include <atomic>
 #include <chrono>
@@ -134,10 +135,19 @@ int main(int argc, char** argv)
                host.toUtf8().constData(), server_host.port(),
                path.toUtf8().constData());
 
-  while(!g_shutdown_requested.test(std::memory_order_acquire))
-  {
-    std::this_thread::sleep_for(std::chrono::milliseconds{ 200 });
-  }
+  // Run the main-thread Qt event loop. Plugins such as webio marshal work
+  // (network operations) onto the thread that created them; that thread is
+  // this one, so it must process events rather than sleep.
+  QTimer shutdown_timer;
+  QObject::connect(&shutdown_timer, &QTimer::timeout, &app, [&app]() {
+    if(g_shutdown_requested.test(std::memory_order_acquire))
+    {
+      app.quit();
+    }
+  });
+  shutdown_timer.start(200);
+  const int event_loop_status = app.exec();
+  (void)event_loop_status;
 
   std::fprintf(stderr, "[mcp_http_server] shutting down (%zu sessions)\n",
                server_host.active_sessions());
