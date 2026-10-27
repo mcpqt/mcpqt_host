@@ -12,14 +12,15 @@
 #include "mcp.h"
 #include "plugin_manager.h"
 
+#include <QCommandLineParser>
+#include <QCoreApplication>
+#include <QDebug>
 #include <QFileInfo>
 #include <QString>
 
 #include <atomic>
 #include <chrono>
 #include <csignal>
-#include <cstdio>
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <thread>
@@ -41,18 +42,21 @@ namespace
     if(QFileInfo(absolute).isDir())
     {
       const std::size_t n = plugins.load_directory(absolute);
-      MCP_LOG_INFO("mcp_stdio_server: loaded " + QString::number(n)
-                   + " plugin(s) from " + absolute);
+      qInfo().noquote() << QString("mcp_stdio_server: loaded %1 plugin(s) from %2")
+                               .arg(static_cast<qulonglong>(n))
+                               .arg(absolute);
     }
     else
     {
       if(plugins.load_file(absolute))
       {
-        MCP_LOG_INFO("mcp_stdio_server: loaded plugin " + absolute);
+        qInfo().noquote() << QString("mcp_stdio_server: loaded plugin %1")
+                                 .arg(absolute);
       }
       else
       {
-        MCP_LOG_WARN("mcp_stdio_server: failed to load " + absolute);
+        qWarning().noquote() << QString("mcp_stdio_server: failed to load %1")
+                                    .arg(absolute);
       }
     }
   }
@@ -61,14 +65,27 @@ namespace
 
 int main(int argc, char** argv)
 {
-  QStringList paths;
-  for(int i = 1; i < argc; ++i)
-  {
-    paths << QString::fromLocal8Bit(argv[i]);
-  }
+  QCoreApplication app(argc, argv);
+  QCoreApplication::setApplicationName("mcp_stdio_server");
+  QCoreApplication::setApplicationVersion("0.1.0");
+
+  QCommandLineParser parser;
+  parser.setApplicationDescription(
+      "Stdio MCP server. Loads plugins and serves MCP over stdin/stdout.");
+  parser.addHelpOption();
+  parser.addVersionOption();
+  parser.addPositionalArgument(
+      "plugin-path",
+      "Plugin file or directory to load. Defaults to "
+      "$MCP_PLUGIN_DIR or 'plugins'.",
+      "[plugin-path ...]");
+
+  parser.process(app);
+
+  QStringList paths = parser.positionalArguments();
   if(paths.isEmpty())
   {
-    paths << qEnvironmentVariable("MCP_PLUGIN_DIR", QStringLiteral("plugins"));
+    paths << qEnvironmentVariable("MCP_PLUGIN_DIR", "plugins");
   }
 
   // The manager must outlive the Server: tool handlers reference it.
@@ -88,7 +105,9 @@ int main(int argc, char** argv)
 
   const std::size_t registered = plugins.register_tools(server);
   plugins.register_control_tool(server);
-  MCP_LOG_INFO("mcp_stdio_server: registered tool/resource entries: " + QString::number(registered));
+  qInfo().noquote() << QString(
+                           "mcp_stdio_server: registered tool/resource entries: %1")
+                           .arg(static_cast<qulonglong>(registered));
 
   g_server.store(&server, std::memory_order_release);
   std::signal(SIGINT, on_signal);
@@ -115,6 +134,6 @@ int main(int argc, char** argv)
   {
     supervisor.join();
   }
-  MCP_LOG_INFO("mcp_stdio_server: stopped");
-  return EXIT_SUCCESS;
+  qInfo().noquote() << "mcp_stdio_server: stopped";
+  return 0;
 }
